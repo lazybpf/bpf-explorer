@@ -97,16 +97,34 @@ jobs:
           sed -i "s|image: ${IMAGE}:dev|image: ${IMAGE}:${VERSION}|g" bpf-explorer.yaml
           grep -n "image:" bpf-explorer.yaml
 
-      # Notes come from the annotated tag's message. --verify-tag refuses to
-      # invent a tag, so the release can only ever describe a pushed one. The
-      # pinned manifest rides along as the install artefact.
+      # actions/checkout fetches the commit SHA into refs/tags/<tag>, leaving a
+      # LIGHTWEIGHT ref with no annotation - `gh release create --notes-from-tag`
+      # then silently falls back to the commit message. Fetch the real tag object
+      # and read the annotation ourselves so the failure can't be silent.
+      # Written to RUNNER_TEMP, not the workspace: an untracked file in the repo
+      # would count as a dirty tree.
+      - name: Read the tag annotation
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          git fetch --force origin "refs/tags/${VERSION}:refs/tags/${VERSION}"
+          if [[ "$(git cat-file -t "$VERSION")" != "tag" ]]; then
+            echo "::error::$VERSION is not an annotated tag - use 'git tag -a'"
+            exit 1
+          fi
+          git tag -l "$VERSION" --format='%(contents)' > "$RUNNER_TEMP/notes.md"
+          echo "--- release notes ---"
+          cat "$RUNNER_TEMP/notes.md"
+
+      # --verify-tag refuses to invent a tag, so the release can only ever
+      # describe a pushed one. The pinned manifest rides along as the artefact.
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ steps.version.outputs.version }}
           PRERELEASE: ${{ steps.version.outputs.prerelease }}
         run: |
-          flags=(--title "$VERSION" --notes-from-tag --verify-tag)
+          flags=(--title "$VERSION" --notes-file "$RUNNER_TEMP/notes.md" --verify-tag)
           if [[ "$PRERELEASE" == "true" ]]; then
             flags+=(--prerelease)
           fi
