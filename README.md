@@ -159,7 +159,7 @@ Then browse http://localhost:8080.
 ## Releasing
 
 Pushing an annotated tag is the only way to publish. The
-[`publish-image`](.github/workflows/publish-image.yaml) workflow builds the
+[`release`](.github/workflows/release.yaml) workflow builds the
 multi-arch image, pushes it to GHCR under the tag name, and opens a GitHub
 release whose notes come from the tag annotation:
 
