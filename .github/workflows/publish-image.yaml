@@ -1,0 +1,113 @@
+name: Publish bpf-explorer image
+
+# Pushing an annotated tag is the ONLY way to publish:
+#
+#     git tag -a v0.1.0 -m "v0.1.0 - first release"
+#     git push origin v0.1.0
+#
+# It publishes the multi-arch image to GHCR and opens a GitHub release whose
+# notes come from the tag annotation. There is deliberately no workflow_dispatch:
+# releases and tags are immutable, so every fix ships as a new tag and the
+# published artefact always traces back to one.
+on:
+  push:
+    tags: ["v*"]
+
+env:
+  # GitHub Container Registry repository.
+  GHCR_IMAGE: ghcr.io/${{ github.repository_owner }}/bpf-explorer
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # create the GitHub release
+      packages: write # push to GHCR
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      # No QEMU needed: the Dockerfile's build stage is FROM --platform=$BUILDPLATFORM
+      # and cross-compiles the pure-Go binary, and the final stage only COPYs it
+      # (no RUN on the target arch), so buildx produces arm64 without emulation.
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+
+      - name: Log in to GHCR
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # The version is always the tag name. SemVer says a hyphen introduces a
+      # pre-release identifier (v0.2.0-rc.1), which must not become the "Latest
+      # release" on GitHub. Passed through env rather than interpolated.
+      - name: Resolve version
+        id: version
+        env:
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          echo "version=$REF_NAME" >> "$GITHUB_OUTPUT"
+          if [[ "$REF_NAME" == *-* ]]; then
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # One immutable tag per image, deliberately no ':latest' - a floating tag
+      # would let a node run something no manifest names.
+      - name: Extract image metadata
+        id: meta
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0
+        with:
+          images: ${{ env.GHCR_IMAGE }}
+          tags: type=raw,value=${{ steps.version.outputs.version }}
+          flavor: latest=false
+
+      - name: Build and push
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # Stamped into the binary via -ldflags; surfaced in the UI header.
+          build-args: |
+            VERSION=${{ steps.version.outputs.version }}
+            COMMIT=${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Deliberately after the build: this dirties the working tree, and the
+      # builder's VCS stamp would otherwise mark a released image "-dirty".
+      # Fails loudly rather than shipping an unpinned manifest if the image line
+      # ever stops matching.
+      - name: Pin the manifest to this tag
+        env:
+          IMAGE: ${{ env.GHCR_IMAGE }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          if ! grep -q "image: ${IMAGE}:dev" bpf-explorer.yaml; then
+            echo "::error::no 'image: ${IMAGE}:dev' line in bpf-explorer.yaml"
+            exit 1
+          fi
+          sed -i "s|image: ${IMAGE}:dev|image: ${IMAGE}:${VERSION}|g" bpf-explorer.yaml
+          grep -n "image:" bpf-explorer.yaml
+
+      # Notes come from the annotated tag's message. --verify-tag refuses to
+      # invent a tag, so the release can only ever describe a pushed one. The
+      # pinned manifest rides along as the install artefact.
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
+          PRERELEASE: ${{ steps.version.outputs.prerelease }}
+        run: |
+          flags=(--title "$VERSION" --notes-from-tag --verify-tag)
+          if [[ "$PRERELEASE" == "true" ]]; then
+            flags+=(--prerelease)
+          fi
+          gh release create "$VERSION" "${flags[@]}" bpf-explorer.yaml

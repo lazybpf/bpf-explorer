@@ -1,0 +1,23 @@
+{{define "content"}}
+{{template "nodebar" .}}
+
+<h2>dependency graphs on {{.Node}}</h2>
+<p class="muted">
+  eBPF objects grouped by loader PID. Open a group to see its programs, the maps
+  they reference, and the links attaching them.
+</p>
+
+<table>
+  <thead><tr><th>loader</th><th>programs</th><th>maps</th><th>links</th></tr></thead>
+  <tbody>
+  {{range .GraphGroups}}
+    <tr>
+      <td><a href="/nodes/{{$.Node}}/graph/{{.ID}}">{{.Label}}</a></td>
+      <td>{{.Progs}}</td><td>{{.Maps}}</td><td>{{.Links}}</td>
+    </tr>
+  {{else}}
+    <tr><td colspan="4" class="muted">(no eBPF objects)</td></tr>
+  {{end}}
+  </tbody>
+</table>
+{{end}}

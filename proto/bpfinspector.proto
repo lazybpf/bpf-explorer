@@ -1,0 +1,90 @@
+syntax = "proto3";
+
+package bpfinspector.v1;
+
+option go_package = "github.com/lazybpf/bpf-explorer/gen/bpfinspectorv1;bpfinspectorv1";
+
+// BpfInspector is the per-node, read-only inspection API served by the agent
+// running inside the privileged DaemonSet pod. There is intentionally no RPC
+// that mutates kernel state in v1 (no map update/delete, no prog load/detach).
+service BpfInspector {
+  rpc ListMaps(ListMapsRequest) returns (ListMapsResponse);
+  rpc DumpMap(DumpMapRequest) returns (DumpMapResponse);
+  rpc ListPrograms(ListProgramsRequest) returns (ListProgramsResponse);
+  rpc DumpProgram(DumpProgramRequest) returns (DumpProgramResponse);
+  rpc ListLinks(ListLinksRequest) returns (ListLinksResponse);
+}
+
+message MapInfo {
+  uint32 id = 1;
+  string name = 2;
+  string type = 3;         // e.g. "Hash", "LRUHash", "PerCPUArray", "RingBuf"
+  uint32 key_size = 4;
+  uint32 value_size = 5;
+  uint32 max_entries = 6;
+  uint32 flags = 7;
+  repeated string pinned_paths = 8; // e.g. /sys/fs/bpf/<agent>/<map>
+  bool dumpable = 9;       // false for RingBuf/PerfEvent etc.
+}
+
+message ListMapsRequest {}
+message ListMapsResponse { repeated MapInfo maps = 1; }
+
+message MapEntry {
+  string key_hex = 1;      // raw bytes, hex-encoded
+  string key_fmt = 2;      // BTF-formatted, best-effort (may be empty)
+  string value_hex = 3;
+  string value_fmt = 4;
+  // For per-CPU maps, one formatted value per CPU (value_fmt holds a summary).
+  repeated string per_cpu_value_fmt = 5;
+}
+
+message DumpMapRequest {
+  uint32 id = 1;
+  uint32 limit = 2;        // page size; server applies a hard cap
+  bytes cursor = 3;        // opaque; empty for first page
+}
+
+message DumpMapResponse {
+  repeated MapEntry entries = 1;
+  bytes next_cursor = 2;   // empty when exhausted
+  bool truncated = 3;      // true if a server-side hard cap stopped the dump
+}
+
+// ProcessRef is a process holding a reference (open fd) to a BPF object,
+// resolved by scanning /proc. Requires the agent to see host PIDs (hostPID).
+message ProcessRef {
+  uint32 pid = 1;
+  string comm = 2;
+}
+
+message ProgramInfo {
+  uint32 id = 1;
+  string name = 2;
+  string type = 3;
+  string tag = 4;
+  repeated uint32 map_ids = 5;
+  repeated ProcessRef pids = 6;
+}
+message ListProgramsRequest {}
+message ListProgramsResponse { repeated ProgramInfo programs = 1; }
+
+// DumpProgram returns the translated (xlated) instruction listing of a program,
+// like `bpftool prog dump xlated`. The kernel only exposes xlated instructions
+// with sufficient privilege (CAP_SYS_ADMIN) and when not disabled by
+// kernel.kptr_restrict / bpf_jit_harden; available=false with a note otherwise.
+message DumpProgramRequest { uint32 id = 1; }
+message DumpProgramResponse {
+  repeated string lines = 1; // one formatted instruction per line
+  bool available = 2;
+  string note = 3;           // reason when unavailable
+}
+
+message LinkInfo {
+  uint32 id = 1;
+  string type = 2;
+  uint32 prog_id = 3;
+  string attach = 4;       // attach point / target, best-effort
+}
+message ListLinksRequest {}
+message ListLinksResponse { repeated LinkInfo links = 1; }

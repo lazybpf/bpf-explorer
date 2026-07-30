@@ -1,0 +1,25 @@
+{{define "content"}}
+{{template "nodebar" .}}
+
+<h2>links on {{.Node}} <span class="muted">({{len .Links}})</span></h2>
+<table>
+  <thead><tr><th>ID</th><th>Type</th><th>Prog</th><th>Loader</th><th>Attach</th><th></th></tr></thead>
+  <tbody>
+  {{range .Links}}
+    <tr>
+      <td>{{.Id}}</td><td>{{.Type}}</td>
+      <td>
+        {{if .ProgId}}{{$name := progName $.Programs .ProgId}}<a href="/nodes/{{$.Node}}/programs/{{.ProgId}}"{{if $name}} title="{{$name}}"{{end}}>{{.ProgId}}</a>{{else}}<span class="muted">-</span>{{end}}
+      </td>
+      <td>{{if .ProgId}}{{with progLoader $.Programs .ProgId}}{{.}}{{else}}<span class="muted">-</span>{{end}}{{else}}<span class="muted">-</span>{{end}}</td>
+      <td>{{with .Attach}}{{.}}{{else}}<span class="muted">-</span>{{end}}</td>
+      <td>
+        {{if .ProgId}}<a href="/nodes/{{$.Node}}/graph/prog/{{.ProgId}}">graph</a>{{end}}
+      </td>
+    </tr>
+  {{else}}
+    <tr><td colspan="6" class="muted">(no links)</td></tr>
+  {{end}}
+  </tbody>
+</table>
+{{end}}

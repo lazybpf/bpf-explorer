@@ -1,0 +1,21 @@
+{{define "nodebar"}}
+<nav class="nodes">
+  {{if .Nodes}}
+    {{$node := .Node}}{{$tab := .Tab}}
+    {{range .Nodes}}
+      <a class="{{if eq . $node}}active{{end}}" href="/nodes/{{.}}/{{$tab}}">{{.}}</a>
+    {{end}}
+  {{else}}
+    <span class="muted">no agents discovered</span>
+  {{end}}
+</nav>
+{{if .Node}}
+<p class="tabs">
+  <a class="{{if eq .Tab "maps"}}active{{end}}" href="/nodes/{{.Node}}/maps">maps</a>
+  <a class="{{if eq .Tab "programs"}}active{{end}}" href="/nodes/{{.Node}}/programs">programs</a>
+  <a class="{{if eq .Tab "links"}}active{{end}}" href="/nodes/{{.Node}}/links">links</a>
+  <a class="{{if eq .Tab "graph"}}active{{end}}" href="/nodes/{{.Node}}/graph">graph</a>
+</p>
+{{end}}
+{{if .Err}}<p class="err">error: {{.Err}}</p>{{end}}
+{{end}}

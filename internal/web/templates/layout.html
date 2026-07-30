@@ -1,0 +1,40 @@
+{{define "layout"}}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>bpf-explorer</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font: 14px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; margin: 0; }
+  header { padding: .6rem 1rem; border-bottom: 1px solid #8884; display: flex; gap: 1rem; align-items: baseline; }
+  header .build { margin-left: auto; }
+  header h1 { font-size: 1rem; margin: 0; }
+  header a { text-decoration: none; }
+  main { padding: 1rem; }
+  hr { border: none; border-top: 1px solid #8884; margin: 1.2rem 0; }
+  pre { background: #8881; padding: .6rem .8rem; overflow-x: auto; border: 1px solid #8884; border-radius: 4px; }
+  nav.nodes a { display: inline-block; padding: .2rem .5rem; margin: .1rem; border: 1px solid #8884; border-radius: 4px; text-decoration: none; }
+  nav.nodes a.active { background: #4a90d9; color: #fff; border-color: #4a90d9; }
+  .tabs a { margin-right: 1rem; text-decoration: none; }
+  .tabs a.active { font-weight: bold; text-decoration: underline; }
+  table { border-collapse: collapse; width: 100%; margin-top: .8rem; }
+  th, td { border: 1px solid #8884; padding: .25rem .5rem; text-align: left; vertical-align: top; }
+  th { background: #8881; }
+  code { word-break: break-all; }
+  .muted { opacity: .6; }
+  .err { color: #c0392b; }
+  .badge { font-size: .8em; padding: 0 .3rem; border: 1px solid #8886; border-radius: 3px; }
+</style>
+</head>
+<body>
+<header>
+  <h1><a href="/">🐝 bpf-explorer</a></h1>
+  <span class="muted">read-only eBPF inspector</span>
+  <span class="muted build" title="build version (tag and git SHA-1)">{{version}}</span>
+</header>
+<main>
+{{template "content" .}}
+</main>
+</body>
+</html>{{end}}

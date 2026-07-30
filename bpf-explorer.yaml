@@ -1,0 +1,172 @@
+# All-in-one manifest for bpf-explorer: namespace, UI RBAC, agent DaemonSet, UI
+# Deployment, and the UI Service.
+#
+# This copy tracks ':dev' for locally built images. To install a release, take
+# the manifest attached to it - that one is pinned to an immutable image tag:
+#
+#     kubectl apply -f https://github.com/lazybpf/bpf-explorer/releases/latest/download/bpf-explorer.yaml
+#
+# Label the node(s) you want an agent on first, e.g.
+#     kubectl label node <node> bpf-explorer=true
+# then reach the UI with:
+#     kubectl -n bpf-explorer port-forward svc/bpf-explorer-ui 8080:80
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: bpf-explorer
+---
+# The UI needs to discover per-node agent pods (nodeName + podIP) via the K8s
+# API. Namespaced Role only - no cluster-wide access.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: bpf-explorer-ui
+  namespace: bpf-explorer
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: bpf-explorer-ui
+  namespace: bpf-explorer
+rules:
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: bpf-explorer-ui
+  namespace: bpf-explorer
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: bpf-explorer-ui
+subjects:
+- kind: ServiceAccount
+  name: bpf-explorer-ui
+  namespace: bpf-explorer
+---
+# Agent DaemonSet. Same privileged access + host mounts as bpftool-daemon, but
+# the container runs the bpf-explorer agent gRPC server instead of `sleep`.
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: bpf-explorer-agent
+  namespace: bpf-explorer
+  labels:
+    app.kubernetes.io/name: bpf-explorer-agent
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: bpf-explorer-agent
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: bpf-explorer-agent
+    spec:
+      # Label nodes you want to inspect, e.g.
+      #   kubectl label node <node> bpf-explorer=true
+      nodeSelector:
+        bpf-explorer: "true"
+      hostPID: true
+      tolerations:
+      - operator: Exists
+      containers:
+      - name: agent
+        # ':dev' is for locally built images. The release workflow rewrites this
+        # line to the released tag (e.g. ':v0.1.0') in the manifest attached to
+        # each GitHub release - install from there, not from this file.
+        image: ghcr.io/lazybpf/bpf-explorer:dev
+        # IfNotPresent so a locally imported image (e.g. `ctr images import`) is
+        # used without reaching for a registry.
+        imagePullPolicy: IfNotPresent
+        args: ["--role=agent", "--listen=:50051"]
+        ports:
+        - name: grpc
+          containerPort: 50051
+        securityContext:
+          # Same rationale as bpftool-daemon: broadest-portable access. See
+          # https://github.com/lazybpf/bpftool-daemon for the least-privilege
+          # CAP_BPF/CAP_PERFMON alternative.
+          privileged: true
+        volumeMounts:
+        - name: sys-fs-bpf
+          mountPath: /sys/fs/bpf
+          mountPropagation: HostToContainer
+        - name: sys-kernel-btf
+          mountPath: /sys/kernel/btf
+          readOnly: true
+      volumes:
+      - name: sys-fs-bpf
+        hostPath:
+          path: /sys/fs/bpf
+          type: Directory
+      - name: sys-kernel-btf
+        hostPath:
+          path: /sys/kernel/btf
+          type: Directory
+---
+# UI Deployment. Unprivileged, single replica. Discovers agent pods via the K8s
+# API and fans out read-only gRPC calls to each node's agent.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bpf-explorer-ui
+  namespace: bpf-explorer
+  labels:
+    app.kubernetes.io/name: bpf-explorer-ui
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: bpf-explorer-ui
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: bpf-explorer-ui
+    spec:
+      serviceAccountName: bpf-explorer-ui
+      containers:
+      - name: ui
+        # ':dev' is for locally built images. The release workflow rewrites this
+        # line to the released tag (e.g. ':v0.1.0') in the manifest attached to
+        # each GitHub release - install from there, not from this file.
+        image: ghcr.io/lazybpf/bpf-explorer:dev
+        # IfNotPresent so a locally imported image (e.g. `ctr images import`) is
+        # used without reaching for a registry.
+        imagePullPolicy: IfNotPresent
+        args: ["--role=ui", "--listen=:8080", "--namespace=bpf-explorer"]
+        # Optionally exclude noisy loaders (comma-separated PIDs) from the
+        # dependency-graph grouping, e.g. "1" to hide the systemd loader.
+        # env:
+        # - name: BPF_EXPLORER_HIDE_LOADER_PIDS
+        #   value: "1"
+        ports:
+        - name: http
+          containerPort: 8080
+        securityContext:
+          allowPrivilegeEscalation: false
+          runAsNonRoot: true
+          runAsUser: 65532
+          capabilities:
+            drop: ["ALL"]
+---
+# ClusterIP only. NO Ingress by design - this is a read window into privileged
+# node state. Access it with:
+#   kubectl -n bpf-explorer port-forward svc/bpf-explorer-ui 8080:80
+# then open http://localhost:8080
+apiVersion: v1
+kind: Service
+metadata:
+  name: bpf-explorer-ui
+  namespace: bpf-explorer
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: bpf-explorer-ui
+  ports:
+  - name: http
+    port: 80
+    targetPort: http

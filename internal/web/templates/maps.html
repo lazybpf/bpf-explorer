@@ -1,0 +1,38 @@
+{{define "content"}}
+{{template "nodebar" .}}
+
+{{with .Dump}}
+  <h2>map {{.ID}} — {{.Name}} contents
+    {{if .Truncated}}<span class="badge">truncated</span>{{end}}
+    <span class="muted">({{len .Entries}} shown)</span>
+  </h2>
+  <table>
+    <thead><tr><th>key</th><th>key (hex)</th><th>value</th><th>value (hex)</th></tr></thead>
+    <tbody>
+    {{range .Entries}}
+      <tr>
+        <td>{{.KeyFmt}}</td><td><code>{{.KeyHex}}</code></td>
+        <td>{{.ValueFmt}}</td><td><code>{{.ValueHex}}</code></td>
+      </tr>
+    {{else}}
+      <tr><td colspan="4" class="muted">(map is empty)</td></tr>
+    {{end}}
+    </tbody>
+  </table>
+  <hr>
+{{end}}
+
+<h2>maps on {{.Node}} <span class="muted">({{len .Maps}})</span></h2>
+<table>
+  <thead><tr><th>ID</th><th>Name</th><th>Type</th><th>Key</th><th>Value</th><th>Max</th><th>Flags</th><th></th></tr></thead>
+  <tbody>
+  {{range .Maps}}
+    <tr>
+      <td>{{.Id}}</td><td>{{.Name}}</td><td>{{.Type}}</td>
+      <td>{{.KeySize}}</td><td>{{.ValueSize}}</td><td>{{.MaxEntries}}</td><td title="0x{{printf "%x" .Flags}}">{{mapFlags .Flags}}</td>
+      <td>{{if .Dumpable}}<a href="/nodes/{{$.Node}}/maps/{{.Id}}">dump</a>{{else}}<span class="muted">n/a</span>{{end}}</td>
+    </tr>
+  {{end}}
+  </tbody>
+</table>
+{{end}}

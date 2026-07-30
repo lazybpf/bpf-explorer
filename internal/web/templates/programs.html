@@ -1,0 +1,38 @@
+{{define "content"}}
+{{template "nodebar" .}}
+
+{{with .ProgDump}}
+  <h2>program {{.ID}} — {{.Name}} xlated</h2>
+  {{if .Available}}
+    <pre>{{range .Lines}}{{.}}
+{{end}}</pre>
+  {{else}}
+    <p class="muted">xlated instructions unavailable{{if .Note}}: {{.Note}}{{end}}</p>
+  {{end}}
+  <hr>
+{{end}}
+
+<h2>programs on {{.Node}} <span class="muted">({{len .Programs}})</span></h2>
+<table>
+  <thead><tr><th>ID</th><th>Name</th><th>Type</th><th>Tag</th><th>Maps</th><th>PIDs</th><th></th></tr></thead>
+  <tbody>
+  {{range .Programs}}
+    <tr>
+      <td>{{.Id}}</td><td>{{.Name}}</td><td>{{.Type}}</td><td><code>{{.Tag}}</code></td>
+      <td>
+        {{range .MapIds}}{{$id := .}}{{$m := index $.MapsByID $id}}<a href="/nodes/{{$.Node}}/maps/{{$id}}"{{with $m}} title="{{.Name}} ({{.Type}})"{{end}}>{{$id}}</a>{{" "}}{{else}}<span class="muted">-</span>{{end}}
+      </td>
+      <td>
+        {{range .Pids}}{{.Comm}}({{.Pid}}){{" "}}{{else}}<span class="muted">-</span>{{end}}
+      </td>
+      <td>
+        <a href="/nodes/{{$.Node}}/programs/{{.Id}}">xlated</a>{{" "}}
+        <a href="/nodes/{{$.Node}}/graph/prog/{{.Id}}">graph</a>
+      </td>
+    </tr>
+  {{else}}
+    <tr><td colspan="7" class="muted">(no programs)</td></tr>
+  {{end}}
+  </tbody>
+</table>
+{{end}}

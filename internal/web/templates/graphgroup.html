@@ -1,0 +1,24 @@
+{{define "content"}}
+{{template "nodebar" .}}
+
+<p><a href="/nodes/{{.Node}}/graph">&larr; all loaders</a></p>
+<h2>{{.GroupLabel}}</h2>
+<p class="muted">
+  links attach programs; programs reference maps.
+  Shapes: [ programs ] &nbsp; ( maps ) &nbsp; &lt; links &gt;.
+  Click a program to zoom into it, or a map to open its details.
+</p>
+
+<pre class="mermaid">
+{{.Mermaid}}
+</pre>
+
+<script type="module">
+  // mermaid is loaded from a CDN, which the browser (not the cluster) fetches.
+  // If it is unreachable, the <pre> above still shows the readable definition.
+  // securityLevel 'loose' enables click-to-navigate on nodes; the diagram is
+  // generated server-side from sanitized labels, so there is no injected script.
+  import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+  mermaid.initialize({ startOnLoad: true, theme: 'neutral', securityLevel: 'loose' });
+</script>
+{{end}}

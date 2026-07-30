@@ -1,0 +1,10 @@
+{{define "content"}}
+{{template "nodebar" .}}
+<p>Select a node to inspect its eBPF maps and programs.</p>
+{{if not .Nodes}}
+<p class="muted">
+  The UI found no agent pods. Check the DaemonSet is running and labelled nodes
+  exist, or run the UI with <code>--agents=node=host:port</code>.
+</p>
+{{end}}
+{{end}}
