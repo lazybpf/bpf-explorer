@@ -177,6 +177,42 @@ func TestMapsDumpAboveList(t *testing.T) {
 	}
 }
 
+// TestMapsDumpHexTooltip verifies a dump's hex cells carry an ASCII tooltip when
+// the bytes hold readable text, and none when they don't.
+func TestMapsDumpHexTooltip(t *testing.T) {
+	h, err := New(nil, nil)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	data := pageData{
+		Node: "node-a",
+		Tab:  "maps",
+		Maps: []*pb.MapInfo{{Id: 42, Name: "comms", Dumpable: true}},
+		Dump: &dumpView{
+			ID:   42,
+			Name: "comms",
+			Entries: []*pb.MapEntry{
+				// key: u32 1 (no printable byte), value: "bash" NUL-padded.
+				{KeyFmt: "1", KeyHex: "01000000", ValueFmt: "...", ValueHex: "6261736800000000"},
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	if err := h.pages["maps"].ExecuteTemplate(&buf, "layout", data); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	out := buf.String()
+
+	if !strings.Contains(out, `<code title="ASCII: bash....">6261736800000000</code>`) {
+		t.Errorf("expected ASCII tooltip on the value hex cell\n%s", out)
+	}
+	if !strings.Contains(out, `<code>01000000</code>`) {
+		t.Errorf("counter key should render without a tooltip\n%s", out)
+	}
+}
+
 // TestMapsPIDs verifies the maps list renders each map's holder processes, and a
 // placeholder for a map nobody holds an fd to (pinned only, or no hostPID).
 func TestMapsPIDs(t *testing.T) {

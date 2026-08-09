@@ -35,7 +35,7 @@ type Handlers struct {
 func New(disc discovery.Discoverer, hiddenLoaders map[uint32]bool) (*Handlers, error) {
 	funcs := template.FuncMap{
 		"mapFlags": mapFlags, "progName": progName, "progLoader": progLoader,
-		"mapLoaders": mapLoaders,
+		"mapLoaders": mapLoaders, "hexASCII": hexASCII,
 		// Exposed as a func so every page gets it without threading it through
 		// each handler's pageData.
 		"version": version.String,

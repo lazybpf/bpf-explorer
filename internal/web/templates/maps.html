@@ -11,8 +11,10 @@
     <tbody>
     {{range .Entries}}
       <tr>
-        <td>{{.KeyFmt}}</td><td><code>{{.KeyHex}}</code></td>
-        <td>{{.ValueFmt}}</td><td><code>{{.ValueHex}}</code></td>
+        <td>{{.KeyFmt}}</td>
+        <td><code{{with hexASCII .KeyHex}} title="ASCII: {{.}}"{{end}}>{{.KeyHex}}</code></td>
+        <td>{{.ValueFmt}}</td>
+        <td><code{{with hexASCII .ValueHex}} title="ASCII: {{.}}"{{end}}>{{.ValueHex}}</code></td>
       </tr>
     {{else}}
       <tr><td colspan="4" class="muted">(map is empty)</td></tr>
