@@ -32,6 +32,7 @@ type MapInfo struct {
 	Flags         uint32                 `protobuf:"varint,7,opt,name=flags,proto3" json:"flags,omitempty"`
 	PinnedPaths   []string               `protobuf:"bytes,8,rep,name=pinned_paths,json=pinnedPaths,proto3" json:"pinned_paths,omitempty"` // e.g. /sys/fs/bpf/<agent>/<map>
 	Dumpable      bool                   `protobuf:"varint,9,opt,name=dumpable,proto3" json:"dumpable,omitempty"`                         // false for RingBuf/PerfEvent etc.
+	Pids          []*ProcessRef          `protobuf:"bytes,10,rep,name=pids,proto3" json:"pids,omitempty"`                                 // holders of an open fd to this map
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -127,6 +128,13 @@ func (x *MapInfo) GetDumpable() bool {
 		return x.Dumpable
 	}
 	return false
+}
+
+func (x *MapInfo) GetPids() []*ProcessRef {
+	if x != nil {
+		return x.Pids
+	}
+	return nil
 }
 
 type ListMapsRequest struct {
@@ -884,7 +892,7 @@ var File_proto_bpfinspector_proto protoreflect.FileDescriptor
 
 const file_proto_bpfinspector_proto_rawDesc = "" +
 	"\n" +
-	"\x18proto/bpfinspector.proto\x12\x0fbpfinspector.v1\"\xf1\x01\n" +
+	"\x18proto/bpfinspector.proto\x12\x0fbpfinspector.v1\"\xa2\x02\n" +
 	"\aMapInfo\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\rR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x12\n" +
@@ -896,7 +904,9 @@ const file_proto_bpfinspector_proto_rawDesc = "" +
 	"maxEntries\x12\x14\n" +
 	"\x05flags\x18\a \x01(\rR\x05flags\x12!\n" +
 	"\fpinned_paths\x18\b \x03(\tR\vpinnedPaths\x12\x1a\n" +
-	"\bdumpable\x18\t \x01(\bR\bdumpable\"\x11\n" +
+	"\bdumpable\x18\t \x01(\bR\bdumpable\x12/\n" +
+	"\x04pids\x18\n" +
+	" \x03(\v2\x1b.bpfinspector.v1.ProcessRefR\x04pids\"\x11\n" +
 	"\x0fListMapsRequest\"@\n" +
 	"\x10ListMapsResponse\x12,\n" +
 	"\x04maps\x18\x01 \x03(\v2\x18.bpfinspector.v1.MapInfoR\x04maps\"\xa1\x01\n" +
@@ -981,26 +991,27 @@ var file_proto_bpfinspector_proto_goTypes = []any{
 	(*ListLinksResponse)(nil),    // 14: bpfinspector.v1.ListLinksResponse
 }
 var file_proto_bpfinspector_proto_depIdxs = []int32{
-	0,  // 0: bpfinspector.v1.ListMapsResponse.maps:type_name -> bpfinspector.v1.MapInfo
-	3,  // 1: bpfinspector.v1.DumpMapResponse.entries:type_name -> bpfinspector.v1.MapEntry
-	6,  // 2: bpfinspector.v1.ProgramInfo.pids:type_name -> bpfinspector.v1.ProcessRef
-	7,  // 3: bpfinspector.v1.ListProgramsResponse.programs:type_name -> bpfinspector.v1.ProgramInfo
-	12, // 4: bpfinspector.v1.ListLinksResponse.links:type_name -> bpfinspector.v1.LinkInfo
-	1,  // 5: bpfinspector.v1.BpfInspector.ListMaps:input_type -> bpfinspector.v1.ListMapsRequest
-	4,  // 6: bpfinspector.v1.BpfInspector.DumpMap:input_type -> bpfinspector.v1.DumpMapRequest
-	8,  // 7: bpfinspector.v1.BpfInspector.ListPrograms:input_type -> bpfinspector.v1.ListProgramsRequest
-	10, // 8: bpfinspector.v1.BpfInspector.DumpProgram:input_type -> bpfinspector.v1.DumpProgramRequest
-	13, // 9: bpfinspector.v1.BpfInspector.ListLinks:input_type -> bpfinspector.v1.ListLinksRequest
-	2,  // 10: bpfinspector.v1.BpfInspector.ListMaps:output_type -> bpfinspector.v1.ListMapsResponse
-	5,  // 11: bpfinspector.v1.BpfInspector.DumpMap:output_type -> bpfinspector.v1.DumpMapResponse
-	9,  // 12: bpfinspector.v1.BpfInspector.ListPrograms:output_type -> bpfinspector.v1.ListProgramsResponse
-	11, // 13: bpfinspector.v1.BpfInspector.DumpProgram:output_type -> bpfinspector.v1.DumpProgramResponse
-	14, // 14: bpfinspector.v1.BpfInspector.ListLinks:output_type -> bpfinspector.v1.ListLinksResponse
-	10, // [10:15] is the sub-list for method output_type
-	5,  // [5:10] is the sub-list for method input_type
-	5,  // [5:5] is the sub-list for extension type_name
-	5,  // [5:5] is the sub-list for extension extendee
-	0,  // [0:5] is the sub-list for field type_name
+	6,  // 0: bpfinspector.v1.MapInfo.pids:type_name -> bpfinspector.v1.ProcessRef
+	0,  // 1: bpfinspector.v1.ListMapsResponse.maps:type_name -> bpfinspector.v1.MapInfo
+	3,  // 2: bpfinspector.v1.DumpMapResponse.entries:type_name -> bpfinspector.v1.MapEntry
+	6,  // 3: bpfinspector.v1.ProgramInfo.pids:type_name -> bpfinspector.v1.ProcessRef
+	7,  // 4: bpfinspector.v1.ListProgramsResponse.programs:type_name -> bpfinspector.v1.ProgramInfo
+	12, // 5: bpfinspector.v1.ListLinksResponse.links:type_name -> bpfinspector.v1.LinkInfo
+	1,  // 6: bpfinspector.v1.BpfInspector.ListMaps:input_type -> bpfinspector.v1.ListMapsRequest
+	4,  // 7: bpfinspector.v1.BpfInspector.DumpMap:input_type -> bpfinspector.v1.DumpMapRequest
+	8,  // 8: bpfinspector.v1.BpfInspector.ListPrograms:input_type -> bpfinspector.v1.ListProgramsRequest
+	10, // 9: bpfinspector.v1.BpfInspector.DumpProgram:input_type -> bpfinspector.v1.DumpProgramRequest
+	13, // 10: bpfinspector.v1.BpfInspector.ListLinks:input_type -> bpfinspector.v1.ListLinksRequest
+	2,  // 11: bpfinspector.v1.BpfInspector.ListMaps:output_type -> bpfinspector.v1.ListMapsResponse
+	5,  // 12: bpfinspector.v1.BpfInspector.DumpMap:output_type -> bpfinspector.v1.DumpMapResponse
+	9,  // 13: bpfinspector.v1.BpfInspector.ListPrograms:output_type -> bpfinspector.v1.ListProgramsResponse
+	11, // 14: bpfinspector.v1.BpfInspector.DumpProgram:output_type -> bpfinspector.v1.DumpProgramResponse
+	14, // 15: bpfinspector.v1.BpfInspector.ListLinks:output_type -> bpfinspector.v1.ListLinksResponse
+	11, // [11:16] is the sub-list for method output_type
+	6,  // [6:11] is the sub-list for method input_type
+	6,  // [6:6] is the sub-list for extension type_name
+	6,  // [6:6] is the sub-list for extension extendee
+	0,  // [0:6] is the sub-list for field type_name
 }
 
 func init() { file_proto_bpfinspector_proto_init() }

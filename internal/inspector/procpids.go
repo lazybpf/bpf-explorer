@@ -7,17 +7,35 @@ import (
 	"strings"
 )
 
-// bpfProgLinkPrefix is the readlink target of an fd pointing at a BPF program
-// (e.g. /proc/<pid>/fd/7 -> "anon_inode:bpf-prog").
-const bpfProgLinkPrefix = "anon_inode:bpf-prog"
+// The readlink targets of an fd pointing at a BPF object
+// (e.g. /proc/<pid>/fd/7 -> "anon_inode:bpf-prog"), and the fdinfo key naming
+// the object's id, per kind.
+const (
+	bpfProgLinkPrefix = "anon_inode:bpf-prog"
+	bpfProgIDKey      = "prog_id:"
+	bpfMapLinkPrefix  = "anon_inode:bpf-map"
+	bpfMapIDKey       = "map_id:"
+)
 
-// scanProgramPIDs walks procRoot (normally /proc) and returns, per program ID,
-// the processes holding an open fd to that program - the same information
-// `bpftool prog show` reports as `pids`. It is best-effort: unreadable
-// processes/fds are skipped, and any top-level failure yields an empty map
-// rather than an error, so a caller without hostPID/privileges still lists
-// programs, just without holders.
+// scanProgramPIDs returns, per program ID, the processes holding an open fd to
+// that program - the same information `bpftool prog show` reports as `pids`.
 func scanProgramPIDs(procRoot string) map[uint32][]ProcessRef {
+	return scanObjectPIDs(procRoot, bpfProgLinkPrefix, bpfProgIDKey)
+}
+
+// scanMapPIDs returns, per map ID, the processes holding an open fd to that map
+// - the same information `bpftool map show` reports as `pids`.
+func scanMapPIDs(procRoot string) map[uint32][]ProcessRef {
+	return scanObjectPIDs(procRoot, bpfMapLinkPrefix, bpfMapIDKey)
+}
+
+// scanObjectPIDs walks procRoot (normally /proc) and returns, per BPF object ID,
+// the processes holding an open fd to that object. linkPrefix selects the kind of
+// object by its anon_inode name and idKey names the fdinfo field carrying its id.
+// It is best-effort: unreadable processes/fds are skipped, and any top-level
+// failure yields an empty map rather than an error, so a caller without
+// hostPID/privileges still lists objects, just without holders.
+func scanObjectPIDs(procRoot, linkPrefix, idKey string) map[uint32][]ProcessRef {
 	result := map[uint32][]ProcessRef{}
 
 	entries, err := os.ReadDir(procRoot)
@@ -37,35 +55,36 @@ func scanProgramPIDs(procRoot string) map[uint32][]ProcessRef {
 			continue // process gone or not readable
 		}
 
-		var comm string // read lazily, only when this process holds a prog
+		var comm string // read lazily, only when this process holds an object
 		seen := map[uint32]bool{}
 		for _, fd := range fds {
 			link, err := os.Readlink(filepath.Join(fdDir, fd.Name()))
-			if err != nil || !strings.HasPrefix(link, bpfProgLinkPrefix) {
+			if err != nil || !strings.HasPrefix(link, linkPrefix) {
 				continue
 			}
 			data, err := os.ReadFile(filepath.Join(procDir, "fdinfo", fd.Name()))
 			if err != nil {
 				continue
 			}
-			progID, ok := parseProgID(data)
-			if !ok || seen[progID] {
-				continue // not a prog fdinfo, or this pid already counted
+			objID, ok := parseObjectID(data, idKey)
+			if !ok || seen[objID] {
+				continue // not the expected fdinfo, or this pid already counted
 			}
-			seen[progID] = true
+			seen[objID] = true
 			if comm == "" {
 				comm = readComm(procDir)
 			}
-			result[progID] = append(result[progID], ProcessRef{PID: uint32(pid), Comm: comm})
+			result[objID] = append(result[objID], ProcessRef{PID: uint32(pid), Comm: comm})
 		}
 	}
 	return result
 }
 
-// parseProgID extracts the "prog_id:\t<n>" value from a bpf program fd's fdinfo.
-func parseProgID(fdinfo []byte) (uint32, bool) {
+// parseObjectID extracts the "<idKey>\t<n>" value from a bpf object fd's fdinfo
+// (e.g. "prog_id:" for a program fd, "map_id:" for a map fd).
+func parseObjectID(fdinfo []byte, idKey string) (uint32, bool) {
 	for _, line := range strings.Split(string(fdinfo), "\n") {
-		rest, ok := strings.CutPrefix(line, "prog_id:")
+		rest, ok := strings.CutPrefix(line, idKey)
 		if !ok {
 			continue
 		}

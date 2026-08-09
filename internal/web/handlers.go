@@ -10,6 +10,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	pb "github.com/lazybpf/bpf-explorer/gen/bpfinspectorv1"
@@ -34,6 +35,7 @@ type Handlers struct {
 func New(disc discovery.Discoverer, hiddenLoaders map[uint32]bool) (*Handlers, error) {
 	funcs := template.FuncMap{
 		"mapFlags": mapFlags, "progName": progName, "progLoader": progLoader,
+		"mapLoaders": mapLoaders,
 		// Exposed as a func so every page gets it without threading it through
 		// each handler's pageData.
 		"version": version.String,
@@ -137,6 +139,12 @@ func (h *Handlers) maps(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	data.Maps = list.GetMaps()
+
+	// Best-effort programs so a map nothing holds an fd to can still name the
+	// loader of a program referencing it. A failure here must not break the page.
+	if progs, perr := client.ListPrograms(ctx, &pb.ListProgramsRequest{}); perr == nil {
+		data.Programs = progs.GetPrograms()
+	}
 
 	if idStr := r.PathValue("id"); idStr != "" {
 		id, cerr := strconv.ParseUint(idStr, 10, 32)
@@ -435,18 +443,74 @@ func progLoader(progs []*pb.ProgramInfo, id uint32) string {
 		if p.GetId() != id {
 			continue
 		}
-		var best *pb.ProcessRef
-		for _, r := range p.GetPids() {
-			if best == nil || r.GetPid() < best.GetPid() {
-				best = r
-			}
-		}
+		best := loaderRef(p)
 		if best == nil {
 			return ""
 		}
 		return fmt.Sprintf("%s (%d)", best.GetComm(), best.GetPid())
 	}
 	return ""
+}
+
+// loaderRef picks the process treated as a program's loader: its smallest holder
+// PID, the same choice the dependency graph makes. Returns nil when nothing
+// holds an fd to the program.
+func loaderRef(p *pb.ProgramInfo) *pb.ProcessRef {
+	var best *pb.ProcessRef
+	for _, r := range p.GetPids() {
+		if best == nil || r.GetPid() < best.GetPid() {
+			best = r
+		}
+	}
+	return best
+}
+
+// mapLoaders infers the loaders of a map that nothing holds an fd to, from the
+// programs referencing it: a loader closes a map's fd once the program is
+// loaded (always so for .rodata/.bss, which loaders never keep), leaving the map
+// alive on the program's kernel reference alone. Each entry reads
+// "comm(pid) via prog <ids>", one per distinct loader, in program-id order.
+func mapLoaders(progs []*pb.ProgramInfo, id uint32) []string {
+	type loader struct {
+		ref   *pb.ProcessRef
+		progs []string
+	}
+	byPID := map[uint32]*loader{}
+	var order []uint32
+
+	for _, p := range progs {
+		if !refsMap(p, id) {
+			continue
+		}
+		ref := loaderRef(p)
+		if ref == nil {
+			continue // the referencing program has no holder either
+		}
+		l, ok := byPID[ref.GetPid()]
+		if !ok {
+			l = &loader{ref: ref}
+			byPID[ref.GetPid()] = l
+			order = append(order, ref.GetPid())
+		}
+		l.progs = append(l.progs, strconv.FormatUint(uint64(p.GetId()), 10))
+	}
+
+	out := make([]string, 0, len(order))
+	for _, pid := range order {
+		l := byPID[pid]
+		out = append(out, fmt.Sprintf("%s(%d) via prog %s",
+			l.ref.GetComm(), l.ref.GetPid(), strings.Join(l.progs, ", ")))
+	}
+	return out
+}
+
+func refsMap(p *pb.ProgramInfo, id uint32) bool {
+	for _, mid := range p.GetMapIds() {
+		if mid == id {
+			return true
+		}
+	}
+	return false
 }
 
 type nodeNotFoundError struct{ node string }

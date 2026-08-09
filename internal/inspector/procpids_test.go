@@ -73,3 +73,43 @@ func TestScanProgramPIDs(t *testing.T) {
 		t.Errorf("map id 99 must not appear among program holders")
 	}
 }
+
+func TestScanMapPIDs(t *testing.T) {
+	root := t.TempDir()
+
+	mapFdinfo := "pos:\t0\nflags:\t02000002\nmap_type:\t1\nkey_size:\t4\nvalue_size:\t8\nmap_id:\t99\n"
+	otherMapFdinfo := "pos:\t0\nmap_type:\t2\nmap_id:\t5\n"
+	progFdinfo := "pos:\t0\nprog_type:\t26\nprog_id:\t42\n"
+
+	// loader: holds map 99 (twice -> deduped) and a prog fd (ignored).
+	writeProcEntry(t, root, "1000", "loader", map[string][2]string{
+		"3": {"anon_inode:bpf-map", mapFdinfo},
+		"4": {"anon_inode:bpf-map", mapFdinfo},
+		"5": {"anon_inode:bpf-prog", progFdinfo},
+		"6": {"/dev/null", ""},
+	})
+	// agent: also holds map 99, plus map 5.
+	writeProcEntry(t, root, "1001", "agent", map[string][2]string{
+		"3": {"anon_inode:bpf-map", mapFdinfo},
+		"7": {"anon_inode:bpf-map", otherMapFdinfo},
+	})
+
+	got := scanMapPIDs(root)
+
+	if len(got[99]) != 2 {
+		t.Fatalf("map 99: want 2 holders, got %d (%+v)", len(got[99]), got[99])
+	}
+	pids := map[uint32]string{}
+	for _, r := range got[99] {
+		pids[r.PID] = r.Comm
+	}
+	if pids[1000] != "loader" || pids[1001] != "agent" {
+		t.Errorf("map 99 holders = %+v, want loader(1000) and agent(1001)", got[99])
+	}
+	if len(got[5]) != 1 || got[5][0].PID != 1001 {
+		t.Errorf("map 5 holders = %+v, want just agent(1001)", got[5])
+	}
+	if _, ok := got[42]; ok {
+		t.Errorf("prog id 42 must not appear among map holders")
+	}
+}

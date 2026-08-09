@@ -31,6 +31,7 @@ type MapSummary struct {
 	MaxEntries uint32
 	Flags      uint32
 	Dumpable   bool
+	PIDs       []ProcessRef
 }
 
 // Entry is one key/value pair, in both raw hex and BTF-formatted forms.
@@ -68,9 +69,15 @@ type Inspector struct{}
 
 func New() *Inspector { return &Inspector{} }
 
-// ListMaps iterates every map ID and returns its metadata. A map is reported as
-// non-dumpable when its type does not support key iteration (ringbuf, perf, etc.).
+// ListMaps iterates every map ID and returns its metadata, including the
+// processes holding a reference to each map (resolved from /proc). A map is
+// reported as non-dumpable when its type does not support key iteration
+// (ringbuf, perf, etc.).
 func (i *Inspector) ListMaps() ([]MapSummary, error) {
+	// Scan /proc once up front, as ListPrograms does: a scan failure (e.g. no
+	// hostPID) just yields no PIDs; it never fails the listing.
+	pidsByMap := scanMapPIDs("/proc")
+
 	var out []MapSummary
 	var id ebpf.MapID
 	for {
@@ -103,6 +110,7 @@ func (i *Inspector) ListMaps() ([]MapSummary, error) {
 			MaxEntries: info.MaxEntries,
 			Flags:      info.Flags,
 			Dumpable:   dumpable(info.Type),
+			PIDs:       pidsByMap[uint32(mapID)],
 		})
 		m.Close()
 	}

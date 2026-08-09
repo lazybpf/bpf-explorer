@@ -176,3 +176,100 @@ func TestMapsDumpAboveList(t *testing.T) {
 		t.Errorf("dump details should render above the maps list (dump=%d, list=%d)", dumpPos, listPos)
 	}
 }
+
+// TestMapsPIDs verifies the maps list renders each map's holder processes, and a
+// placeholder for a map nobody holds an fd to (pinned only, or no hostPID).
+func TestMapsPIDs(t *testing.T) {
+	h, err := New(nil, nil)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	data := pageData{
+		Node: "node-a",
+		Tab:  "maps",
+		Maps: []*pb.MapInfo{
+			{Id: 42, Name: "counters", Pids: []*pb.ProcessRef{
+				{Pid: 1234, Comm: "loader"}, {Pid: 5678, Comm: "agent"},
+			}},
+			{Id: 43, Name: "orphan"},
+		},
+	}
+
+	var buf bytes.Buffer
+	if err := h.pages["maps"].ExecuteTemplate(&buf, "layout", data); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	out := buf.String()
+
+	for _, want := range []string{"loader(1234)", "agent(5678)"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("expected map holder %q\n%s", want, out)
+		}
+	}
+	if !strings.Contains(out, `<span class="muted">-</span>`) {
+		t.Errorf("map without holders should render a placeholder\n%s", out)
+	}
+}
+
+// TestMapsDerivedLoader verifies that a map nothing holds an fd to (.rodata and
+// friends, whose fd the loader closes once the program is loaded) falls back to
+// the loader of a program referencing it, and that a map with its own holders
+// does not.
+func TestMapsDerivedLoader(t *testing.T) {
+	h, err := New(nil, nil)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	loader := []*pb.ProcessRef{{Pid: 1234, Comm: "loader"}}
+	data := pageData{
+		Node: "node-a",
+		Tab:  "maps",
+		Maps: []*pb.MapInfo{
+			{Id: 7, Name: ".rodata"}, // no holder -> derived
+			{Id: 8, Name: "counters", Pids: []*pb.ProcessRef{{Pid: 5678, Comm: "agent"}}}, // own holder -> direct
+			{Id: 9, Name: "orphan"}, // referenced by nobody
+		},
+		Programs: []*pb.ProgramInfo{
+			{Id: 27, Name: "prog_a", MapIds: []uint32{7, 8}, Pids: loader},
+			{Id: 31, Name: "prog_b", MapIds: []uint32{7}, Pids: loader}, // same loader -> one entry, both progs
+		},
+	}
+
+	var buf bytes.Buffer
+	if err := h.pages["maps"].ExecuteTemplate(&buf, "layout", data); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	out := buf.String()
+
+	if !strings.Contains(out, "loader(1234) via prog 27, 31") {
+		t.Errorf("expected derived loader for the holder-less map\n%s", out)
+	}
+	// The map with its own holder shows that, not the program's loader.
+	if !strings.Contains(out, "agent(5678)") {
+		t.Errorf("expected direct holder for map 8\n%s", out)
+	}
+	if strings.Contains(out, "loader(1234) via prog 27</span>") {
+		t.Errorf("map 8 has a holder and must not fall back to a derived loader\n%s", out)
+	}
+	if !strings.Contains(out, `<span class="muted">-</span>`) {
+		t.Errorf("map referenced by no program should still render a placeholder\n%s", out)
+	}
+}
+
+// TestMapLoadersSkipsHolderlessProgram verifies a map is not credited to a
+// program that has no holder of its own (pinned or link-held).
+func TestMapLoadersSkipsHolderlessProgram(t *testing.T) {
+	progs := []*pb.ProgramInfo{
+		{Id: 27, Name: "pinned_prog", MapIds: []uint32{7}},
+		{Id: 31, Name: "other", MapIds: []uint32{8}, Pids: []*pb.ProcessRef{{Pid: 1234, Comm: "loader"}}},
+	}
+	if got := mapLoaders(progs, 7); len(got) != 0 {
+		t.Errorf("mapLoaders(7) = %v, want none", got)
+	}
+	want := "loader(1234) via prog 31"
+	if got := mapLoaders(progs, 8); len(got) != 1 || got[0] != want {
+		t.Errorf("mapLoaders(8) = %v, want [%q]", got, want)
+	}
+}

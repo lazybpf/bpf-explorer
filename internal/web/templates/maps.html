@@ -24,14 +24,25 @@
 
 <h2>maps on {{.Node}} <span class="muted">({{len .Maps}})</span></h2>
 <table>
-  <thead><tr><th>ID</th><th>Name</th><th>Type</th><th>Key</th><th>Value</th><th>Max</th><th>Flags</th><th></th></tr></thead>
+  <thead><tr><th>ID</th><th>Name</th><th>Type</th><th>Key</th><th>Value</th><th>Max</th><th>Flags</th><th>PIDs</th><th></th></tr></thead>
   <tbody>
   {{range .Maps}}
     <tr>
       <td>{{.Id}}</td><td>{{.Name}}</td><td>{{.Type}}</td>
       <td>{{.KeySize}}</td><td>{{.ValueSize}}</td><td>{{.MaxEntries}}</td><td title="0x{{printf "%x" .Flags}}">{{mapFlags .Flags}}</td>
+      <td>
+        {{if .Pids}}
+          {{range .Pids}}{{.Comm}}({{.Pid}}){{" "}}{{end}}
+        {{else}}
+          {{with mapLoaders $.Programs .Id}}
+            {{range .}}<span class="muted" title="inferred: no process holds an fd to this map, so this is the loader of a program referencing it">{{.}}</span>{{" "}}{{end}}
+          {{else}}<span class="muted">-</span>{{end}}
+        {{end}}
+      </td>
       <td>{{if .Dumpable}}<a href="/nodes/{{$.Node}}/maps/{{.Id}}">dump</a>{{else}}<span class="muted">n/a</span>{{end}}</td>
     </tr>
+  {{else}}
+    <tr><td colspan="9" class="muted">(no maps)</td></tr>
   {{end}}
   </tbody>
 </table>

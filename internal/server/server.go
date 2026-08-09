@@ -25,6 +25,10 @@ func (s *Server) ListMaps(_ context.Context, _ *pb.ListMapsRequest) (*pb.ListMap
 	}
 	resp := &pb.ListMapsResponse{Maps: make([]*pb.MapInfo, 0, len(maps))}
 	for _, m := range maps {
+		pids := make([]*pb.ProcessRef, 0, len(m.PIDs))
+		for _, ref := range m.PIDs {
+			pids = append(pids, &pb.ProcessRef{Pid: ref.PID, Comm: ref.Comm})
+		}
 		resp.Maps = append(resp.Maps, &pb.MapInfo{
 			Id:         m.ID,
 			Name:       m.Name,
@@ -34,6 +38,7 @@ func (s *Server) ListMaps(_ context.Context, _ *pb.ListMapsRequest) (*pb.ListMap
 			MaxEntries: m.MaxEntries,
 			Flags:      m.Flags,
 			Dumpable:   m.Dumpable,
+			Pids:       pids,
 		})
 	}
 	return resp, nil
