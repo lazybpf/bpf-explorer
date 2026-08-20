@@ -80,11 +80,23 @@ Then port-forward the UI and browse http://localhost:8080:
 kubectl -n bpf-explorer port-forward svc/bpf-explorer-ui 8080:80
 ```
 
+Or run it in the background so it does not block your terminal:
+
+```console
+nohup kubectl -n bpf-explorer port-forward svc/bpf-explorer-ui 8080:80 > /tmp/bpf-explorer-pf.log 2>&1 &
+```
+
 > [!TIP]
 > The DaemonSet uses a `nodeSelector` (`bpf-explorer: "true"`) so agents only
 > land on labelled nodes. Remove the selector to run on every node.
 
 ## Cleanup
+
+Stop the background port-forward, if you started one:
+
+```console
+pkill -f "port-forward svc/bpf-explorer-ui"
+```
 
 ```console
 kubectl delete namespace bpf-explorer
