@@ -90,6 +90,19 @@ nohup kubectl -n bpf-explorer port-forward svc/bpf-explorer-ui 8080:80 > /tmp/bp
 > The DaemonSet uses a `nodeSelector` (`bpf-explorer: "true"`) so agents only
 > land on labelled nodes. Remove the selector to run on every node.
 
+## Trace log
+
+Each node has a `tracelog` tab that tails tracefs `trace_pipe` - the same source
+as `bpftool prog tracelog`, where `bpf_trace_printk()` output lands. Lines stream
+to the browser over
+[server-sent events](https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events),
+with pause, clear, and a substring filter.
+
+> [!WARNING]
+> Reading `trace_pipe` drains the node's single global trace buffer, so anything
+> else tailing that pipe will not see the lines the page consumes. The agent
+> keeps one reader shared by all viewers, open only while someone is streaming.
+
 ## Cleanup
 
 Stop the background port-forward, if you started one:

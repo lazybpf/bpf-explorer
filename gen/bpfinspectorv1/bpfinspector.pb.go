@@ -888,6 +888,102 @@ func (x *ListLinksResponse) GetLinks() []*LinkInfo {
 	return nil
 }
 
+// TraceLog streams the node's kernel tracing pipe (tracefs trace_pipe), the
+// same source as `bpftool prog tracelog` - where bpf_trace_printk() output
+// lands.
+//
+// Reading trace_pipe CONSUMES it: the node has a single global trace buffer,
+// and every line this stream delivers is gone for any other reader on that
+// node. The agent therefore keeps at most one reader open, shared by all
+// clients, and only while at least one client is streaming.
+type TraceLogRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TraceLogRequest) Reset() {
+	*x = TraceLogRequest{}
+	mi := &file_proto_bpfinspector_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TraceLogRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TraceLogRequest) ProtoMessage() {}
+
+func (x *TraceLogRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_bpfinspector_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TraceLogRequest.ProtoReflect.Descriptor instead.
+func (*TraceLogRequest) Descriptor() ([]byte, []int) {
+	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{15}
+}
+
+type TraceLogEvent struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Line          string                 `protobuf:"bytes,1,opt,name=line,proto3" json:"line,omitempty"`        // one trace_pipe line, newline stripped
+	Dropped       uint64                 `protobuf:"varint,2,opt,name=dropped,proto3" json:"dropped,omitempty"` // lines dropped for this client since the previous event
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TraceLogEvent) Reset() {
+	*x = TraceLogEvent{}
+	mi := &file_proto_bpfinspector_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TraceLogEvent) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TraceLogEvent) ProtoMessage() {}
+
+func (x *TraceLogEvent) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_bpfinspector_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TraceLogEvent.ProtoReflect.Descriptor instead.
+func (*TraceLogEvent) Descriptor() ([]byte, []int) {
+	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *TraceLogEvent) GetLine() string {
+	if x != nil {
+		return x.Line
+	}
+	return ""
+}
+
+func (x *TraceLogEvent) GetDropped() uint64 {
+	if x != nil {
+		return x.Dropped
+	}
+	return 0
+}
+
 var File_proto_bpfinspector_proto protoreflect.FileDescriptor
 
 const file_proto_bpfinspector_proto_rawDesc = "" +
@@ -952,13 +1048,18 @@ const file_proto_bpfinspector_proto_rawDesc = "" +
 	"\x06attach\x18\x04 \x01(\tR\x06attach\"\x12\n" +
 	"\x10ListLinksRequest\"D\n" +
 	"\x11ListLinksResponse\x12/\n" +
-	"\x05links\x18\x01 \x03(\v2\x19.bpfinspector.v1.LinkInfoR\x05links2\xb8\x03\n" +
+	"\x05links\x18\x01 \x03(\v2\x19.bpfinspector.v1.LinkInfoR\x05links\"\x11\n" +
+	"\x0fTraceLogRequest\"=\n" +
+	"\rTraceLogEvent\x12\x12\n" +
+	"\x04line\x18\x01 \x01(\tR\x04line\x12\x18\n" +
+	"\adropped\x18\x02 \x01(\x04R\adropped2\x88\x04\n" +
 	"\fBpfInspector\x12O\n" +
 	"\bListMaps\x12 .bpfinspector.v1.ListMapsRequest\x1a!.bpfinspector.v1.ListMapsResponse\x12L\n" +
 	"\aDumpMap\x12\x1f.bpfinspector.v1.DumpMapRequest\x1a .bpfinspector.v1.DumpMapResponse\x12[\n" +
 	"\fListPrograms\x12$.bpfinspector.v1.ListProgramsRequest\x1a%.bpfinspector.v1.ListProgramsResponse\x12X\n" +
 	"\vDumpProgram\x12#.bpfinspector.v1.DumpProgramRequest\x1a$.bpfinspector.v1.DumpProgramResponse\x12R\n" +
-	"\tListLinks\x12!.bpfinspector.v1.ListLinksRequest\x1a\".bpfinspector.v1.ListLinksResponseBCZAgithub.com/lazybpf/bpf-explorer/gen/bpfinspectorv1;bpfinspectorv1b\x06proto3"
+	"\tListLinks\x12!.bpfinspector.v1.ListLinksRequest\x1a\".bpfinspector.v1.ListLinksResponse\x12N\n" +
+	"\bTraceLog\x12 .bpfinspector.v1.TraceLogRequest\x1a\x1e.bpfinspector.v1.TraceLogEvent0\x01BCZAgithub.com/lazybpf/bpf-explorer/gen/bpfinspectorv1;bpfinspectorv1b\x06proto3"
 
 var (
 	file_proto_bpfinspector_proto_rawDescOnce sync.Once
@@ -972,7 +1073,7 @@ func file_proto_bpfinspector_proto_rawDescGZIP() []byte {
 	return file_proto_bpfinspector_proto_rawDescData
 }
 
-var file_proto_bpfinspector_proto_msgTypes = make([]protoimpl.MessageInfo, 15)
+var file_proto_bpfinspector_proto_msgTypes = make([]protoimpl.MessageInfo, 17)
 var file_proto_bpfinspector_proto_goTypes = []any{
 	(*MapInfo)(nil),              // 0: bpfinspector.v1.MapInfo
 	(*ListMapsRequest)(nil),      // 1: bpfinspector.v1.ListMapsRequest
@@ -989,6 +1090,8 @@ var file_proto_bpfinspector_proto_goTypes = []any{
 	(*LinkInfo)(nil),             // 12: bpfinspector.v1.LinkInfo
 	(*ListLinksRequest)(nil),     // 13: bpfinspector.v1.ListLinksRequest
 	(*ListLinksResponse)(nil),    // 14: bpfinspector.v1.ListLinksResponse
+	(*TraceLogRequest)(nil),      // 15: bpfinspector.v1.TraceLogRequest
+	(*TraceLogEvent)(nil),        // 16: bpfinspector.v1.TraceLogEvent
 }
 var file_proto_bpfinspector_proto_depIdxs = []int32{
 	6,  // 0: bpfinspector.v1.MapInfo.pids:type_name -> bpfinspector.v1.ProcessRef
@@ -1002,13 +1105,15 @@ var file_proto_bpfinspector_proto_depIdxs = []int32{
 	8,  // 8: bpfinspector.v1.BpfInspector.ListPrograms:input_type -> bpfinspector.v1.ListProgramsRequest
 	10, // 9: bpfinspector.v1.BpfInspector.DumpProgram:input_type -> bpfinspector.v1.DumpProgramRequest
 	13, // 10: bpfinspector.v1.BpfInspector.ListLinks:input_type -> bpfinspector.v1.ListLinksRequest
-	2,  // 11: bpfinspector.v1.BpfInspector.ListMaps:output_type -> bpfinspector.v1.ListMapsResponse
-	5,  // 12: bpfinspector.v1.BpfInspector.DumpMap:output_type -> bpfinspector.v1.DumpMapResponse
-	9,  // 13: bpfinspector.v1.BpfInspector.ListPrograms:output_type -> bpfinspector.v1.ListProgramsResponse
-	11, // 14: bpfinspector.v1.BpfInspector.DumpProgram:output_type -> bpfinspector.v1.DumpProgramResponse
-	14, // 15: bpfinspector.v1.BpfInspector.ListLinks:output_type -> bpfinspector.v1.ListLinksResponse
-	11, // [11:16] is the sub-list for method output_type
-	6,  // [6:11] is the sub-list for method input_type
+	15, // 11: bpfinspector.v1.BpfInspector.TraceLog:input_type -> bpfinspector.v1.TraceLogRequest
+	2,  // 12: bpfinspector.v1.BpfInspector.ListMaps:output_type -> bpfinspector.v1.ListMapsResponse
+	5,  // 13: bpfinspector.v1.BpfInspector.DumpMap:output_type -> bpfinspector.v1.DumpMapResponse
+	9,  // 14: bpfinspector.v1.BpfInspector.ListPrograms:output_type -> bpfinspector.v1.ListProgramsResponse
+	11, // 15: bpfinspector.v1.BpfInspector.DumpProgram:output_type -> bpfinspector.v1.DumpProgramResponse
+	14, // 16: bpfinspector.v1.BpfInspector.ListLinks:output_type -> bpfinspector.v1.ListLinksResponse
+	16, // 17: bpfinspector.v1.BpfInspector.TraceLog:output_type -> bpfinspector.v1.TraceLogEvent
+	12, // [12:18] is the sub-list for method output_type
+	6,  // [6:12] is the sub-list for method input_type
 	6,  // [6:6] is the sub-list for extension type_name
 	6,  // [6:6] is the sub-list for extension extendee
 	0,  // [0:6] is the sub-list for field type_name
@@ -1025,7 +1130,7 @@ func file_proto_bpfinspector_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_bpfinspector_proto_rawDesc), len(file_proto_bpfinspector_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   15,
+			NumMessages:   17,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

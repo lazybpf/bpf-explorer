@@ -98,6 +98,10 @@ spec:
         - name: sys-kernel-btf
           mountPath: /sys/kernel/btf
           readOnly: true
+        # tracefs, for the tracelog page (trace_pipe).
+        - name: sys-kernel-tracing
+          mountPath: /sys/kernel/tracing
+          readOnly: true
       volumes:
       - name: sys-fs-bpf
         hostPath:
@@ -106,6 +110,14 @@ spec:
       - name: sys-kernel-btf
         hostPath:
           path: /sys/kernel/btf
+          type: Directory
+      # The kernel always creates this directory, so the mount works even where
+      # tracefs is not on it - the tracelog page reports that instead. If your
+      # nodes mount tracefs only under debugfs, add a /sys/kernel/debug hostPath
+      # too (omitted by default: hardened nodes may not have debugfs).
+      - name: sys-kernel-tracing
+        hostPath:
+          path: /sys/kernel/tracing
           type: Directory
 ---
 # UI Deployment. Unprivileged, single replica. Discovers agent pods via the K8s

@@ -24,6 +24,7 @@ const (
 	BpfInspector_ListPrograms_FullMethodName = "/bpfinspector.v1.BpfInspector/ListPrograms"
 	BpfInspector_DumpProgram_FullMethodName  = "/bpfinspector.v1.BpfInspector/DumpProgram"
 	BpfInspector_ListLinks_FullMethodName    = "/bpfinspector.v1.BpfInspector/ListLinks"
+	BpfInspector_TraceLog_FullMethodName     = "/bpfinspector.v1.BpfInspector/TraceLog"
 )
 
 // BpfInspectorClient is the client API for BpfInspector service.
@@ -33,12 +34,14 @@ const (
 // BpfInspector is the per-node, read-only inspection API served by the agent
 // running inside the privileged DaemonSet pod. There is intentionally no RPC
 // that mutates kernel state in v1 (no map update/delete, no prog load/detach).
+// TraceLog is the one call that is not a pure read - see its comment.
 type BpfInspectorClient interface {
 	ListMaps(ctx context.Context, in *ListMapsRequest, opts ...grpc.CallOption) (*ListMapsResponse, error)
 	DumpMap(ctx context.Context, in *DumpMapRequest, opts ...grpc.CallOption) (*DumpMapResponse, error)
 	ListPrograms(ctx context.Context, in *ListProgramsRequest, opts ...grpc.CallOption) (*ListProgramsResponse, error)
 	DumpProgram(ctx context.Context, in *DumpProgramRequest, opts ...grpc.CallOption) (*DumpProgramResponse, error)
 	ListLinks(ctx context.Context, in *ListLinksRequest, opts ...grpc.CallOption) (*ListLinksResponse, error)
+	TraceLog(ctx context.Context, in *TraceLogRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[TraceLogEvent], error)
 }
 
 type bpfInspectorClient struct {
@@ -99,6 +102,25 @@ func (c *bpfInspectorClient) ListLinks(ctx context.Context, in *ListLinksRequest
 	return out, nil
 }
 
+func (c *bpfInspectorClient) TraceLog(ctx context.Context, in *TraceLogRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[TraceLogEvent], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &BpfInspector_ServiceDesc.Streams[0], BpfInspector_TraceLog_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[TraceLogRequest, TraceLogEvent]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type BpfInspector_TraceLogClient = grpc.ServerStreamingClient[TraceLogEvent]
+
 // BpfInspectorServer is the server API for BpfInspector service.
 // All implementations must embed UnimplementedBpfInspectorServer
 // for forward compatibility.
@@ -106,12 +128,14 @@ func (c *bpfInspectorClient) ListLinks(ctx context.Context, in *ListLinksRequest
 // BpfInspector is the per-node, read-only inspection API served by the agent
 // running inside the privileged DaemonSet pod. There is intentionally no RPC
 // that mutates kernel state in v1 (no map update/delete, no prog load/detach).
+// TraceLog is the one call that is not a pure read - see its comment.
 type BpfInspectorServer interface {
 	ListMaps(context.Context, *ListMapsRequest) (*ListMapsResponse, error)
 	DumpMap(context.Context, *DumpMapRequest) (*DumpMapResponse, error)
 	ListPrograms(context.Context, *ListProgramsRequest) (*ListProgramsResponse, error)
 	DumpProgram(context.Context, *DumpProgramRequest) (*DumpProgramResponse, error)
 	ListLinks(context.Context, *ListLinksRequest) (*ListLinksResponse, error)
+	TraceLog(*TraceLogRequest, grpc.ServerStreamingServer[TraceLogEvent]) error
 	mustEmbedUnimplementedBpfInspectorServer()
 }
 
@@ -136,6 +160,9 @@ func (UnimplementedBpfInspectorServer) DumpProgram(context.Context, *DumpProgram
 }
 func (UnimplementedBpfInspectorServer) ListLinks(context.Context, *ListLinksRequest) (*ListLinksResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListLinks not implemented")
+}
+func (UnimplementedBpfInspectorServer) TraceLog(*TraceLogRequest, grpc.ServerStreamingServer[TraceLogEvent]) error {
+	return status.Error(codes.Unimplemented, "method TraceLog not implemented")
 }
 func (UnimplementedBpfInspectorServer) mustEmbedUnimplementedBpfInspectorServer() {}
 func (UnimplementedBpfInspectorServer) testEmbeddedByValue()                      {}
@@ -248,6 +275,17 @@ func _BpfInspector_ListLinks_Handler(srv interface{}, ctx context.Context, dec f
 	return interceptor(ctx, in, info, handler)
 }
 
+func _BpfInspector_TraceLog_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(TraceLogRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(BpfInspectorServer).TraceLog(m, &grpc.GenericServerStream[TraceLogRequest, TraceLogEvent]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type BpfInspector_TraceLogServer = grpc.ServerStreamingServer[TraceLogEvent]
+
 // BpfInspector_ServiceDesc is the grpc.ServiceDesc for BpfInspector service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -276,6 +314,12 @@ var BpfInspector_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _BpfInspector_ListLinks_Handler,
 		},
 	},
-	Streams:  []grpc.StreamDesc{},
+	Streams: []grpc.StreamDesc{
+		{
+			StreamName:    "TraceLog",
+			Handler:       _BpfInspector_TraceLog_Handler,
+			ServerStreams: true,
+		},
+	},
 	Metadata: "proto/bpfinspector.proto",
 }

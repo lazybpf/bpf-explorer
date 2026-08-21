@@ -14,6 +14,7 @@ import (
 	pb "github.com/lazybpf/bpf-explorer/gen/bpfinspectorv1"
 	"github.com/lazybpf/bpf-explorer/internal/inspector"
 	"github.com/lazybpf/bpf-explorer/internal/server"
+	"github.com/lazybpf/bpf-explorer/internal/tracelog"
 	"google.golang.org/grpc"
 )
 
@@ -25,7 +26,9 @@ func Run(addr string) error {
 	}
 
 	grpcServer := grpc.NewServer()
-	pb.RegisterBpfInspectorServer(grpcServer, server.New(inspector.New()))
+	// One trace_pipe hub per agent process: it is shared by every TraceLog
+	// stream so the node's trace buffer has a single reader.
+	pb.RegisterBpfInspectorServer(grpcServer, server.New(inspector.New(), tracelog.NewHub()))
 
 	go func() {
 		sig := make(chan os.Signal, 1)

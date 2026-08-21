@@ -8,15 +8,21 @@ import (
 
 	pb "github.com/lazybpf/bpf-explorer/gen/bpfinspectorv1"
 	"github.com/lazybpf/bpf-explorer/internal/inspector"
+	"github.com/lazybpf/bpf-explorer/internal/tracelog"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 // Server implements pb.BpfInspectorServer.
 type Server struct {
 	pb.UnimplementedBpfInspectorServer
 	insp *inspector.Inspector
+	hub  *tracelog.Hub
 }
 
-func New(insp *inspector.Inspector) *Server { return &Server{insp: insp} }
+func New(insp *inspector.Inspector, hub *tracelog.Hub) *Server {
+	return &Server{insp: insp, hub: hub}
+}
 
 func (s *Server) ListMaps(_ context.Context, _ *pb.ListMapsRequest) (*pb.ListMapsResponse, error) {
 	maps, err := s.insp.ListMaps()
@@ -97,6 +103,33 @@ func (s *Server) DumpProgram(_ context.Context, req *pb.DumpProgramRequest) (*pb
 		Available: dump.Available,
 		Note:      dump.Note,
 	}, nil
+}
+
+// TraceLog streams the node's tracefs trace_pipe, like `bpftool prog tracelog`,
+// until the client goes away. All concurrent clients share one reader (see
+// internal/tracelog): reading the pipe drains the node's global trace buffer.
+func (s *Server) TraceLog(_ *pb.TraceLogRequest, stream pb.BpfInspector_TraceLogServer) error {
+	sub, err := s.hub.Subscribe()
+	if err != nil {
+		// tracefs not mounted, not visible to the agent, or not permitted:
+		// Unavailable so the UI can show why instead of a bare failure.
+		return status.Error(codes.Unavailable, err.Error())
+	}
+	defer sub.Close()
+
+	for {
+		select {
+		case <-stream.Context().Done():
+			return nil
+		case ev, ok := <-sub.Events():
+			if !ok {
+				return status.Error(codes.Unavailable, "trace_pipe reader stopped")
+			}
+			if err := stream.Send(&pb.TraceLogEvent{Line: ev.Line, Dropped: ev.Dropped}); err != nil {
+				return err
+			}
+		}
+	}
 }
 
 func (s *Server) ListLinks(_ context.Context, _ *pb.ListLinksRequest) (*pb.ListLinksResponse, error) {

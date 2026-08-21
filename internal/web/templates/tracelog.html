@@ -1,0 +1,96 @@
+{{define "content"}}
+{{template "nodebar" .}}
+
+<h2>trace log on {{.Node}}</h2>
+<p class="muted">
+  the kernel tracing pipe (tracefs <code>trace_pipe</code>), like
+  <code>bpftool prog tracelog</code> - where <code>bpf_trace_printk()</code>
+  output lands. Most programs ship events over a ring buffer instead, so an empty
+  view is normal.
+</p>
+<p class="warn">
+  reading <code>trace_pipe</code> drains it. A node has one global trace buffer,
+  so every line shown here is consumed - anything else tailing the pipe on this
+  node will not see it. The agent reads only while this page is streaming: pause,
+  or leave, and it lets go of the pipe.
+</p>
+
+<p class="tracectl">
+  <button id="toggle" type="button">pause</button>
+  <button id="clear" type="button">clear</button>
+  <input id="filter" type="search" placeholder="filter (substring)" size="24">
+  <span id="status" class="muted"></span>
+</p>
+
+<pre id="out" class="tracelog" data-stream="/nodes/{{.Node}}/tracelog/stream"></pre>
+
+<script>
+(() => {
+  const out = document.getElementById('out');
+  const toggle = document.getElementById('toggle');
+  const filter = document.getElementById('filter');
+  const statusEl = document.getElementById('status');
+  const url = out.dataset.stream;
+  // Retained lines. trace_pipe is a firehose; the browser keeps a window of it.
+  const maxLines = 2000;
+  let es = null;
+
+  const hiddenFor = (text) => {
+    const f = filter.value.trim();
+    return f !== '' && !text.includes(f);
+  };
+
+  const append = (text, cls) => {
+    const atBottom = out.scrollHeight - out.scrollTop - out.clientHeight < 4;
+    const line = document.createElement('div');
+    if (cls) line.className = cls;
+    // textContent, never innerHTML: any program on the node can print anything
+    // into the trace buffer.
+    line.textContent = text;
+    line.hidden = hiddenFor(text);
+    out.appendChild(line);
+    while (out.childElementCount > maxLines) out.removeChild(out.firstElementChild);
+    if (atBottom) out.scrollTop = out.scrollHeight;
+  };
+
+  const stop = () => {
+    if (es) { es.close(); es = null; }
+    toggle.textContent = 'resume';
+  };
+
+  const connect = () => {
+    es = new EventSource(url);
+    toggle.textContent = 'pause';
+    statusEl.textContent = 'connecting...';
+    es.onopen = () => { statusEl.textContent = 'streaming'; };
+    es.onmessage = (e) => {
+      const ev = JSON.parse(e.data);
+      if (ev.dropped) append(`... ${ev.dropped} lines dropped (browser fell behind)`, 'muted');
+      append(ev.line);
+    };
+    // The agent ended the stream - no tracefs, no permission, reader gone.
+    // Stop instead of letting EventSource reconnect into the same error.
+    es.addEventListener('gone', (e) => {
+      statusEl.textContent = 'stopped: ' + JSON.parse(e.data).message;
+      stop();
+    });
+    es.onerror = () => { statusEl.textContent = 'reconnecting...'; };
+  };
+
+  toggle.addEventListener('click', () => {
+    if (es) {
+      stop();
+      statusEl.textContent = 'paused - not reading trace_pipe';
+    } else {
+      connect();
+    }
+  });
+  document.getElementById('clear').addEventListener('click', () => out.replaceChildren());
+  filter.addEventListener('input', () => {
+    for (const line of out.children) line.hidden = hiddenFor(line.textContent);
+  });
+
+  connect();
+})();
+</script>
+{{end}}

@@ -41,7 +41,7 @@ func New(disc discovery.Discoverer, hiddenLoaders map[uint32]bool) (*Handlers, e
 		"version": version.String,
 	}
 	pages := map[string]*template.Template{}
-	for _, name := range []string{"index", "maps", "programs", "links", "graph", "graphgroup"} {
+	for _, name := range []string{"index", "maps", "programs", "links", "graph", "graphgroup", "tracelog"} {
 		t, err := template.New(name).Funcs(funcs).ParseFS(templatesFS,
 			"templates/layout.html", "templates/partials.html", "templates/"+name+".html")
 		if err != nil {
@@ -64,6 +64,8 @@ func (h *Handlers) Router() http.Handler {
 	mux.HandleFunc("GET /nodes/{node}/graph", h.graphIndex)
 	mux.HandleFunc("GET /nodes/{node}/graph/prog/{id}", h.graphProgram)
 	mux.HandleFunc("GET /nodes/{node}/graph/{group}", h.graphGroup)
+	mux.HandleFunc("GET /nodes/{node}/tracelog", h.tracelog)
+	mux.HandleFunc("GET /nodes/{node}/tracelog/stream", h.tracelogStream)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { w.Write([]byte("ok")) })
 	return mux
 }
