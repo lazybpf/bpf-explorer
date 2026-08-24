@@ -19,6 +19,35 @@
   // securityLevel 'loose' enables click-to-navigate on nodes; the diagram is
   // generated server-side from sanitized labels, so there is no injected script.
   import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
-  mermaid.initialize({ startOnLoad: true, theme: 'neutral', securityLevel: 'loose' });
+  // themeVariables mirror the CRT palette in layout.html so the diagram does
+  // not come back as black-on-white in the middle of a green terminal.
+  mermaid.initialize({
+    startOnLoad: true,
+    securityLevel: 'loose',
+    theme: 'base',
+    themeVariables: {
+      darkMode: true,
+      fontFamily: "'Share Tech Mono', ui-monospace, monospace",
+      fontSize: '15px',
+      background: '#050806',
+      primaryColor: '#0a1109',
+      primaryTextColor: '#8bffa3',
+      primaryBorderColor: '#3ba85c',
+      secondaryColor: '#0a1109',
+      tertiaryColor: '#0a1109',
+      mainBkg: '#0a1109',
+      nodeBorder: '#3ba85c',
+      textColor: '#4aeb6b',
+      lineColor: '#55ffff',
+      edgeLabelBackground: '#050806',
+      clusterBkg: '#080f07',
+      clusterBorder: '#1e5c32',
+      // border2 feeds mermaid's own div.mermaidTooltip rule (with
+      // tertiaryColor above). That rule loses to the inline styles mermaid
+      // also sets on the element, which layout.html overrides - this just
+      // keeps the stylesheet layer dark too.
+      border2: '#3ba85c',
+    },
+  });
 </script>
 {{end}}

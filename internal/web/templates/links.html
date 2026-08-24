@@ -2,6 +2,7 @@
 {{template "nodebar" .}}
 
 <h2>links on {{.Node}} <span class="muted">({{len .Links}})</span></h2>
+<div class="scroll">
 <table>
   <thead><tr><th>ID</th><th>Type</th><th>Prog</th><th>Loader</th><th>Attach</th><th></th></tr></thead>
   <tbody>
@@ -22,4 +23,5 @@
   {{end}}
   </tbody>
 </table>
+</div>
 {{end}}
