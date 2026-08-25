@@ -1,1 +1,4 @@
-bpf-explorer
+# The binary built by `go build ./cmd/bpf-explorer` at the repo root. Anchored:
+# an unanchored pattern also matches the cmd/bpf-explorer/ directory, silently
+# ignoring every new source file added there.
+/bpf-explorer

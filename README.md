@@ -21,7 +21,9 @@ It runs as two components:
   and fans out gRPC calls, serving HTML. `ClusterIP` only; reached via
   `kubectl port-forward`.
 
-One binary serves both roles; one image runs both workloads.
+One binary serves both roles; one image runs both workloads. A third role,
+`--role=local`, runs the two together in a single process for development
+without a cluster - see [Run locally without a cluster](#run-locally-without-a-cluster).
 
 In a three-node cluster with an agent on every node:
 
@@ -168,8 +170,20 @@ kubectl apply -f bpf-explorer.yaml
 
 ## Run locally without a cluster
 
-Point the UI at an agent directly (static discovery), no RBAC needed. Two
-terminals - the agent needs BPF privileges:
+`--role=local` runs both components in one process, with the UI pointed at the
+bundled agent by static discovery. No cluster, no RBAC, one terminal:
+
+```console
+sudo ./bpf-explorer --role=local
+```
+
+Then browse http://localhost:8080; the node is listed as `local`. Ports move
+with `--listen` (UI, default `:8080`) and `--agent-listen` (agent, default
+`:50051`).
+
+`sudo` is for the agent half, which needs BPF privileges - but it is one
+process, so the UI half runs privileged too. Run the roles separately when that
+matters, in two terminals:
 
 ```console
 sudo ./bpf-explorer --role=agent --listen=:50051
@@ -178,8 +192,6 @@ sudo ./bpf-explorer --role=agent --listen=:50051
 ```console
 ./bpf-explorer --role=ui --agents=local=localhost:50051
 ```
-
-Then browse http://localhost:8080.
 
 ## Releasing
 
