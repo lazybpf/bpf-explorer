@@ -19,7 +19,7 @@ const (
 // group is rendered on its own page/URL to keep a single diagram readable.
 type loaderGroupData struct {
 	ID    string // mermaid-safe id, e.g. "sg_1234" or "sg_unattached"
-	Label string // e.g. "loader: systemd (1)"
+	Label string // e.g. "loader: systemd(1)"
 	Progs []*pb.ProgramInfo
 	Maps  []uint32 // referenced map ids (deduped, ordered); labels via mapByID
 	Links []*pb.LinkInfo
@@ -121,7 +121,7 @@ func loaderGroup(p *pb.ProgramInfo, hidden map[uint32]bool) (id, label string) {
 		return unattachedGroupID, unattachedLabel
 	}
 	return fmt.Sprintf("sg_%d", best.GetPid()),
-		fmt.Sprintf("loader: %s (%d)", sanitizeLabel(best.GetComm()), best.GetPid())
+		fmt.Sprintf("loader: %s(%d)", sanitizeLabel(best.GetComm()), best.GetPid())
 }
 
 // buildGroupMermaid renders the mermaid diagram for a group of programs:

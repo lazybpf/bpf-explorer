@@ -4,7 +4,7 @@
 <h2>links on {{.Node}} <span class="muted">({{len .Links}})</span></h2>
 <div class="scroll">
 <table>
-  <thead><tr><th>ID</th><th>Type</th><th>Prog</th><th>Loader</th><th>Attach</th><th></th></tr></thead>
+  <thead><tr><th>ID</th><th>Type</th><th>Prog</th><th title="the process that loaded this link's program: the lowest-numbered process holding an fd to it">Loader</th><th>Attach</th><th></th></tr></thead>
   <tbody>
   {{range .Links}}
     <tr>

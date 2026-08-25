@@ -437,7 +437,7 @@ func progName(progs []*pb.ProgramInfo, id uint32) string {
 	return ""
 }
 
-// progLoader returns "comm (pid)" for the loader of program id — its smallest
+// progLoader returns "comm(pid)" for the loader of program id — its smallest
 // holder PID, matching how the dependency graph picks a program's loader group.
 // Returns "" when the program is unknown or has no holder (pinned/link-held).
 func progLoader(progs []*pb.ProgramInfo, id uint32) string {
@@ -449,7 +449,7 @@ func progLoader(progs []*pb.ProgramInfo, id uint32) string {
 		if best == nil {
 			return ""
 		}
-		return fmt.Sprintf("%s (%d)", best.GetComm(), best.GetPid())
+		return fmt.Sprintf("%s(%d)", best.GetComm(), best.GetPid())
 	}
 	return ""
 }

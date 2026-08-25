@@ -36,7 +36,7 @@ func TestGroupByLoader(t *testing.T) {
 	groups, _ := groupByLoader(progs, maps, links, nil)
 
 	agent := findGroup(groups, "sg_1000")
-	if agent == nil || agent.Label != "loader: agent (1000)" {
+	if agent == nil || agent.Label != "loader: agent(1000)" {
 		t.Fatalf("missing/mislabelled agent group: %+v", agent)
 	}
 	if len(agent.Progs) != 1 || agent.Progs[0].GetId() != 7 {
@@ -79,7 +79,7 @@ func TestGroupByLoaderHidesPID(t *testing.T) {
 		t.Errorf("systemd (PID 1) group should be hidden")
 	}
 	if g := findGroup(groups, "sg_1000"); g == nil {
-		t.Errorf("program should group under agent (1000) when PID 1 hidden; groups=%+v", groups)
+		t.Errorf("program should group under agent(1000) when PID 1 hidden; groups=%+v", groups)
 	}
 }
 
@@ -134,7 +134,7 @@ func TestGraphIndexRender(t *testing.T) {
 	}
 	data := pageData{
 		Node: "node-a", Tab: "graph",
-		GraphGroups: []groupSummary{{ID: "sg_1000", Label: "loader: agent (1000)", Progs: 2, Maps: 3, Links: 1}},
+		GraphGroups: []groupSummary{{ID: "sg_1000", Label: "loader: agent(1000)", Progs: 2, Maps: 3, Links: 1}},
 	}
 	var buf strings.Builder
 	if err := h.pages["graph"].ExecuteTemplate(&buf, "layout", data); err != nil {
@@ -154,7 +154,7 @@ func TestGraphGroupRender(t *testing.T) {
 	groups, mapByID := groupByLoader(progs, maps, links, nil)
 	data := pageData{
 		Node: "node-a", Tab: "graph",
-		GroupLabel: "loader: agent (1000)",
+		GroupLabel: "loader: agent(1000)",
 		Mermaid:    buildGroupMermaid(findGroup(groups, "sg_1000"), mapByID, "node-a"),
 	}
 	var buf strings.Builder

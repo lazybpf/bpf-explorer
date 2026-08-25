@@ -29,7 +29,7 @@
 <h2>maps on {{.Node}} <span class="muted">({{len .Maps}})</span></h2>
 <div class="scroll">
 <table>
-  <thead><tr><th>ID</th><th>Name</th><th>Type</th><th>Key</th><th>Value</th><th>Max</th><th>Flags</th><th>PIDs</th><th></th></tr></thead>
+  <thead><tr><th>ID</th><th>Name</th><th>Type</th><th>Key</th><th>Value</th><th>Max</th><th>Flags</th><th title="processes holding an open fd to this map; when none do, the inferred loader of a program referencing it is shown instead">Holders</th><th></th></tr></thead>
   <tbody>
   {{range .Maps}}
     <tr>

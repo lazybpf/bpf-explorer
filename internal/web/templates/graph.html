@@ -3,13 +3,14 @@
 
 <h2>dependency graphs on {{.Node}}</h2>
 <p class="muted">
-  eBPF objects grouped by loader PID. Open a group to see its programs, the maps
-  they reference, and the links attaching them.
+  eBPF objects grouped by the process that loaded them - a program's loader is
+  the lowest-numbered process holding an fd to it. Open a group to see its
+  programs, the maps they reference, and the links attaching them.
 </p>
 
 <div class="scroll">
 <table>
-  <thead><tr><th>loader</th><th>programs</th><th>maps</th><th>links</th></tr></thead>
+  <thead><tr><th>group</th><th>programs</th><th>maps</th><th>links</th></tr></thead>
   <tbody>
   {{range .GraphGroups}}
     <tr>
