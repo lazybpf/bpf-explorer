@@ -28,6 +28,9 @@ message MapInfo {
   repeated string pinned_paths = 8; // e.g. /sys/fs/bpf/<agent>/<map>
   bool dumpable = 9;       // false for RingBuf/PerfEvent etc.
   repeated ProcessRef pids = 10;    // holders of an open fd to this map
+  // Why this map cannot be dumped, for the UI to show; empty when dumpable.
+  // Mirrors DumpProgramResponse.note, which serves the same purpose.
+  string dump_note = 11;
 }
 
 message ListMapsRequest {}

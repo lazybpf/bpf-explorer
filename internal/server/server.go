@@ -44,6 +44,7 @@ func (s *Server) ListMaps(_ context.Context, _ *pb.ListMapsRequest) (*pb.ListMap
 			MaxEntries: m.MaxEntries,
 			Flags:      m.Flags,
 			Dumpable:   m.Dumpable,
+			DumpNote:   m.DumpNote,
 			Pids:       pids,
 		})
 	}

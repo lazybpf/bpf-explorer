@@ -22,17 +22,20 @@ const (
 )
 
 type MapInfo struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Id            uint32                 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
-	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
-	Type          string                 `protobuf:"bytes,3,opt,name=type,proto3" json:"type,omitempty"` // e.g. "Hash", "LRUHash", "PerCPUArray", "RingBuf"
-	KeySize       uint32                 `protobuf:"varint,4,opt,name=key_size,json=keySize,proto3" json:"key_size,omitempty"`
-	ValueSize     uint32                 `protobuf:"varint,5,opt,name=value_size,json=valueSize,proto3" json:"value_size,omitempty"`
-	MaxEntries    uint32                 `protobuf:"varint,6,opt,name=max_entries,json=maxEntries,proto3" json:"max_entries,omitempty"`
-	Flags         uint32                 `protobuf:"varint,7,opt,name=flags,proto3" json:"flags,omitempty"`
-	PinnedPaths   []string               `protobuf:"bytes,8,rep,name=pinned_paths,json=pinnedPaths,proto3" json:"pinned_paths,omitempty"` // e.g. /sys/fs/bpf/<agent>/<map>
-	Dumpable      bool                   `protobuf:"varint,9,opt,name=dumpable,proto3" json:"dumpable,omitempty"`                         // false for RingBuf/PerfEvent etc.
-	Pids          []*ProcessRef          `protobuf:"bytes,10,rep,name=pids,proto3" json:"pids,omitempty"`                                 // holders of an open fd to this map
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	Id          uint32                 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
+	Name        string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	Type        string                 `protobuf:"bytes,3,opt,name=type,proto3" json:"type,omitempty"` // e.g. "Hash", "LRUHash", "PerCPUArray", "RingBuf"
+	KeySize     uint32                 `protobuf:"varint,4,opt,name=key_size,json=keySize,proto3" json:"key_size,omitempty"`
+	ValueSize   uint32                 `protobuf:"varint,5,opt,name=value_size,json=valueSize,proto3" json:"value_size,omitempty"`
+	MaxEntries  uint32                 `protobuf:"varint,6,opt,name=max_entries,json=maxEntries,proto3" json:"max_entries,omitempty"`
+	Flags       uint32                 `protobuf:"varint,7,opt,name=flags,proto3" json:"flags,omitempty"`
+	PinnedPaths []string               `protobuf:"bytes,8,rep,name=pinned_paths,json=pinnedPaths,proto3" json:"pinned_paths,omitempty"` // e.g. /sys/fs/bpf/<agent>/<map>
+	Dumpable    bool                   `protobuf:"varint,9,opt,name=dumpable,proto3" json:"dumpable,omitempty"`                         // false for RingBuf/PerfEvent etc.
+	Pids        []*ProcessRef          `protobuf:"bytes,10,rep,name=pids,proto3" json:"pids,omitempty"`                                 // holders of an open fd to this map
+	// Why this map cannot be dumped, for the UI to show; empty when dumpable.
+	// Mirrors DumpProgramResponse.note, which serves the same purpose.
+	DumpNote      string `protobuf:"bytes,11,opt,name=dump_note,json=dumpNote,proto3" json:"dump_note,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -135,6 +138,13 @@ func (x *MapInfo) GetPids() []*ProcessRef {
 		return x.Pids
 	}
 	return nil
+}
+
+func (x *MapInfo) GetDumpNote() string {
+	if x != nil {
+		return x.DumpNote
+	}
+	return ""
 }
 
 type ListMapsRequest struct {
@@ -988,7 +998,7 @@ var File_proto_bpfinspector_proto protoreflect.FileDescriptor
 
 const file_proto_bpfinspector_proto_rawDesc = "" +
 	"\n" +
-	"\x18proto/bpfinspector.proto\x12\x0fbpfinspector.v1\"\xa2\x02\n" +
+	"\x18proto/bpfinspector.proto\x12\x0fbpfinspector.v1\"\xbf\x02\n" +
 	"\aMapInfo\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\rR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x12\n" +
@@ -1002,7 +1012,8 @@ const file_proto_bpfinspector_proto_rawDesc = "" +
 	"\fpinned_paths\x18\b \x03(\tR\vpinnedPaths\x12\x1a\n" +
 	"\bdumpable\x18\t \x01(\bR\bdumpable\x12/\n" +
 	"\x04pids\x18\n" +
-	" \x03(\v2\x1b.bpfinspector.v1.ProcessRefR\x04pids\"\x11\n" +
+	" \x03(\v2\x1b.bpfinspector.v1.ProcessRefR\x04pids\x12\x1b\n" +
+	"\tdump_note\x18\v \x01(\tR\bdumpNote\"\x11\n" +
 	"\x0fListMapsRequest\"@\n" +
 	"\x10ListMapsResponse\x12,\n" +
 	"\x04maps\x18\x01 \x03(\v2\x18.bpfinspector.v1.MapInfoR\x04maps\"\xa1\x01\n" +

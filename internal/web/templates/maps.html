@@ -44,7 +44,15 @@
           {{else}}<span class="muted">-</span>{{end}}
         {{end}}
       </td>
-      <td>{{if .Dumpable}}<a href="/nodes/{{$.Node}}/maps/{{.Id}}">dump</a>{{else}}<span class="muted">n/a</span>{{end}}</td>
+      <td>
+        {{if .Dumpable}}
+          <a href="/nodes/{{$.Node}}/maps/{{.Id}}">dump</a>
+        {{else}}
+          {{/* Same word, deliberately inert: the tooltip carries the reason the
+               agent gave, so "why not?" is answerable without leaving the row. */}}
+          <span class="disabled" title="cannot dump this map: {{with .DumpNote}}{{.}}{{else}}this map type does not support key iteration{{end}}">dump</span>
+        {{end}}
+      </td>
     </tr>
   {{else}}
     <tr><td colspan="9" class="muted">(no maps)</td></tr>

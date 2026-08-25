@@ -177,6 +177,53 @@ func TestMapsDumpAboveList(t *testing.T) {
 	}
 }
 
+// TestMapsUndumpableShowsReason verifies an undumpable map still renders a
+// "dump" control, inert and carrying the agent's reason as a tooltip, rather
+// than the bare "n/a" it used to show. A dumpable map keeps a real link.
+func TestMapsUndumpableShowsReason(t *testing.T) {
+	h, err := New(nil, nil)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	data := pageData{
+		Node: "node-a",
+		Tab:  "maps",
+		Maps: []*pb.MapInfo{
+			{Id: 42, Name: "counters", Type: "Hash", Dumpable: true},
+			{Id: 43, Name: "events", Type: "RingBuf", DumpNote: "event stream, not a keyed map"},
+			{Id: 44, Name: "mystery", Type: "Future"}, // undumpable, agent sent no note
+		},
+	}
+
+	var buf bytes.Buffer
+	if err := h.pages["maps"].ExecuteTemplate(&buf, "layout", data); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	out := buf.String()
+
+	if !strings.Contains(out, `href="/nodes/node-a/maps/42"`) {
+		t.Errorf("dumpable map should keep a real dump link\n%s", out)
+	}
+	// The reason the agent gave reaches the tooltip.
+	if !strings.Contains(out, `title="cannot dump this map: event stream, not a keyed map"`) {
+		t.Errorf("expected the agent's dump note as a tooltip\n%s", out)
+	}
+	// A note-less undumpable map still explains itself rather than going bare.
+	if !strings.Contains(out, `title="cannot dump this map: this map type does not support key iteration"`) {
+		t.Errorf("expected fallback tooltip when the agent sent no note\n%s", out)
+	}
+	// The undumpable maps must not be clickable.
+	for _, id := range []string{"43", "44"} {
+		if strings.Contains(out, `href="/nodes/node-a/maps/`+id+`"`) {
+			t.Errorf("undumpable map %s should not render a dump link\n%s", id, out)
+		}
+	}
+	if strings.Contains(out, ">n/a<") {
+		t.Errorf("the bare n/a placeholder should be gone\n%s", out)
+	}
+}
+
 // TestMapsDumpHexTooltip verifies a dump's hex cells carry an ASCII tooltip when
 // the bytes hold readable text, and none when they don't.
 func TestMapsDumpHexTooltip(t *testing.T) {

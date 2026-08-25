@@ -31,6 +31,7 @@ type MapSummary struct {
 	MaxEntries uint32
 	Flags      uint32
 	Dumpable   bool
+	DumpNote   string // why Dumpable is false; empty when it is true
 	PIDs       []ProcessRef
 }
 
@@ -101,6 +102,7 @@ func (i *Inspector) ListMaps() ([]MapSummary, error) {
 			continue
 		}
 		mapID, _ := info.ID()
+		note := undumpableReason(info.Type)
 		out = append(out, MapSummary{
 			ID:         uint32(mapID),
 			Name:       info.Name,
@@ -109,7 +111,8 @@ func (i *Inspector) ListMaps() ([]MapSummary, error) {
 			ValueSize:  info.ValueSize,
 			MaxEntries: info.MaxEntries,
 			Flags:      info.Flags,
-			Dumpable:   dumpable(info.Type),
+			Dumpable:   note == "",
+			DumpNote:   note,
 			PIDs:       pidsByMap[uint32(mapID)],
 		})
 		m.Close()
@@ -247,13 +250,17 @@ func (i *Inspector) DumpProgram(id uint32) (*ProgramDump, error) {
 	return &ProgramDump{Available: true, Lines: strings.Split(listing, "\n")}, nil
 }
 
-// dumpable reports whether a map type supports key iteration / lookup. Queue,
-// stack, ringbuf and perf-event arrays do not dump like a keyed map.
-func dumpable(t ebpf.MapType) bool {
+// undumpableReason explains why a map type does not support key iteration, or
+// returns "" when it does. It is the single source of truth for both the
+// Dumpable flag and the note the UI shows in its place, so the two cannot
+// disagree about which types dump.
+func undumpableReason(t ebpf.MapType) string {
 	switch t {
-	case ebpf.RingBuf, ebpf.PerfEventArray, ebpf.Queue, ebpf.Stack:
-		return false
+	case ebpf.RingBuf, ebpf.PerfEventArray:
+		return "event stream, not a keyed map: entries are consumed by a reader, so there are no keys to iterate"
+	case ebpf.Queue, ebpf.Stack:
+		return "queue and stack entries have no keys, so there is nothing to iterate - values come off one at a time"
 	default:
-		return true
+		return ""
 	}
 }

@@ -261,6 +261,15 @@
 
   /* ── status utilities ────────────────────────────────────────────────── */
   .muted { color: var(--fg-dim); }
+  /* An action rendered in place but deliberately inert - the dump control for a
+     map that cannot be dumped. Dotted underline marks that a tooltip explains
+     why, the same signal code[title] uses. */
+  .disabled {
+    color: var(--fg-dim);
+    text-decoration: underline dotted var(--fg-dim);
+    text-underline-offset: .2em;
+    cursor: not-allowed;
+  }
   .badge {
     font-size: .8em;
     padding: 0 .35rem;
