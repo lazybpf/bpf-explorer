@@ -41,7 +41,7 @@ func New(disc discovery.Discoverer, hiddenLoaders map[uint32]bool) (*Handlers, e
 		"version": version.String,
 	}
 	pages := map[string]*template.Template{}
-	for _, name := range []string{"index", "maps", "programs", "links", "graph", "graphgroup", "tracelog"} {
+	for _, name := range []string{"index", "maps", "programs", "links", "loaders", "loader", "tracelog"} {
 		t, err := template.New(name).Funcs(funcs).ParseFS(templatesFS,
 			"templates/layout.html", "templates/partials.html", "templates/"+name+".html")
 		if err != nil {
@@ -61,9 +61,11 @@ func (h *Handlers) Router() http.Handler {
 	mux.HandleFunc("GET /nodes/{node}/programs", h.programs)
 	mux.HandleFunc("GET /nodes/{node}/programs/{id}", h.programs)
 	mux.HandleFunc("GET /nodes/{node}/links", h.links)
-	mux.HandleFunc("GET /nodes/{node}/graph", h.graphIndex)
-	mux.HandleFunc("GET /nodes/{node}/graph/prog/{id}", h.graphProgram)
-	mux.HandleFunc("GET /nodes/{node}/graph/{group}", h.graphGroup)
+	mux.HandleFunc("GET /nodes/{node}/loaders", h.loadersIndex)
+	// The per-program diagram is not a loader, but it shares the loader tab and
+	// its template; it keeps this prefix until the URLs get a proper pass.
+	mux.HandleFunc("GET /nodes/{node}/loaders/prog/{id}", h.programGraph)
+	mux.HandleFunc("GET /nodes/{node}/loaders/{group}", h.loaderGraph)
 	mux.HandleFunc("GET /nodes/{node}/tracelog", h.tracelog)
 	mux.HandleFunc("GET /nodes/{node}/tracelog/stream", h.tracelogStream)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { w.Write([]byte("ok")) })
@@ -82,12 +84,14 @@ type pageData struct {
 	MapsByID    map[uint32]*pb.MapInfo // id -> map, for program map-ref tooltips
 	Dump        *dumpView
 	ProgDump    *progDumpView
-	Mermaid     template.HTML  // per-group dependency graph definition
-	GroupLabel  string         // loader label for the per-group graph page
-	GraphGroups []groupSummary // loader groups for the graph index page
+	Mermaid    template.HTML   // dependency diagram definition
+	GraphLabel string          // heading for a diagram page: a loader, or one program
+	Loaders    []loaderSummary // loader roster for the loaders index page
 }
 
-type groupSummary struct {
+// loaderSummary is one row of the loaders index: a loader and how many objects
+// it owns, linking to its dependency diagram.
+type loaderSummary struct {
 	ID    string
 	Label string
 	Progs int
@@ -259,59 +263,59 @@ func (h *Handlers) links(w http.ResponseWriter, r *http.Request) {
 	h.render(w, "links", data)
 }
 
-// graphIndex lists the loader groups on a node, each linking to its own graph.
-func (h *Handlers) graphIndex(w http.ResponseWriter, r *http.Request) {
+// loadersIndex lists the loaders on a node, each linking to its own diagram.
+func (h *Handlers) loadersIndex(w http.ResponseWriter, r *http.Request) {
 	node := r.PathValue("node")
-	data := pageData{Node: node, Tab: "graph"}
+	data := pageData{Node: node, Tab: "loaders"}
 	data.Nodes, _ = h.nodes()
 
 	progs, maps, links, err := h.fetchGraph(r, node)
 	if err != nil {
 		data.Err = err.Error()
-		h.render(w, "graph", data)
+		h.render(w, "loaders", data)
 		return
 	}
 	groups, _ := groupByLoader(progs, maps, links, h.hiddenLoaders)
 	for _, g := range groups {
-		data.GraphGroups = append(data.GraphGroups, groupSummary{
+		data.Loaders = append(data.Loaders, loaderSummary{
 			ID: g.ID, Label: g.Label,
 			Progs: len(g.Progs), Maps: len(g.Maps), Links: len(g.Links),
 		})
 	}
-	h.render(w, "graph", data)
+	h.render(w, "loaders", data)
 }
 
-// graphGroup renders the dependency diagram for a single loader group.
-func (h *Handlers) graphGroup(w http.ResponseWriter, r *http.Request) {
+// loaderGraph renders the dependency diagram for a single loader.
+func (h *Handlers) loaderGraph(w http.ResponseWriter, r *http.Request) {
 	node := r.PathValue("node")
-	data := pageData{Node: node, Tab: "graph"}
+	data := pageData{Node: node, Tab: "loaders"}
 	data.Nodes, _ = h.nodes()
 
 	progs, maps, links, err := h.fetchGraph(r, node)
 	if err != nil {
 		data.Err = err.Error()
-		h.render(w, "graphgroup", data)
+		h.render(w, "loader", data)
 		return
 	}
 	groups, mapByID := groupByLoader(progs, maps, links, h.hiddenLoaders)
 	want := r.PathValue("group")
 	for _, g := range groups {
 		if g.ID == want {
-			data.GroupLabel = g.Label
+			data.GraphLabel = g.Label
 			data.Mermaid = buildGroupMermaid(g, mapByID, node)
-			h.render(w, "graphgroup", data)
+			h.render(w, "loader", data)
 			return
 		}
 	}
 	data.Err = "unknown loader group: " + want
-	h.render(w, "graphgroup", data)
+	h.render(w, "loader", data)
 }
 
-// graphProgram renders a graph focused on a single program: its attaching links
-// and the maps it references.
-func (h *Handlers) graphProgram(w http.ResponseWriter, r *http.Request) {
+// programGraph renders a diagram focused on a single program: its attaching
+// links and the maps it references. It reuses the loader diagram page.
+func (h *Handlers) programGraph(w http.ResponseWriter, r *http.Request) {
 	node := r.PathValue("node")
-	data := pageData{Node: node, Tab: "graph"}
+	data := pageData{Node: node, Tab: "loaders"}
 	data.Nodes, _ = h.nodes()
 
 	id, cerr := strconv.ParseUint(r.PathValue("id"), 10, 32)
@@ -323,13 +327,13 @@ func (h *Handlers) graphProgram(w http.ResponseWriter, r *http.Request) {
 	progs, maps, links, err := h.fetchGraph(r, node)
 	if err != nil {
 		data.Err = err.Error()
-		h.render(w, "graphgroup", data)
+		h.render(w, "loader", data)
 		return
 	}
 	prog := findProg(progs, uint32(id))
 	if prog == nil {
 		data.Err = fmt.Sprintf("program %d not found", id)
-		h.render(w, "graphgroup", data)
+		h.render(w, "loader", data)
 		return
 	}
 
@@ -337,9 +341,9 @@ func (h *Handlers) graphProgram(w http.ResponseWriter, r *http.Request) {
 	for _, m := range maps {
 		mapByID[m.GetId()] = m
 	}
-	data.GroupLabel = fmt.Sprintf("prog %d: %s", prog.GetId(), prog.GetName())
+	data.GraphLabel = fmt.Sprintf("prog %d: %s", prog.GetId(), prog.GetName())
 	data.Mermaid = buildGroupMermaid(programGroupData(prog, links), mapByID, node)
-	h.render(w, "graphgroup", data)
+	h.render(w, "loader", data)
 }
 
 // fetchGraph dials the node's agent and returns its programs/maps/links.

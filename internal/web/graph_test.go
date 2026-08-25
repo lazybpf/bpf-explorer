@@ -95,7 +95,7 @@ func TestBuildGroupMermaid(t *testing.T) {
 		`link_3{{"link 3: xdp"}}`,
 		"link_3 -->|attaches| prog_7",
 		"prog_7 -->|uses| map_12",
-		`click prog_7 "/nodes/node-a/graph/prog/7"`,
+		`click prog_7 "/nodes/node-a/loaders/prog/7"`,
 		`click map_12 "/nodes/node-a/maps/12"`,
 	} {
 		if !strings.Contains(out, want) {
@@ -127,25 +127,25 @@ func TestProgramGroupData(t *testing.T) {
 	}
 }
 
-func TestGraphIndexRender(t *testing.T) {
+func TestLoadersIndexRender(t *testing.T) {
 	h, err := New(nil, nil)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
 	data := pageData{
-		Node: "node-a", Tab: "graph",
-		GraphGroups: []groupSummary{{ID: "sg_1000", Label: "loader: agent(1000)", Progs: 2, Maps: 3, Links: 1}},
+		Node: "node-a", Tab: "loaders",
+		Loaders: []loaderSummary{{ID: "sg_1000", Label: "loader: agent(1000)", Progs: 2, Maps: 3, Links: 1}},
 	}
 	var buf strings.Builder
-	if err := h.pages["graph"].ExecuteTemplate(&buf, "layout", data); err != nil {
+	if err := h.pages["loaders"].ExecuteTemplate(&buf, "layout", data); err != nil {
 		t.Fatalf("execute: %v", err)
 	}
-	if out := buf.String(); !strings.Contains(out, `href="/nodes/node-a/graph/sg_1000"`) {
-		t.Errorf("graph index missing group link\n%s", out)
+	if out := buf.String(); !strings.Contains(out, `href="/nodes/node-a/loaders/sg_1000"`) {
+		t.Errorf("loaders index missing loader link\n%s", out)
 	}
 }
 
-func TestGraphGroupRender(t *testing.T) {
+func TestLoaderGraphRender(t *testing.T) {
 	h, err := New(nil, nil)
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -153,12 +153,12 @@ func TestGraphGroupRender(t *testing.T) {
 	progs, maps, links := sampleGraphData()
 	groups, mapByID := groupByLoader(progs, maps, links, nil)
 	data := pageData{
-		Node: "node-a", Tab: "graph",
-		GroupLabel: "loader: agent(1000)",
+		Node: "node-a", Tab: "loaders",
+		GraphLabel: "loader: agent(1000)",
 		Mermaid:    buildGroupMermaid(findGroup(groups, "sg_1000"), mapByID, "node-a"),
 	}
 	var buf strings.Builder
-	if err := h.pages["graphgroup"].ExecuteTemplate(&buf, "layout", data); err != nil {
+	if err := h.pages["loader"].ExecuteTemplate(&buf, "layout", data); err != nil {
 		t.Fatalf("execute: %v", err)
 	}
 	out := buf.String()

@@ -161,7 +161,7 @@ func buildGroupMermaid(g *loaderGroupData, mapByID map[uint32]*pb.MapInfo, node 
 
 	// Click-to-navigate: program -> its focused graph, map -> its details.
 	for _, p := range g.Progs {
-		fmt.Fprintf(&b, "  click prog_%d \"/nodes/%s/graph/prog/%d\" \"zoom into program\"\n",
+		fmt.Fprintf(&b, "  click prog_%d \"/nodes/%s/loaders/prog/%d\" \"zoom into program\"\n",
 			p.GetId(), node, p.GetId())
 	}
 	for _, mid := range g.Maps {

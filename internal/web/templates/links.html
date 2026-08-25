@@ -15,7 +15,7 @@
       <td>{{if .ProgId}}{{with progLoader $.Programs .ProgId}}{{.}}{{else}}<span class="muted">-</span>{{end}}{{else}}<span class="muted">-</span>{{end}}</td>
       <td>{{with .Attach}}{{.}}{{else}}<span class="muted">-</span>{{end}}</td>
       <td>
-        {{if .ProgId}}<a href="/nodes/{{$.Node}}/graph/prog/{{.ProgId}}">graph</a>{{end}}
+        {{if .ProgId}}<a href="/nodes/{{$.Node}}/loaders/prog/{{.ProgId}}">graph</a>{{end}}
       </td>
     </tr>
   {{else}}

@@ -1,20 +1,22 @@
 {{define "content"}}
 {{template "nodebar" .}}
 
-<h2>dependency graphs on {{.Node}}</h2>
+<h2>loaders on {{.Node}} <span class="muted">({{len .Loaders}})</span></h2>
 <p class="muted">
   eBPF objects grouped by the process that loaded them - a program's loader is
-  the lowest-numbered process holding an fd to it. Open a group to see its
-  programs, the maps they reference, and the links attaching them.
+  the lowest-numbered process holding an fd to it. Open one for its dependency
+  diagram: its programs, the maps they reference, and the links attaching them.
 </p>
 
 <div class="scroll">
 <table>
+  <!-- "group", not "loader": the last row holds everything with no loader at
+       all, which is a group but not a loader. -->
   <thead><tr><th>group</th><th>programs</th><th>maps</th><th>links</th></tr></thead>
   <tbody>
-  {{range .GraphGroups}}
+  {{range .Loaders}}
     <tr>
-      <td><a href="/nodes/{{$.Node}}/graph/{{.ID}}">{{.Label}}</a></td>
+      <td><a href="/nodes/{{$.Node}}/loaders/{{.ID}}">{{.Label}}</a></td>
       <td>{{.Progs}}</td><td>{{.Maps}}</td><td>{{.Links}}</td>
     </tr>
   {{else}}
