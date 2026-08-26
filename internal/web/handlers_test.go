@@ -2,11 +2,83 @@ package web
 
 import (
 	"bytes"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
 	pb "github.com/lazybpf/bpf-explorer/gen/bpfinspectorv1"
 )
+
+// TestPageTitle covers the browser tab titles: with a tab per object, each has
+// to name its object before the node and the app, since truncation eats the end.
+func TestPageTitle(t *testing.T) {
+	tests := []struct {
+		name string
+		page string
+		data pageData
+		want string
+	}{
+		{"index", "index", pageData{}, "bpf-explorer"},
+		{"maps list", "maps", pageData{Node: "node-a"}, "maps - node-a - bpf-explorer"},
+		{"tracelog", "tracelog", pageData{Node: "node-a"}, "tracelog - node-a - bpf-explorer"},
+		{
+			"map dump", "mapdump",
+			pageData{Node: "node-a", Dump: &dumpView{ID: 42, Name: "counters"}},
+			"map 42: counters dump - node-a - bpf-explorer",
+		},
+		{
+			"nameless map dump", "mapdump",
+			pageData{Node: "node-a", Dump: &dumpView{ID: 42}},
+			"map 42 dump - node-a - bpf-explorer",
+		},
+		{
+			// DumpMap failed, so there is no dumpView to name.
+			"failed map dump", "mapdump",
+			pageData{Node: "node-a", Err: "boom"},
+			"map dump - node-a - bpf-explorer",
+		},
+		{
+			"prog xlated", "progdump",
+			pageData{Node: "node-a", ProgDump: &progDumpView{ID: 5, Name: "trace_conn"}},
+			"prog 5: trace_conn xlated - node-a - bpf-explorer",
+		},
+		{
+			"loader graph", "loader",
+			pageData{Node: "node-a", GraphLabel: "loader: agent(1000)"},
+			"loader: agent(1000) graph - node-a - bpf-explorer",
+		},
+		{
+			"unknown graph", "loader",
+			pageData{Node: "node-a", Err: "unknown loader group: sg_9"},
+			"graph - node-a - bpf-explorer",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := pageTitle(tc.page, tc.data); got != tc.want {
+				t.Errorf("pageTitle(%q) = %q, want %q", tc.page, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestRenderSetsTitle verifies render injects the title, so no handler has to
+// remember to - a page added later gets a real tab name for free.
+func TestRenderSetsTitle(t *testing.T) {
+	h, err := New(nil, nil)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	rec := httptest.NewRecorder()
+	h.render(rec, "mapdump", pageData{
+		Node: "node-a",
+		Dump: &dumpView{ID: 42, Name: "counters"},
+	})
+	if want := `<title>map 42: counters dump - node-a - bpf-explorer</title>`; !strings.Contains(rec.Body.String(), want) {
+		t.Errorf("expected %s\n%s", want, rec.Body.String())
+	}
+}
 
 // TestProgramsMapLinks verifies the programs page renders each referenced map ID
 // as a link to that map's details page, and a placeholder when there are none.
@@ -97,8 +169,9 @@ func TestLinksProgLinks(t *testing.T) {
 	}
 }
 
-// TestProgramsXlatedDump verifies the program xlated instruction listing renders
-// above the programs list when available, and shows the note when it is not.
+// TestProgramsXlatedDump verifies the xlated listing gets a page of its own -
+// no programs list repeated underneath, a link back to it instead - and that it
+// shows the agent's note when the listing is unavailable.
 func TestProgramsXlatedDump(t *testing.T) {
 	h, err := New(nil, nil)
 	if err != nil {
@@ -111,30 +184,31 @@ func TestProgramsXlatedDump(t *testing.T) {
 		Programs: []*pb.ProgramInfo{{Id: 5, Name: "trace_conn"}},
 	}
 
-	// Available: listing appears above the "programs on" table.
 	avail := base
 	avail.ProgDump = &progDumpView{
 		ID: 5, Name: "trace_conn", Available: true,
 		Lines: []string{"   0: MovImm dst: r0 imm: 0", "   1: Exit"},
 	}
 	var buf bytes.Buffer
-	if err := h.pages["programs"].ExecuteTemplate(&buf, "layout", avail); err != nil {
+	if err := h.pages["progdump"].ExecuteTemplate(&buf, "layout", avail); err != nil {
 		t.Fatalf("execute: %v", err)
 	}
 	out := buf.String()
 	if !strings.Contains(out, "MovImm dst: r0") {
 		t.Errorf("expected instruction listing in output\n%s", out)
 	}
-	dumpPos, listPos := strings.Index(out, "xlated"), strings.Index(out, "programs on node-a")
-	if dumpPos < 0 || listPos < 0 || dumpPos > listPos {
-		t.Errorf("xlated dump should render above the programs list (dump=%d, list=%d)", dumpPos, listPos)
+	if strings.Contains(out, "programs on node-a") {
+		t.Errorf("xlated page should not repeat the programs list\n%s", out)
+	}
+	if !strings.Contains(out, `href="/nodes/node-a/programs"`) {
+		t.Errorf("xlated page needs a link back to the programs list\n%s", out)
 	}
 
 	// Unavailable: shows the note, not a listing.
 	un := base
 	un.ProgDump = &progDumpView{ID: 5, Name: "trace_conn", Available: false, Note: "operation not permitted"}
 	buf.Reset()
-	if err := h.pages["programs"].ExecuteTemplate(&buf, "layout", un); err != nil {
+	if err := h.pages["progdump"].ExecuteTemplate(&buf, "layout", un); err != nil {
 		t.Fatalf("execute: %v", err)
 	}
 	if out := buf.String(); !strings.Contains(out, "unavailable: operation not permitted") {
@@ -142,9 +216,9 @@ func TestProgramsXlatedDump(t *testing.T) {
 	}
 }
 
-// TestMapsDumpAboveList verifies the map dump (details) renders above the list
-// of maps, so the key/value contents are the first thing seen.
-func TestMapsDumpAboveList(t *testing.T) {
+// TestMapsDumpOwnPage verifies a map's contents get a page of their own, with a
+// link back to the list rather than a second copy of it.
+func TestMapsDumpOwnPage(t *testing.T) {
 	h, err := New(nil, nil)
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -162,18 +236,25 @@ func TestMapsDumpAboveList(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	if err := h.pages["maps"].ExecuteTemplate(&buf, "layout", data); err != nil {
+	if err := h.pages["mapdump"].ExecuteTemplate(&buf, "layout", data); err != nil {
 		t.Fatalf("execute: %v", err)
 	}
 	out := buf.String()
 
-	dumpPos := strings.Index(out, "contents")
-	listPos := strings.Index(out, "maps on node-a")
-	if dumpPos < 0 || listPos < 0 {
-		t.Fatalf("missing dump (%d) or list (%d) heading\n%s", dumpPos, listPos, out)
+	if !strings.Contains(out, "contents") || !strings.Contains(out, "e803") {
+		t.Errorf("expected the map's contents\n%s", out)
 	}
-	if dumpPos > listPos {
-		t.Errorf("dump details should render above the maps list (dump=%d, list=%d)", dumpPos, listPos)
+	// The list stays in the tab this dump was opened from; repeating it is noise.
+	if strings.Contains(out, "maps on node-a") {
+		t.Errorf("dump page should not repeat the maps list\n%s", out)
+	}
+	if !strings.Contains(out, `href="/nodes/node-a/maps"`) {
+		t.Errorf("dump page needs a link back to the maps list\n%s", out)
+	}
+	// data.Maps is still populated (it names the dumped map) but must not render
+	// as a table of its own.
+	if strings.Contains(out, ">graph</a>") {
+		t.Errorf("dump page should carry no per-row actions\n%s", out)
 	}
 }
 
@@ -280,7 +361,7 @@ func TestMapsDumpHexTooltip(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	if err := h.pages["maps"].ExecuteTemplate(&buf, "layout", data); err != nil {
+	if err := h.pages["mapdump"].ExecuteTemplate(&buf, "layout", data); err != nil {
 		t.Fatalf("execute: %v", err)
 	}
 	out := buf.String()

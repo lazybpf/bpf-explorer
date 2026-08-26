@@ -3,7 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>bpf-explorer</title>
+<!-- render fills Title; the fallback keeps a template executed directly (tests)
+     from rendering an empty tab name. -->
+<title>{{with .Title}}{{.}}{{else}}bpf-explorer{{end}}</title>
 <!-- Fonts come from Google Fonts, which the browser (not the cluster) fetches.
      If it is unreachable the fallback stacks below keep everything monospaced
      and aligned - only the terminal lettering is lost. -->

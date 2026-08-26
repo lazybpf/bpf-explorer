@@ -1,0 +1,31 @@
+{{define "content"}}
+{{template "nodebar" .}}
+
+{{/* The contents alone, no maps list underneath: the list this dump was opened
+     from is still sitting in the tab behind it. */}}
+<p><a href="/nodes/{{.Node}}/maps">&larr; all maps</a></p>
+
+{{with .Dump}}
+  <h2>map {{.ID}} — {{.Name}} contents
+    {{if .Truncated}}<span class="badge">truncated</span>{{end}}
+    <span class="muted">({{len .Entries}} shown)</span>
+  </h2>
+  <div class="scroll">
+  <table>
+    <thead><tr><th>key</th><th>key (hex)</th><th>value</th><th>value (hex)</th></tr></thead>
+    <tbody>
+    {{range .Entries}}
+      <tr>
+        <td>{{.KeyFmt}}</td>
+        <td><code{{with hexASCII .KeyHex}} title="ASCII: {{.}}"{{end}}>{{.KeyHex}}</code></td>
+        <td>{{.ValueFmt}}</td>
+        <td><code{{with hexASCII .ValueHex}} title="ASCII: {{.}}"{{end}}>{{.ValueHex}}</code></td>
+      </tr>
+    {{else}}
+      <tr><td colspan="4" class="muted">(map is empty)</td></tr>
+    {{end}}
+    </tbody>
+  </table>
+  </div>
+{{end}}
+{{end}}

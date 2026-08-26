@@ -1,17 +1,6 @@
 {{define "content"}}
 {{template "nodebar" .}}
 
-{{with .ProgDump}}
-  <h2>program {{.ID}} — {{.Name}} xlated</h2>
-  {{if .Available}}
-    <pre>{{range .Lines}}{{.}}
-{{end}}</pre>
-  {{else}}
-    <p class="muted">xlated instructions unavailable{{if .Note}}: {{.Note}}{{end}}</p>
-  {{end}}
-  <hr>
-{{end}}
-
 <h2>programs on {{.Node}} <span class="muted">({{len .Programs}})</span></h2>
 <div class="scroll">
 <table>

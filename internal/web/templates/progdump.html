@@ -1,0 +1,17 @@
+{{define "content"}}
+{{template "nodebar" .}}
+
+{{/* The instructions alone, no programs list underneath: the list this dump was
+     opened from is still sitting in the tab behind it. */}}
+<p><a href="/nodes/{{.Node}}/programs">&larr; all programs</a></p>
+
+{{with .ProgDump}}
+  <h2>program {{.ID}} — {{.Name}} xlated</h2>
+  {{if .Available}}
+    <pre>{{range .Lines}}{{.}}
+{{end}}</pre>
+  {{else}}
+    <p class="muted">xlated instructions unavailable{{if .Note}}: {{.Note}}{{end}}</p>
+  {{end}}
+{{end}}
+{{end}}

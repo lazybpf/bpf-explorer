@@ -41,7 +41,8 @@ func New(disc discovery.Discoverer, hiddenLoaders map[uint32]bool) (*Handlers, e
 		"version": version.String,
 	}
 	pages := map[string]*template.Template{}
-	for _, name := range []string{"index", "maps", "programs", "links", "loaders", "loader", "tracelog"} {
+	for _, name := range []string{"index", "maps", "mapdump", "programs", "progdump",
+		"links", "loaders", "loader", "tracelog"} {
 		t, err := template.New(name).Funcs(funcs).ParseFS(templatesFS,
 			"templates/layout.html", "templates/partials.html", "templates/"+name+".html")
 		if err != nil {
@@ -76,6 +77,9 @@ func (h *Handlers) Router() http.Handler {
 
 // pageData is the template model shared by all pages.
 type pageData struct {
+	// Title is the browser tab title, filled in by render from the page name and
+	// the data below - handlers do not set it.
+	Title      string
 	Nodes      []string
 	Node       string
 	Tab        string
@@ -128,10 +132,18 @@ func (h *Handlers) maps(w http.ResponseWriter, r *http.Request) {
 	data := pageData{Node: node, Tab: "maps"}
 	data.Nodes, _ = h.nodes()
 
+	// A map id asks for one map's contents, which get their own page: the list it
+	// was opened from is still in the tab behind it, so repeating it is noise.
+	idStr := r.PathValue("id")
+	page := "maps"
+	if idStr != "" {
+		page = "mapdump"
+	}
+
 	conn, err := h.dial(node)
 	if err != nil {
 		data.Err = err.Error()
-		h.render(w, "maps", data)
+		h.render(w, page, data)
 		return
 	}
 	defer conn.Close()
@@ -140,39 +152,43 @@ func (h *Handlers) maps(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 
+	// The list page needs every map; the dump page needs this one's name.
 	list, err := client.ListMaps(ctx, &pb.ListMapsRequest{})
 	if err != nil {
 		data.Err = err.Error()
-		h.render(w, "maps", data)
+		h.render(w, page, data)
 		return
 	}
 	data.Maps = list.GetMaps()
 
-	// Best-effort programs so a map nothing holds an fd to can still name the
-	// loader of a program referencing it. A failure here must not break the page.
-	if progs, perr := client.ListPrograms(ctx, &pb.ListProgramsRequest{}); perr == nil {
-		data.Programs = progs.GetPrograms()
+	if idStr == "" {
+		// Best-effort programs so a map nothing holds an fd to can still name the
+		// loader of a program referencing it - a Holders column only the list has.
+		// A failure here must not break the page.
+		if progs, perr := client.ListPrograms(ctx, &pb.ListProgramsRequest{}); perr == nil {
+			data.Programs = progs.GetPrograms()
+		}
+		h.render(w, page, data)
+		return
 	}
 
-	if idStr := r.PathValue("id"); idStr != "" {
-		id, cerr := strconv.ParseUint(idStr, 10, 32)
-		if cerr != nil {
-			http.Error(w, "bad map id", http.StatusBadRequest)
-			return
-		}
-		dump, derr := client.DumpMap(ctx, &pb.DumpMapRequest{Id: uint32(id)})
-		if derr != nil {
-			data.Err = derr.Error()
-		} else {
-			data.Dump = &dumpView{
-				ID:        uint32(id),
-				Name:      mapName(data.Maps, uint32(id)),
-				Entries:   dump.GetEntries(),
-				Truncated: dump.GetTruncated(),
-			}
+	id, cerr := strconv.ParseUint(idStr, 10, 32)
+	if cerr != nil {
+		http.Error(w, "bad map id", http.StatusBadRequest)
+		return
+	}
+	dump, derr := client.DumpMap(ctx, &pb.DumpMapRequest{Id: uint32(id)})
+	if derr != nil {
+		data.Err = derr.Error()
+	} else {
+		data.Dump = &dumpView{
+			ID:        uint32(id),
+			Name:      mapName(data.Maps, uint32(id)),
+			Entries:   dump.GetEntries(),
+			Truncated: dump.GetTruncated(),
 		}
 	}
-	h.render(w, "maps", data)
+	h.render(w, page, data)
 }
 
 func (h *Handlers) programs(w http.ResponseWriter, r *http.Request) {
@@ -180,10 +196,18 @@ func (h *Handlers) programs(w http.ResponseWriter, r *http.Request) {
 	data := pageData{Node: node, Tab: "programs"}
 	data.Nodes, _ = h.nodes()
 
+	// As in maps: one program's xlated listing gets its own page rather than
+	// repeating the list it was opened from.
+	idStr := r.PathValue("id")
+	page := "programs"
+	if idStr != "" {
+		page = "progdump"
+	}
+
 	conn, err := h.dial(node)
 	if err != nil {
 		data.Err = err.Error()
-		h.render(w, "programs", data)
+		h.render(w, page, data)
 		return
 	}
 	defer conn.Close()
@@ -195,41 +219,44 @@ func (h *Handlers) programs(w http.ResponseWriter, r *http.Request) {
 	list, err := client.ListPrograms(ctx, &pb.ListProgramsRequest{})
 	if err != nil {
 		data.Err = err.Error()
-		h.render(w, "programs", data)
+		h.render(w, page, data)
 		return
 	}
 	data.Programs = list.GetPrograms()
 
-	// Best-effort map metadata so program map-ref links can show name/type in a
-	// tooltip. A failure here must not break the programs page.
-	if maps, merr := client.ListMaps(ctx, &pb.ListMapsRequest{}); merr == nil {
-		byID := make(map[uint32]*pb.MapInfo, len(maps.GetMaps()))
-		for _, m := range maps.GetMaps() {
-			byID[m.GetId()] = m
+	if idStr == "" {
+		// Best-effort map metadata so program map-ref links can show name/type in
+		// a tooltip - a column only the list has. A failure here must not break
+		// the page.
+		if maps, merr := client.ListMaps(ctx, &pb.ListMapsRequest{}); merr == nil {
+			byID := make(map[uint32]*pb.MapInfo, len(maps.GetMaps()))
+			for _, m := range maps.GetMaps() {
+				byID[m.GetId()] = m
+			}
+			data.MapsByID = byID
 		}
-		data.MapsByID = byID
+		h.render(w, page, data)
+		return
 	}
 
-	if idStr := r.PathValue("id"); idStr != "" {
-		id, cerr := strconv.ParseUint(idStr, 10, 32)
-		if cerr != nil {
-			http.Error(w, "bad program id", http.StatusBadRequest)
-			return
-		}
-		dump, derr := client.DumpProgram(ctx, &pb.DumpProgramRequest{Id: uint32(id)})
-		if derr != nil {
-			data.Err = derr.Error()
-		} else {
-			data.ProgDump = &progDumpView{
-				ID:        uint32(id),
-				Name:      progName(data.Programs, uint32(id)),
-				Lines:     dump.GetLines(),
-				Available: dump.GetAvailable(),
-				Note:      dump.GetNote(),
-			}
+	id, cerr := strconv.ParseUint(idStr, 10, 32)
+	if cerr != nil {
+		http.Error(w, "bad program id", http.StatusBadRequest)
+		return
+	}
+	dump, derr := client.DumpProgram(ctx, &pb.DumpProgramRequest{Id: uint32(id)})
+	if derr != nil {
+		data.Err = derr.Error()
+	} else {
+		data.ProgDump = &progDumpView{
+			ID:        uint32(id),
+			Name:      progName(data.Programs, uint32(id)),
+			Lines:     dump.GetLines(),
+			Available: dump.GetAvailable(),
+			Note:      dump.GetNote(),
 		}
 	}
-	h.render(w, "programs", data)
+	h.render(w, page, data)
 }
 
 // links lists the BPF links on a node, like `bpftool link show`.
@@ -454,10 +481,60 @@ func (h *Handlers) render(w http.ResponseWriter, page string, data pageData) {
 		http.Error(w, "unknown page", http.StatusInternalServerError)
 		return
 	}
+	data.Title = pageTitle(page, data)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := t.ExecuteTemplate(w, "layout", data); err != nil {
 		log.Printf("render %s: %v", page, err)
 	}
+}
+
+// pageTitle builds the browser tab title, most specific part first: every action
+// link opens its own tab, so a row of tabs all reading "bpf-explorer" cannot be
+// navigated. Truncation eats the tail, which is why the object comes before the
+// node and the node before the app name. Falls back to naming the view when the
+// object is unknown - an error page - and to the bare app name on the index.
+func pageTitle(page string, data pageData) string {
+	// The list pages are named by their own tab: maps, programs, links, loaders,
+	// tracelog.
+	what := page
+	switch page {
+	case "index":
+		what = ""
+	case "mapdump":
+		what = "map dump"
+		if d := data.Dump; d != nil {
+			what = objectTitle("map", d.ID, d.Name) + " dump"
+		}
+	case "progdump":
+		what = "prog xlated"
+		if d := data.ProgDump; d != nil {
+			what = objectTitle("prog", d.ID, d.Name) + " xlated"
+		}
+	case "loader":
+		// GraphLabel already names the subject: a loader, a program or a map.
+		what = "graph"
+		if data.GraphLabel != "" {
+			what = data.GraphLabel + " graph"
+		}
+	}
+
+	parts := make([]string, 0, 3)
+	if what != "" {
+		parts = append(parts, what)
+	}
+	if data.Node != "" {
+		parts = append(parts, data.Node)
+	}
+	return strings.Join(append(parts, "bpf-explorer"), " - ")
+}
+
+// objectTitle names one object for a tab title: "map 42: counters", or just
+// "map 42" when it has no name (a .rodata section the agent could not name).
+func objectTitle(kind string, id uint32, name string) string {
+	if name == "" {
+		return fmt.Sprintf("%s %d", kind, id)
+	}
+	return fmt.Sprintf("%s %d: %s", kind, id, name)
 }
 
 func mapName(maps []*pb.MapInfo, id uint32) string {
