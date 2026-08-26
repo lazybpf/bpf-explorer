@@ -28,6 +28,7 @@ func TestTracelogPage(t *testing.T) {
 		`href="/nodes/node-a/tracelog"`, // the tab, active on this page
 		`href="/nodes/node-b/tracelog"`, // switching nodes stays on the tab
 		"drains it",
+		"Newest line first.", // the listing grows upwards; say so on the page
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("expected page to contain %q\n%s", want, out)

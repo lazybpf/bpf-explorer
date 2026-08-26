@@ -6,7 +6,7 @@
   the kernel tracing pipe (tracefs <code>trace_pipe</code>), like
   <code>bpftool prog tracelog</code> - where <code>bpf_trace_printk()</code>
   output lands. Most programs ship events over a ring buffer instead, so an empty
-  view is normal.
+  view is normal. Newest line first.
 </p>
 <p class="warn">
   reading <code>trace_pipe</code> drains it. A node has one global trace buffer,
@@ -40,17 +40,26 @@
     return f !== '' && !text.includes(f);
   };
 
-  const append = (text, cls) => {
-    const atBottom = out.scrollHeight - out.scrollTop - out.clientHeight < 4;
+  // Newest first: a line goes in at the top, so the latest output is where the
+  // eye already is and a busy pipe needs no chasing. Scrolling down walks back
+  // in time.
+  const prepend = (text, cls) => {
+    const atTop = out.scrollTop < 4;
     const line = document.createElement('div');
     if (cls) line.className = cls;
     // textContent, never innerHTML: any program on the node can print anything
     // into the trace buffer.
     line.textContent = text;
     line.hidden = hiddenFor(text);
-    out.appendChild(line);
-    while (out.childElementCount > maxLines) out.removeChild(out.firstElementChild);
-    if (atBottom) out.scrollTop = out.scrollHeight;
+    out.insertBefore(line, out.firstElementChild);
+    // The oldest line is now the last one.
+    while (out.childElementCount > maxLines) out.removeChild(out.lastElementChild);
+    // Inserting above what you are reading would slide it out from under you.
+    // Hold the view still by the height just added (0 if the filter hid it);
+    // pre.tracelog turns off the browser's own anchoring so this is the only
+    // adjustment, in every browser.
+    if (atTop) out.scrollTop = 0;
+    else out.scrollTop += line.offsetHeight;
   };
 
   const stop = () => {
@@ -65,8 +74,10 @@
     es.onopen = () => { statusEl.textContent = 'streaming'; };
     es.onmessage = (e) => {
       const ev = JSON.parse(e.data);
-      if (ev.dropped) append(`... ${ev.dropped} lines dropped (browser fell behind)`, 'muted');
-      append(ev.line);
+      // The gap happened before this line, so it goes in first and ends up
+      // below it - the older position, reading downwards.
+      if (ev.dropped) prepend(`... ${ev.dropped} lines dropped (browser fell behind)`, 'muted');
+      prepend(ev.line);
     };
     // The agent ended the stream - no tracefs, no permission, reader gone.
     // Stop instead of letting EventSource reconnect into the same error.

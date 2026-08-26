@@ -263,6 +263,10 @@
   pre.tracelog {
     height: 60vh;
     overflow: auto;
+    /* Lines arrive at the top. The browser's scroll anchoring would compensate
+       for that on its own in some engines and not in others (Safari has none),
+       so it is off and the script does the one adjustment everywhere. */
+    overflow-anchor: none;
     white-space: pre-wrap;
     word-break: break-all;
     margin: 0;
