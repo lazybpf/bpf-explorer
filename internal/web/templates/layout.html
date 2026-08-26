@@ -272,6 +272,16 @@
     margin: 0;
     line-height: 1.4;
   }
+  /* Wrapping off: one screen line per trace line, so the left edge reads as a
+     column and a long line runs off to the right instead of pushing the next
+     one down. The pre already scrolls in both directions. */
+  pre.tracelog.nowrap {
+    white-space: pre;
+    word-break: normal;
+  }
+  /* Arrival time, dimmed: it is scaffolding around the line, not part of it. */
+  pre.tracelog .ts { color: var(--fg-dim); }
+  pre.tracelog.no-time .ts { display: none; }
 
   /* ── status utilities ────────────────────────────────────────────────── */
   .muted { color: var(--fg-dim); }

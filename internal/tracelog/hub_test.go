@@ -123,6 +123,28 @@ func TestHubFanOut(t *testing.T) {
 	}
 }
 
+// TestHubSkipsBlankLines checks the empties trace_pipe emits between records do
+// not become events: in the web view they rendered as a stream of bare
+// timestamps, one blank row per real line.
+func TestHubSkipsBlankLines(t *testing.T) {
+	o := &fakeOpener{}
+	h := &Hub{open: o.open}
+
+	sub, err := h.Subscribe()
+	if err != nil {
+		t.Fatalf("subscribe: %v", err)
+	}
+	defer sub.Close()
+
+	p := o.pipe(t)
+	for _, line := range []string{"", "   ", "\t", "real line"} {
+		p.lines <- line
+	}
+	if ev := recvEvent(t, sub); ev.Line != "real line" {
+		t.Errorf("got %q, want the blanks skipped and %q delivered", ev.Line, "real line")
+	}
+}
+
 // TestHubClosesPipeWithLastSubscriber is the behaviour that keeps the agent from
 // draining the node's trace buffer when nobody is watching.
 func TestHubClosesPipeWithLastSubscriber(t *testing.T) {

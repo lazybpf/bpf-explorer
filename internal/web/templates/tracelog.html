@@ -15,9 +15,12 @@
   or leave, and it lets go of the pipe.
 </p>
 
+{{/* Every button says what clicking it will do, the way pause/resume does. */}}
 <p class="tracectl">
   <button id="toggle" type="button">pause</button>
   <button id="clear" type="button">clear</button>
+  <button id="wrap" type="button">no wrap</button>
+  <button id="stamps" type="button">hide time</button>
   <input id="filter" type="search" placeholder="filter (substring)" size="24">
   <span id="status" class="muted"></span>
 </p>
@@ -28,6 +31,8 @@
 (() => {
   const out = document.getElementById('out');
   const toggle = document.getElementById('toggle');
+  const wrap = document.getElementById('wrap');
+  const stamps = document.getElementById('stamps');
   const filter = document.getElementById('filter');
   const statusEl = document.getElementById('status');
   const url = out.dataset.stream;
@@ -40,16 +45,31 @@
     return f !== '' && !text.includes(f);
   };
 
+  // Wall-clock arrival, stamped here rather than taken from the line: the
+  // kernel's own timestamp counts seconds since the node booted, which lines up
+  // with nothing else you are reading.
+  const stamp = () => {
+    const d = new Date();
+    return d.toLocaleTimeString([], {hour12: false}) + '.' +
+      String(d.getMilliseconds()).padStart(3, '0');
+  };
+
   // Newest first: a line goes in at the top, so the latest output is where the
   // eye already is and a busy pipe needs no chasing. Scrolling down walks back
   // in time.
-  const prepend = (text, cls) => {
+  const prepend = (text, note) => {
     const atTop = out.scrollTop < 4;
     const line = document.createElement('div');
-    if (cls) line.className = cls;
-    // textContent, never innerHTML: any program on the node can print anything
+    if (note) line.className = 'muted';
+    // The filter reads this, not textContent, so a substring can never match the
+    // timestamp the line is about to be given.
+    line.dataset.text = text;
+    const ts = document.createElement('span');
+    ts.className = 'ts';
+    ts.textContent = stamp() + ' ';
+    // Text node, never innerHTML: any program on the node can print anything
     // into the trace buffer.
-    line.textContent = text;
+    line.append(ts, text);
     line.hidden = hiddenFor(text);
     out.insertBefore(line, out.firstElementChild);
     // The oldest line is now the last one.
@@ -76,7 +96,7 @@
       const ev = JSON.parse(e.data);
       // The gap happened before this line, so it goes in first and ends up
       // below it - the older position, reading downwards.
-      if (ev.dropped) prepend(`... ${ev.dropped} lines dropped (browser fell behind)`, 'muted');
+      if (ev.dropped) prepend(`... ${ev.dropped} lines dropped (browser fell behind)`, true);
       prepend(ev.line);
     };
     // The agent ended the stream - no tracefs, no permission, reader gone.
@@ -98,7 +118,17 @@
   });
   document.getElementById('clear').addEventListener('click', () => out.replaceChildren());
   filter.addEventListener('input', () => {
-    for (const line of out.children) line.hidden = hiddenFor(line.textContent);
+    for (const line of out.children) line.hidden = hiddenFor(line.dataset.text);
+  });
+  // Wrapping keeps a long line whole at the cost of a ragged left edge; off, the
+  // one-line-per-line column reads down cleanly and scrolls sideways instead.
+  wrap.addEventListener('click', () => {
+    const off = out.classList.toggle('nowrap');
+    wrap.textContent = off ? 'wrap' : 'no wrap';
+  });
+  stamps.addEventListener('click', () => {
+    const off = out.classList.toggle('no-time');
+    stamps.textContent = off ? 'show time' : 'hide time';
   });
 
   connect();

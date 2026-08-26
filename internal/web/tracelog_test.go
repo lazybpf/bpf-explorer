@@ -29,6 +29,9 @@ func TestTracelogPage(t *testing.T) {
 		`href="/nodes/node-b/tracelog"`, // switching nodes stays on the tab
 		"drains it",
 		"Newest line first.", // the listing grows upwards; say so on the page
+		// View controls, each labelled with what clicking it does.
+		`<button id="wrap" type="button">no wrap</button>`,
+		`<button id="stamps" type="button">hide time</button>`,
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("expected page to contain %q\n%s", want, out)

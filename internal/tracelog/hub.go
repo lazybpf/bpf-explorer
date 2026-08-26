@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"log"
+	"strings"
 	"sync"
 )
 
@@ -116,13 +117,21 @@ func (h *Hub) unsubscribe(id uint64) {
 	}
 }
 
-// read scans the pipe line by line until it is cancelled or fails.
+// read scans the pipe line by line until it is cancelled or fails. Blank lines
+// never reach a subscriber: they turn up in trace_pipe output between records
+// and carry nothing - a real line always has a task, a cpu, a timestamp and a
+// message. Dropping them here rather than in each client keeps them out of every
+// stream, and off the wire.
 func (h *Hub) read(rc io.ReadCloser, gen uint64) {
 	defer rc.Close()
 
 	sc := bufio.NewScanner(rc)
 	for sc.Scan() {
-		h.broadcast(sc.Text())
+		line := sc.Text()
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		h.broadcast(line)
 	}
 	h.readerDone(gen, sc.Err())
 }
