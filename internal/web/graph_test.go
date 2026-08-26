@@ -127,6 +127,58 @@ func TestProgramGroupData(t *testing.T) {
 	}
 }
 
+func TestMapGroupData(t *testing.T) {
+	progs := []*pb.ProgramInfo{
+		{Id: 8, Name: "p_b", MapIds: []uint32{12, 13}},
+		{Id: 7, Name: "p_a", MapIds: []uint32{12}},
+		{Id: 9, Name: "p_c", MapIds: []uint32{13}}, // does not reference 12
+	}
+	links := []*pb.LinkInfo{
+		{Id: 4, Type: "xdp", ProgId: 7},
+		{Id: 3, Type: "tracing", ProgId: 9}, // attaches a program outside the group
+		{Id: 5, Type: "struct_ops"},         // no program at all
+	}
+	g := mapGroupData(12, progs, links)
+
+	if len(g.Maps) != 1 || g.Maps[0] != 12 {
+		t.Errorf("want just map 12, got %v", g.Maps)
+	}
+	// Referencing programs only, ordered by id.
+	if len(g.Progs) != 2 || g.Progs[0].GetId() != 7 || g.Progs[1].GetId() != 8 {
+		t.Errorf("want progs [7 8], got %+v", g.Progs)
+	}
+	if len(g.Links) != 1 || g.Links[0].GetId() != 4 {
+		t.Errorf("want only link 4 (attaches prog 7), got %+v", g.Links)
+	}
+}
+
+// TestBuildGroupMermaidFocusedMap covers the map-focused diagram: a program in
+// it references maps outside the group, which must not leak in as bare nodes.
+func TestBuildGroupMermaidFocusedMap(t *testing.T) {
+	progs := []*pb.ProgramInfo{{Id: 8, Name: "p_b", Type: "Kprobe", MapIds: []uint32{12, 12, 13}}}
+	mapByID := map[uint32]*pb.MapInfo{
+		12: {Id: 12, Name: "m_a", Type: "Hash"},
+		13: {Id: 13, Name: "m_b", Type: "Array"},
+	}
+	out := string(buildGroupMermaid(mapGroupData(12, progs, nil), mapByID, "node-a"))
+
+	for _, want := range []string{
+		`map_12[("map 12: m_a (Hash)")]`,
+		"prog_8 -->|uses| map_12",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("map diagram missing %q\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "map_13") {
+		t.Errorf("map 13 is outside the focused group and must not appear\n%s", out)
+	}
+	// MapIds lists 12 twice; the arrow must still be drawn once.
+	if n := strings.Count(out, "prog_8 -->|uses| map_12"); n != 1 {
+		t.Errorf("want 1 edge to map 12, got %d\n%s", n, out)
+	}
+}
+
 func TestLoadersIndexRender(t *testing.T) {
 	h, err := New(nil, nil)
 	if err != nil {
@@ -141,9 +193,20 @@ func TestLoadersIndexRender(t *testing.T) {
 		t.Fatalf("execute: %v", err)
 	}
 	// The link lives in the trailing action column as "graph", the same verb the
-	// programs and links tables use for this destination.
-	if out := buf.String(); !strings.Contains(out, `<a href="/nodes/node-a/loaders/sg_1000">graph</a>`) {
-		t.Errorf("loaders index missing loader graph link\n%s", out)
+	// programs, maps and links tables use for this destination, and opens in its
+	// own tab so the roster stays put.
+	out := buf.String()
+	for _, want := range []string{
+		`href="/nodes/node-a/loaders/sg_1000" target="_blank"`,
+		`>graph</a>`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("loaders index missing %q\n%s", want, out)
+		}
+	}
+	// The label itself is plain text: navigation belongs in the action column.
+	if strings.Contains(out, `>loader: agent(1000)</a>`) {
+		t.Errorf("group label should not be a link\n%s", out)
 	}
 }
 

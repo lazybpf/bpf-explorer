@@ -224,6 +224,39 @@ func TestMapsUndumpableShowsReason(t *testing.T) {
 	}
 }
 
+// TestMapsGraphLink verifies every map row offers a graph link - unlike dump,
+// which the map type can rule out - and that it opens in its own tab.
+func TestMapsGraphLink(t *testing.T) {
+	h, err := New(nil, nil)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	data := pageData{
+		Node: "node-a",
+		Tab:  "maps",
+		Maps: []*pb.MapInfo{
+			{Id: 42, Name: "counters", Type: "Hash", Dumpable: true},
+			{Id: 43, Name: "events", Type: "RingBuf"}, // undumpable, still graphable
+		},
+	}
+
+	var buf bytes.Buffer
+	if err := h.pages["maps"].ExecuteTemplate(&buf, "layout", data); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	out := buf.String()
+
+	for _, id := range []string{"42", "43"} {
+		if !strings.Contains(out, `href="/nodes/node-a/loaders/map/`+id+`" target="_blank"`) {
+			t.Errorf("map %s missing a graph link opening in a new tab\n%s", id, out)
+		}
+	}
+	if n := strings.Count(out, ">graph</a>"); n != 2 {
+		t.Errorf("want a graph link per map row, got %d\n%s", n, out)
+	}
+}
+
 // TestMapsDumpHexTooltip verifies a dump's hex cells carry an ASCII tooltip when
 // the bytes hold readable text, and none when they don't.
 func TestMapsDumpHexTooltip(t *testing.T) {

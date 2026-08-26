@@ -10,12 +10,12 @@
     <tr>
       <td>{{.Id}}</td><td>{{.Type}}</td>
       <td>
-        {{if .ProgId}}{{$name := progName $.Programs .ProgId}}<a href="/nodes/{{$.Node}}/programs/{{.ProgId}}"{{if $name}} title="{{$name}}"{{end}}>{{.ProgId}}</a>{{else}}<span class="muted">-</span>{{end}}
+        {{if .ProgId}}{{$name := progName $.Programs .ProgId}}<a href="/nodes/{{$.Node}}/programs/{{.ProgId}}" target="_blank" rel="noopener"{{if $name}} title="{{$name}}"{{end}}>{{.ProgId}}</a>{{else}}<span class="muted">-</span>{{end}}
       </td>
       <td>{{if .ProgId}}{{with progLoader $.Programs .ProgId}}{{.}}{{else}}<span class="muted">-</span>{{end}}{{else}}<span class="muted">-</span>{{end}}</td>
       <td>{{with .Attach}}{{.}}{{else}}<span class="muted">-</span>{{end}}</td>
       <td>
-        {{if .ProgId}}<a href="/nodes/{{$.Node}}/loaders/prog/{{.ProgId}}">graph</a>{{end}}
+        {{if .ProgId}}<a href="/nodes/{{$.Node}}/loaders/prog/{{.ProgId}}" target="_blank" rel="noopener" title="graph: this link's program, its maps and the links attaching it (new tab)">graph</a>{{end}}
       </td>
     </tr>
   {{else}}

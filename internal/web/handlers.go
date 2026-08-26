@@ -62,9 +62,11 @@ func (h *Handlers) Router() http.Handler {
 	mux.HandleFunc("GET /nodes/{node}/programs/{id}", h.programs)
 	mux.HandleFunc("GET /nodes/{node}/links", h.links)
 	mux.HandleFunc("GET /nodes/{node}/loaders", h.loadersIndex)
-	// The per-program diagram is not a loader, but it shares the loader tab and
-	// its template; it keeps this prefix until the URLs get a proper pass.
+	// The per-program and per-map diagrams are not loaders, but they share the
+	// loader tab and its template; they keep this prefix until the URLs get a
+	// proper pass. Neither collides with {group} below, which is one segment.
 	mux.HandleFunc("GET /nodes/{node}/loaders/prog/{id}", h.programGraph)
+	mux.HandleFunc("GET /nodes/{node}/loaders/map/{id}", h.mapGraph)
 	mux.HandleFunc("GET /nodes/{node}/loaders/{group}", h.loaderGraph)
 	mux.HandleFunc("GET /nodes/{node}/tracelog", h.tracelog)
 	mux.HandleFunc("GET /nodes/{node}/tracelog/stream", h.tracelogStream)
@@ -74,18 +76,18 @@ func (h *Handlers) Router() http.Handler {
 
 // pageData is the template model shared by all pages.
 type pageData struct {
-	Nodes       []string
-	Node        string
-	Tab         string
-	Err         string
-	Maps        []*pb.MapInfo
-	Programs    []*pb.ProgramInfo
-	Links       []*pb.LinkInfo
-	MapsByID    map[uint32]*pb.MapInfo // id -> map, for program map-ref tooltips
-	Dump        *dumpView
-	ProgDump    *progDumpView
+	Nodes      []string
+	Node       string
+	Tab        string
+	Err        string
+	Maps       []*pb.MapInfo
+	Programs   []*pb.ProgramInfo
+	Links      []*pb.LinkInfo
+	MapsByID   map[uint32]*pb.MapInfo // id -> map, for program map-ref tooltips
+	Dump       *dumpView
+	ProgDump   *progDumpView
 	Mermaid    template.HTML   // dependency diagram definition
-	GraphLabel string          // heading for a diagram page: a loader, or one program
+	GraphLabel string          // heading for a diagram page: a loader, a program or a map
 	Loaders    []loaderSummary // loader roster for the loaders index page
 }
 
@@ -341,8 +343,43 @@ func (h *Handlers) programGraph(w http.ResponseWriter, r *http.Request) {
 	for _, m := range maps {
 		mapByID[m.GetId()] = m
 	}
-	data.GraphLabel = fmt.Sprintf("prog %d: %s", prog.GetId(), prog.GetName())
+	// Same shape as the diagram's own node label, and as the map page's heading.
+	data.GraphLabel = fmt.Sprintf("prog %d: %s (%s)", prog.GetId(), prog.GetName(), prog.GetType())
 	data.Mermaid = buildGroupMermaid(programGroupData(prog, links), mapByID, node)
+	h.render(w, "loader", data)
+}
+
+// mapGraph renders a diagram focused on a single map: the programs referencing
+// it and the links attaching those programs. It reuses the loader diagram page.
+func (h *Handlers) mapGraph(w http.ResponseWriter, r *http.Request) {
+	node := r.PathValue("node")
+	data := pageData{Node: node, Tab: "loaders"}
+	data.Nodes, _ = h.nodes()
+
+	id, cerr := strconv.ParseUint(r.PathValue("id"), 10, 32)
+	if cerr != nil {
+		http.Error(w, "bad map id", http.StatusBadRequest)
+		return
+	}
+
+	progs, maps, links, err := h.fetchGraph(r, node)
+	if err != nil {
+		data.Err = err.Error()
+		h.render(w, "loader", data)
+		return
+	}
+	mapByID := map[uint32]*pb.MapInfo{}
+	for _, m := range maps {
+		mapByID[m.GetId()] = m
+	}
+	m, ok := mapByID[uint32(id)]
+	if !ok {
+		data.Err = fmt.Sprintf("map %d not found", id)
+		h.render(w, "loader", data)
+		return
+	}
+	data.GraphLabel = mapLabel(m.GetId(), m)
+	data.Mermaid = buildGroupMermaid(mapGroupData(uint32(id), progs, links), mapByID, node)
 	h.render(w, "loader", data)
 }
 

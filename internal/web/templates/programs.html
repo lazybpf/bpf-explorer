@@ -21,14 +21,14 @@
     <tr>
       <td>{{.Id}}</td><td>{{.Name}}</td><td>{{.Type}}</td><td><code>{{.Tag}}</code></td>
       <td>
-        {{range .MapIds}}{{$id := .}}{{$m := index $.MapsByID $id}}<a href="/nodes/{{$.Node}}/maps/{{$id}}"{{with $m}} title="{{.Name}} ({{.Type}})"{{end}}>{{$id}}</a>{{" "}}{{else}}<span class="muted">-</span>{{end}}
+        {{range .MapIds}}{{$id := .}}{{$m := index $.MapsByID $id}}<a href="/nodes/{{$.Node}}/maps/{{$id}}" target="_blank" rel="noopener"{{with $m}} title="{{.Name}} ({{.Type}})"{{end}}>{{$id}}</a>{{" "}}{{else}}<span class="muted">-</span>{{end}}
       </td>
       <td>
         {{range .Pids}}{{.Comm}}({{.Pid}}){{" "}}{{else}}<span class="muted">-</span>{{end}}
       </td>
       <td>
-        <a href="/nodes/{{$.Node}}/programs/{{.Id}}">xlated</a>{{" "}}
-        <a href="/nodes/{{$.Node}}/loaders/prog/{{.Id}}">graph</a>
+        <a href="/nodes/{{$.Node}}/programs/{{.Id}}" target="_blank" rel="noopener" title="xlated (post-verifier) instructions for this program (new tab)">xlated</a>{{" "}}
+        <a href="/nodes/{{$.Node}}/loaders/prog/{{.Id}}" target="_blank" rel="noopener" title="graph: this program, the maps it uses and the links attaching it (new tab)">graph</a>
       </td>
     </tr>
   {{else}}

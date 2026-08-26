@@ -46,12 +46,13 @@
       </td>
       <td>
         {{if .Dumpable}}
-          <a href="/nodes/{{$.Node}}/maps/{{.Id}}">dump</a>
+          <a href="/nodes/{{$.Node}}/maps/{{.Id}}" target="_blank" rel="noopener" title="this map's keys and values (new tab)">dump</a>
         {{else}}
           {{/* Same word, deliberately inert: the tooltip carries the reason the
                agent gave, so "why not?" is answerable without leaving the row. */}}
           <span class="disabled" title="cannot dump this map: {{with .DumpNote}}{{.}}{{else}}this map type does not support key iteration{{end}}">dump</span>
-        {{end}}
+        {{end}}{{" "}}
+        <a href="/nodes/{{$.Node}}/loaders/map/{{.Id}}" target="_blank" rel="noopener" title="graph: this map and the programs referencing it (new tab)">graph</a>
       </td>
     </tr>
   {{else}}

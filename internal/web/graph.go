@@ -153,8 +153,22 @@ func buildGroupMermaid(g *loaderGroupData, mapByID map[uint32]*pb.MapInfo, node 
 			fmt.Fprintf(&b, "  link_%d -->|attaches| prog_%d\n", l.GetId(), l.GetProgId())
 		}
 	}
+	// Edges only to maps this group declared above. A focused diagram - one map,
+	// one program - deliberately leaves out the other maps its programs
+	// reference, and mermaid would otherwise invent a bare node for each. The
+	// per-program seen set collapses a map a program references more than once,
+	// which would otherwise draw the same arrow twice.
+	declared := map[uint32]bool{}
+	for _, mid := range g.Maps {
+		declared[mid] = true
+	}
 	for _, p := range g.Progs {
+		seen := map[uint32]bool{}
 		for _, mid := range p.GetMapIds() {
+			if !declared[mid] || seen[mid] {
+				continue
+			}
+			seen[mid] = true
 			fmt.Fprintf(&b, "  prog_%d -->|uses| map_%d\n", p.GetId(), mid)
 		}
 	}
@@ -187,6 +201,27 @@ func programGroupData(p *pb.ProgramInfo, links []*pb.LinkInfo) *loaderGroupData 
 			g.Links = append(g.Links, l)
 		}
 	}
+	return g
+}
+
+// mapGroupData builds a single-map pseudo-group for the per-map graph: the map,
+// the programs referencing it, and the links attaching those programs. Programs
+// and links are ordered by id so the diagram is stable across requests.
+func mapGroupData(id uint32, progs []*pb.ProgramInfo, links []*pb.LinkInfo) *loaderGroupData {
+	g := &loaderGroupData{Maps: []uint32{id}}
+	for _, p := range progs {
+		if refsMap(p, id) {
+			g.Progs = append(g.Progs, p)
+		}
+	}
+	sort.Slice(g.Progs, func(i, j int) bool { return g.Progs[i].GetId() < g.Progs[j].GetId() })
+
+	for _, l := range links {
+		if findProg(g.Progs, l.GetProgId()) != nil {
+			g.Links = append(g.Links, l)
+		}
+	}
+	sort.Slice(g.Links, func(i, j int) bool { return g.Links[i].GetId() < g.Links[j].GetId() })
 	return g
 }
 
