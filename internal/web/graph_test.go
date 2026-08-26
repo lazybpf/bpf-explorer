@@ -140,8 +140,10 @@ func TestLoadersIndexRender(t *testing.T) {
 	if err := h.pages["loaders"].ExecuteTemplate(&buf, "layout", data); err != nil {
 		t.Fatalf("execute: %v", err)
 	}
-	if out := buf.String(); !strings.Contains(out, `href="/nodes/node-a/loaders/sg_1000"`) {
-		t.Errorf("loaders index missing loader link\n%s", out)
+	// The link lives in the trailing action column as "graph", the same verb the
+	// programs and links tables use for this destination.
+	if out := buf.String(); !strings.Contains(out, `<a href="/nodes/node-a/loaders/sg_1000">graph</a>`) {
+		t.Errorf("loaders index missing loader graph link\n%s", out)
 	}
 }
 
