@@ -2,20 +2,27 @@
 <nav class="nodes">
   {{if .Nodes}}
     {{$node := .Node}}{{$tab := .Tab}}
+    {{/* Switching node from a sub-page cannot carry the object across - map 42
+         on another node is a different map - so these always point at the
+         node's list, and the tooltip says so rather than letting the button
+         imply "same page, other node". */}}
     {{range .Nodes}}
-      <a class="{{if eq . $node}}active{{end}}" href="/nodes/{{.}}/{{$tab}}">{{.}}</a>
+      <a class="{{if eq . $node}}active{{end}}" href="/nodes/{{.}}/{{$tab}}" title="{{$tab}} on {{.}}">{{.}}</a>
     {{end}}
   {{else}}
     <span class="muted">no agents discovered</span>
   {{end}}
 </nav>
 {{if .Node}}
+{{/* On a sub-page - a dump, a diagram - the tab is "parent", not "active": it is
+     the way back to the list, so it must not claim to be the page you are on.
+     That marking is what a separate "all maps" back link used to be. */}}
 <p class="tabs">
-  <a class="{{if eq .Tab "maps"}}active{{end}}" href="/nodes/{{.Node}}/maps">maps</a>
-  <a class="{{if eq .Tab "programs"}}active{{end}}" href="/nodes/{{.Node}}/programs">programs</a>
-  <a class="{{if eq .Tab "links"}}active{{end}}" href="/nodes/{{.Node}}/links">links</a>
-  <a class="{{if eq .Tab "loaders"}}active{{end}}" href="/nodes/{{.Node}}/loaders">loaders</a>
-  <a class="{{if eq .Tab "tracelog"}}active{{end}}" href="/nodes/{{.Node}}/tracelog">tracelog</a>
+  <a class="{{tabClass .Tab .Sub "maps"}}" href="/nodes/{{.Node}}/maps">maps</a>
+  <a class="{{tabClass .Tab .Sub "programs"}}" href="/nodes/{{.Node}}/programs">programs</a>
+  <a class="{{tabClass .Tab .Sub "links"}}" href="/nodes/{{.Node}}/links">links</a>
+  <a class="{{tabClass .Tab .Sub "loaders"}}" href="/nodes/{{.Node}}/loaders">loaders</a>
+  <a class="{{tabClass .Tab .Sub "tracelog"}}" href="/nodes/{{.Node}}/tracelog">tracelog</a>
 </p>
 {{end}}
 {{if .Err}}<p class="err">error: {{.Err}}</p>{{end}}

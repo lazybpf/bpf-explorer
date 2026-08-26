@@ -35,7 +35,7 @@ type Handlers struct {
 func New(disc discovery.Discoverer, hiddenLoaders map[uint32]bool) (*Handlers, error) {
 	funcs := template.FuncMap{
 		"mapFlags": mapFlags, "progName": progName, "progLoader": progLoader,
-		"mapLoaders": mapLoaders, "hexASCII": hexASCII,
+		"mapLoaders": mapLoaders, "hexASCII": hexASCII, "tabClass": tabClass,
 		// Exposed as a func so every page gets it without threading it through
 		// each handler's pageData.
 		"version": version.String,
@@ -77,9 +77,11 @@ func (h *Handlers) Router() http.Handler {
 
 // pageData is the template model shared by all pages.
 type pageData struct {
-	// Title is the browser tab title, filled in by render from the page name and
-	// the data below - handlers do not set it.
+	// Title is the browser tab title and Sub says whether this page sits under
+	// its tab rather than being it. Both are filled in by render from the page
+	// name and the data below - handlers do not set them.
 	Title      string
+	Sub        bool
 	Nodes      []string
 	Node       string
 	Tab        string
@@ -482,10 +484,30 @@ func (h *Handlers) render(w http.ResponseWriter, page string, data pageData) {
 		return
 	}
 	data.Title = pageTitle(page, data)
+	data.Sub = subPages[page]
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := t.ExecuteTemplate(w, "layout", data); err != nil {
 		log.Printf("render %s: %v", page, err)
 	}
+}
+
+// subPages sit under a tab rather than being it: one map's contents, one
+// program's instructions, one diagram. Their tab is the way back up, so it must
+// not be painted as the page you are on.
+var subPages = map[string]bool{"mapdump": true, "progdump": true, "loader": true}
+
+// tabClass marks one entry in the tab bar. The tab whose page you are on is
+// "active" - inverse video, you are here. The tab a sub-page hangs under is
+// "parent": marked, because that is the section you are in, but not inverse,
+// because clicking it goes somewhere (up). Everything else is unmarked.
+func tabClass(tab string, sub bool, name string) string {
+	if tab != name {
+		return ""
+	}
+	if sub {
+		return "parent"
+	}
+	return "active"
 }
 
 // pageTitle builds the browser tab title, most specific part first: every action

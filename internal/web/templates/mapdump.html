@@ -1,10 +1,9 @@
 {{define "content"}}
 {{template "nodebar" .}}
 
-{{/* The contents alone, no maps list underneath: the list this dump was opened
-     from is still sitting in the tab behind it. */}}
-<p><a href="/nodes/{{.Node}}/maps">&larr; all maps</a></p>
-
+{{/* The contents alone: no maps list underneath - it is still sitting in the tab
+     this dump was opened from - and no back link either, since the tab bar above
+     marks the maps tab as the way up. */}}
 {{with .Dump}}
   <h2>map {{.ID}} — {{.Name}} contents
     {{if .Truncated}}<span class="badge">truncated</span>{{end}}

@@ -1,7 +1,7 @@
 {{define "content"}}
 {{template "nodebar" .}}
 
-<p><a href="/nodes/{{.Node}}/loaders">&larr; all loaders</a></p>
+{{/* No back link: the tab bar above marks the loaders tab as the way up. */}}
 <h2>{{.GraphLabel}}</h2>
 <p class="muted">
   links attach programs; programs reference maps.

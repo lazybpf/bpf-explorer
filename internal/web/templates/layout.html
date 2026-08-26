@@ -163,6 +163,14 @@
     background: var(--fg);
     color: var(--bg);
   }
+  /* The section a sub-page (a dump, a diagram) sits under. Underscored rather
+     than inverse: this tab is where you are, but not what you are looking at,
+     and it is the link back up. A hard inset rule, like the table row marker -
+     no glow, nothing soft. */
+  .tabs a.parent {
+    color: var(--fg-hi);
+    box-shadow: inset 0 -2px 0 var(--fg-hi);
+  }
 
   /* ── tables ──────────────────────────────────────────────────────────── */
   /* Every table is wrapped in .scroll so a wide one - the nine-column map

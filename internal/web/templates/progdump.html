@@ -1,10 +1,9 @@
 {{define "content"}}
 {{template "nodebar" .}}
 
-{{/* The instructions alone, no programs list underneath: the list this dump was
-     opened from is still sitting in the tab behind it. */}}
-<p><a href="/nodes/{{.Node}}/programs">&larr; all programs</a></p>
-
+{{/* The instructions alone: no programs list underneath - it is still sitting in
+     the tab this dump was opened from - and no back link either, since the tab
+     bar above marks the programs tab as the way up. */}}
 {{with .ProgDump}}
   <h2>program {{.ID}} — {{.Name}} xlated</h2>
   {{if .Available}}

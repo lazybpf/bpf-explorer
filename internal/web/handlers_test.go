@@ -62,6 +62,51 @@ func TestPageTitle(t *testing.T) {
 	}
 }
 
+// TestTabClass covers the three states of a tab bar entry. "active" claims you
+// are on that page, so a sub-page must not use it: it would be a lie, and it
+// made the old "all maps" back link look like a duplicate of a highlighted tab.
+func TestTabClass(t *testing.T) {
+	tests := []struct {
+		tab  string
+		sub  bool
+		name string
+		want string
+	}{
+		{"maps", false, "maps", "active"},
+		{"maps", true, "maps", "parent"},
+		{"maps", false, "programs", ""},
+		{"maps", true, "programs", ""},
+		{"loaders", true, "loaders", "parent"},
+	}
+	for _, tc := range tests {
+		if got := tabClass(tc.tab, tc.sub, tc.name); got != tc.want {
+			t.Errorf("tabClass(%q, %v, %q) = %q, want %q", tc.tab, tc.sub, tc.name, got, tc.want)
+		}
+	}
+}
+
+// TestRenderMarksSubPages verifies render decides the tab state from the page
+// name, so a dump reached by any route gets the parent marking and a list does
+// not, without either template knowing about it.
+func TestRenderMarksSubPages(t *testing.T) {
+	h, err := New(nil, nil)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	rec := httptest.NewRecorder()
+	h.render(rec, "mapdump", pageData{Node: "node-a", Tab: "maps", Dump: &dumpView{ID: 42}})
+	if out := rec.Body.String(); !strings.Contains(out, `<a class="parent" href="/nodes/node-a/maps">`) {
+		t.Errorf("map dump should mark the maps tab as parent\n%s", out)
+	}
+
+	rec = httptest.NewRecorder()
+	h.render(rec, "maps", pageData{Node: "node-a", Tab: "maps"})
+	if out := rec.Body.String(); !strings.Contains(out, `<a class="active" href="/nodes/node-a/maps">`) {
+		t.Errorf("maps list should mark the maps tab as active\n%s", out)
+	}
+}
+
 // TestRenderSetsTitle verifies render injects the title, so no handler has to
 // remember to - a page added later gets a real tab name for free.
 func TestRenderSetsTitle(t *testing.T) {
@@ -178,9 +223,11 @@ func TestProgramsXlatedDump(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 
+	// Sub is what render sets for a dump page; the tab bar reads it.
 	base := pageData{
 		Node:     "node-a",
 		Tab:      "programs",
+		Sub:      true,
 		Programs: []*pb.ProgramInfo{{Id: 5, Name: "trace_conn"}},
 	}
 
@@ -200,8 +247,9 @@ func TestProgramsXlatedDump(t *testing.T) {
 	if strings.Contains(out, "programs on node-a") {
 		t.Errorf("xlated page should not repeat the programs list\n%s", out)
 	}
-	if !strings.Contains(out, `href="/nodes/node-a/programs"`) {
-		t.Errorf("xlated page needs a link back to the programs list\n%s", out)
+	// The way back up is the tab bar, marked as the section this page sits under.
+	if !strings.Contains(out, `<a class="parent" href="/nodes/node-a/programs">`) {
+		t.Errorf("xlated page needs the programs tab marked as its parent\n%s", out)
 	}
 
 	// Unavailable: shows the note, not a listing.
@@ -227,6 +275,7 @@ func TestMapsDumpOwnPage(t *testing.T) {
 	data := pageData{
 		Node: "node-a",
 		Tab:  "maps",
+		Sub:  true, // what render sets for a dump page
 		Maps: []*pb.MapInfo{{Id: 42, Name: "counters", Dumpable: true}},
 		Dump: &dumpView{
 			ID:      42,
@@ -248,8 +297,9 @@ func TestMapsDumpOwnPage(t *testing.T) {
 	if strings.Contains(out, "maps on node-a") {
 		t.Errorf("dump page should not repeat the maps list\n%s", out)
 	}
-	if !strings.Contains(out, `href="/nodes/node-a/maps"`) {
-		t.Errorf("dump page needs a link back to the maps list\n%s", out)
+	// The way back up is the tab bar, marked as the section this page sits under.
+	if !strings.Contains(out, `<a class="parent" href="/nodes/node-a/maps">`) {
+		t.Errorf("dump page needs the maps tab marked as its parent\n%s", out)
 	}
 	// data.Maps is still populated (it names the dumped map) but must not render
 	// as a table of its own.
