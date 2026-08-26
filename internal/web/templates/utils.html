@@ -1,0 +1,181 @@
+{{define "content"}}
+{{template "nodebar" .}}
+{{$look := .Lookup}}
+
+<h2>utils on {{.Node}}</h2>
+<p class="muted">
+  the two questions a map full of raw numbers raises. Both lookups read
+  <code>/proc</code> on the node, so they see what the agent can see: with
+  <code>hostPID</code> that is every process on the host.
+</p>
+
+{{/* ASCII arrow, not &rarr;: the display face has no glyph for it, so the
+     browser substitutes another font for that one character and it lands
+     misaligned in a row of monospace. */}}
+<h2>inode -&gt; path</h2>
+<p class="muted">
+  the kernel has no inode-to-path call, so <em>look up</em> searches the two places
+  that record an inode next to a pathname: open file descriptors and file-backed
+  memory mappings. That is instant, and it only sees files some process holds
+  right now. <em>walk filesystem</em> is the other way - <code>find -inum</code>,
+  which finds a file nothing has open, and every hard link to it, at the cost of
+  stat-ing the tree.
+</p>
+
+{{/* GET, so an answer can be linked to and reloaded. The hidden field carries
+     the other lookup along, otherwise submitting one clears the other. */}}
+<form class="controls" method="get" action="/nodes/{{.Node}}/utils">
+  <label>inode
+    <input type="text" name="inode" value="{{with $look}}{{.Inode}}{{end}}"
+           size="18" placeholder="1179921 or 0x120051" autofocus>
+  </label>
+  <label>device
+    <input type="text" name="dev" value="{{with $look}}{{.Device}}{{end}}"
+           size="12" placeholder="253:1 (optional)"
+           title="an inode number is unique only within one filesystem, so a lookup without a device can match unrelated files - each result names the device it was found on">
+  </label>
+  <label>walk under
+    <input type="text" name="root" value="{{with $look}}{{.WalkRoot}}{{end}}"
+           size="16" placeholder="/ (optional)"
+           title="where a filesystem walk starts. The walk never crosses onto another filesystem, since the same inode number there is a different file - so name a root on the filesystem you mean, or give a device and its mount is used">
+  </label>
+  <input type="hidden" name="pid" value="{{with $look}}{{.PID}}{{end}}">
+  <button type="submit" title="instant: only files a process holds open or mapped">look up</button>
+  <button type="submit" name="walk" value="1"
+          title="also walk the filesystem - finds a file nothing holds, and every hard link to it. Up to a minute on a large tree">walk filesystem</button>
+</form>
+
+{{with $look}}
+  {{with .InodeErr}}<p class="err">{{.}}</p>{{end}}
+
+  {{if .Searched}}
+    {{if .Matches}}
+      <div class="scroll">
+      <table>
+        <thead><tr>
+          <th>Path</th>
+          <th title="major:minor of the filesystem the inode lives on">Device</th>
+          <th>Mount</th>
+          <th title="every process holding this path open or mapped">Held by</th>
+        </tr></thead>
+        <tbody>
+        {{range .Matches}}
+          <tr>
+            <td>
+              <code>{{.Path}}</code>
+              {{if .Deleted}}<span class="badge">deleted</span>{{end}}
+              {{with .HostPath}}
+                {{/* The holder is in another mount namespace, so its path does
+                     not name the same file for the agent - this form does. */}}
+                <div class="muted">in another mount namespace; from the agent: <code>{{.}}</code></div>
+              {{end}}
+            </td>
+            <td>{{.Device}}</td>
+            <td>{{with .Mount}}<code>{{.}}</code>{{else}}<span class="muted">-</span>{{end}}</td>
+            <td>
+              {{if .FromWalk}}
+                {{/* On disk, held by nothing - the case the /proc search is
+                     blind to, and the reason the walk exists. */}}
+                <span class="muted">nothing - on disk only</span>
+              {{end}}
+              {{$total := len .Holders}}
+              {{with holders .Holders}}
+                {{range .Head}}
+                  <div>
+                    <a href="/nodes/{{$.Node}}/utils?inode={{$look.Inode}}&dev={{$look.Device}}&pid={{.Pid}}"
+                       title="describe this process">{{with .Comm}}{{.}}{{else}}?{{end}}({{.Pid}})</a>
+                    <span class="muted">{{if eq .Source "fd"}}fd {{.Fd}}{{else}}mapped{{end}}</span>
+                  </div>
+                {{end}}
+                {{if .More}}
+                  <div class="muted" title="lowest pids shown; a widely linked library is mapped by nearly everything">and {{.More}} more, {{$total}} in all</div>
+                {{end}}
+              {{end}}
+            </td>
+          </tr>
+        {{end}}
+        </tbody>
+      </table>
+      </div>
+    {{else if .Scanned}}
+      <p class="muted">
+        nothing holds inode <code>{{.Inode}}</code>{{with .Device}} on device <code>{{.}}</code>{{end}}:
+        searched the open files and mappings of {{.Scanned}} processes.
+        {{if not .Walk}}
+          A file nobody has open is invisible to that search - it has to be found
+          on disk instead:
+          <a href="/nodes/{{$.Node}}/utils?inode={{.Inode}}&dev={{.Device}}&root={{.WalkRoot}}&pid={{.PID}}&walk=1"
+             title="find -inum: stats the tree, up to a minute">walk the filesystem</a>.
+        {{end}}
+      </p>
+    {{else}}
+      {{/* Nothing was searched, so the empty result is not an answer. */}}
+      <p class="warn">
+        no processes were searched: the agent cannot read <code>/proc</code>.
+        In a cluster that means the DaemonSet is missing <code>hostPID</code>;
+        this says nothing about inode <code>{{.Inode}}</code>.
+      </p>
+    {{end}}
+
+    {{/* What the walk actually did. Without this a fruitless walk and one that
+         ran out of time look identical, and the cost stays invisible. */}}
+    {{with .Stats}}
+      {{if .Ran}}
+        <p class="{{if .TimedOut}}warn{{else}}muted{{end}}">
+          walked <code>{{.Root}}</code> on device <code>{{.Device}}</code>:
+          {{comma .Files}} files in {{comma .Dirs}} directories,
+          {{printf "%.1f" .Seconds}}s.
+          {{if .TimedOut}}
+            Gave up with the tree unfinished - narrow the root, or give the
+            device the inode is on, and search again.
+          {{end}}
+          {{with .Note}}<br>{{.}}{{end}}
+        </p>
+      {{else if .Note}}
+        <p class="err">no walk: {{.Note}}</p>
+      {{end}}
+    {{end}}
+  {{end}}
+{{end}}
+
+<h2>pid -&gt; process</h2>
+<p class="muted">
+  what <code>/proc</code> knows about one pid - the other half of the same
+  question, since maps key on pid and tgid as often as on inode.
+</p>
+
+<form class="controls" method="get" action="/nodes/{{.Node}}/utils">
+  <label>pid
+    <input type="text" name="pid" value="{{with $look}}{{.PID}}{{end}}" size="12" placeholder="1234">
+  </label>
+  <input type="hidden" name="inode" value="{{with $look}}{{.Inode}}{{end}}">
+  <input type="hidden" name="dev" value="{{with $look}}{{.Device}}{{end}}">
+  <button type="submit">describe</button>
+</form>
+
+{{with $look}}
+  {{with .PIDErr}}<p class="err">{{.}}</p>{{end}}
+
+  {{with .Process}}
+    {{if .Found}}
+      <table class="kv">
+        <tr><th>pid</th><td>{{.Pid}}</td></tr>
+        <tr><th>comm</th><td>{{.Comm}}</td></tr>
+        <tr><th>state</th><td>{{.State}}</td></tr>
+        <tr><th title="parent pid">ppid</th><td>{{.Ppid}}</td></tr>
+        <tr><th title="real user id">uid</th><td>{{.Uid}}</td></tr>
+        <tr><th>cmdline</th><td>{{with .Cmdline}}<code>{{.}}</code>{{else}}<span class="muted">(none - a kernel thread)</span>{{end}}</td></tr>
+        <tr><th>exe</th><td>{{with .Exe}}<code>{{.}}</code>{{else}}<span class="muted">-</span>{{end}}</td></tr>
+        <tr><th title="the unified (v2) cgroup, which carries the pod slice on a k8s node">cgroup</th>
+            <td>{{with .Cgroup}}<code>{{.}}</code>{{else}}<span class="muted">-</span>{{end}}</td></tr>
+      </table>
+    {{else}}
+      <p class="muted">
+        no process <code>{{$look.PID}}</code> on this node: it exited, or
+        <code>/proc</code> is not visible to the agent. A pid read out of a map
+        is often already gone - and the number gets reused.
+      </p>
+    {{end}}
+  {{end}}
+{{end}}
+{{end}}

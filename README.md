@@ -98,12 +98,59 @@ Each node has a `tracelog` tab that tails tracefs `trace_pipe` - the same source
 as `bpftool prog tracelog`, where `bpf_trace_printk()` output lands. Lines stream
 to the browser over
 [server-sent events](https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events),
-with pause, clear, and a substring filter.
+newest line first, with pause, clear, a substring filter, arrival timestamps and
+a wrap toggle.
 
 > [!WARNING]
 > Reading `trace_pipe` drains the node's single global trace buffer, so anything
 > else tailing that pipe will not see the lines the page consumes. The agent
 > keeps one reader shared by all viewers, open only while someone is streaming.
+
+## Utils: inode and pid lookup
+
+Maps are full of raw numbers. The `utils` tab turns two of them back into
+something readable, per node:
+
+- **inode → path.** The kernel has no inode-to-path call, so there are two
+  searches, and the page offers both:
+  - **look up** reads the two places that record an inode next to a pathname:
+    open file descriptors (`/proc/<pid>/fd`) and file-backed memory mappings
+    (`/proc/<pid>/maps`). Instant - a few hundred processes take tens of
+    milliseconds - but it only sees files a process holds right now.
+  - **walk filesystem** is `find -inum`: it finds a file nothing has open, and
+    every hard link to it. It stops as soon as it has all the links the inode
+    claims, so the common single-link case ends at the first hit - a full root
+    filesystem here took 2.9s over 232,000 files. Directories count as answers,
+    which means a `bpf_get_current_cgroup_id()` value resolves to its cgroup path
+    (walk under `/sys/fs/cgroup`).
+
+  Either way each hit names the device and mount it was found on, and every
+  process holding it. Accepts decimal or `0x`-prefixed hex, and takes an optional
+  `major:minor` device.
+- **pid → process.** comm, state, ppid, uid, command line, exe and the unified
+  cgroup path - which on a Kubernetes node carries the pod's slice.
+
+Both read `/proc` on the node, so they see what the agent sees: with `hostPID`
+(which the DaemonSet already sets) that is every process on the host, and the
+host's filesystem through pid 1's mount namespace.
+
+> [!IMPORTANT]
+> A `look up` hit is a file some process holds **right now**, and a miss means
+> only that - the page says how many processes it searched, and offers the walk,
+> which is what can answer for a file nothing has open. When it could not read
+> `/proc` at all it says that instead, because then an empty result is not an
+> answer to anything.
+>
+> An inode number is unique only within one filesystem. That is why an unfiltered
+> lookup can match unrelated files on different devices, why every hit names its
+> device, and why the walk never crosses a mount point: an inode found on another
+> filesystem would be a different file. Give a device (its mount becomes the
+> root) or an explicit root to search a filesystem other than the host's `/`.
+>
+> A walk that runs out of its budget says so and returns what it has, rather than
+> looking like a miss. A holder in another mount namespace (a container) has a
+> path that means nothing to the host; the page also shows the
+> `/proc/<pid>/root/...` form that reaches the same file.
 
 ## Cleanup
 

@@ -19,12 +19,14 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	BpfInspector_ListMaps_FullMethodName     = "/bpfinspector.v1.BpfInspector/ListMaps"
-	BpfInspector_DumpMap_FullMethodName      = "/bpfinspector.v1.BpfInspector/DumpMap"
-	BpfInspector_ListPrograms_FullMethodName = "/bpfinspector.v1.BpfInspector/ListPrograms"
-	BpfInspector_DumpProgram_FullMethodName  = "/bpfinspector.v1.BpfInspector/DumpProgram"
-	BpfInspector_ListLinks_FullMethodName    = "/bpfinspector.v1.BpfInspector/ListLinks"
-	BpfInspector_TraceLog_FullMethodName     = "/bpfinspector.v1.BpfInspector/TraceLog"
+	BpfInspector_ListMaps_FullMethodName        = "/bpfinspector.v1.BpfInspector/ListMaps"
+	BpfInspector_DumpMap_FullMethodName         = "/bpfinspector.v1.BpfInspector/DumpMap"
+	BpfInspector_ListPrograms_FullMethodName    = "/bpfinspector.v1.BpfInspector/ListPrograms"
+	BpfInspector_DumpProgram_FullMethodName     = "/bpfinspector.v1.BpfInspector/DumpProgram"
+	BpfInspector_ListLinks_FullMethodName       = "/bpfinspector.v1.BpfInspector/ListLinks"
+	BpfInspector_TraceLog_FullMethodName        = "/bpfinspector.v1.BpfInspector/TraceLog"
+	BpfInspector_ResolveInode_FullMethodName    = "/bpfinspector.v1.BpfInspector/ResolveInode"
+	BpfInspector_DescribeProcess_FullMethodName = "/bpfinspector.v1.BpfInspector/DescribeProcess"
 )
 
 // BpfInspectorClient is the client API for BpfInspector service.
@@ -42,6 +44,8 @@ type BpfInspectorClient interface {
 	DumpProgram(ctx context.Context, in *DumpProgramRequest, opts ...grpc.CallOption) (*DumpProgramResponse, error)
 	ListLinks(ctx context.Context, in *ListLinksRequest, opts ...grpc.CallOption) (*ListLinksResponse, error)
 	TraceLog(ctx context.Context, in *TraceLogRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[TraceLogEvent], error)
+	ResolveInode(ctx context.Context, in *ResolveInodeRequest, opts ...grpc.CallOption) (*ResolveInodeResponse, error)
+	DescribeProcess(ctx context.Context, in *DescribeProcessRequest, opts ...grpc.CallOption) (*DescribeProcessResponse, error)
 }
 
 type bpfInspectorClient struct {
@@ -121,6 +125,26 @@ func (c *bpfInspectorClient) TraceLog(ctx context.Context, in *TraceLogRequest, 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type BpfInspector_TraceLogClient = grpc.ServerStreamingClient[TraceLogEvent]
 
+func (c *bpfInspectorClient) ResolveInode(ctx context.Context, in *ResolveInodeRequest, opts ...grpc.CallOption) (*ResolveInodeResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ResolveInodeResponse)
+	err := c.cc.Invoke(ctx, BpfInspector_ResolveInode_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *bpfInspectorClient) DescribeProcess(ctx context.Context, in *DescribeProcessRequest, opts ...grpc.CallOption) (*DescribeProcessResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DescribeProcessResponse)
+	err := c.cc.Invoke(ctx, BpfInspector_DescribeProcess_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // BpfInspectorServer is the server API for BpfInspector service.
 // All implementations must embed UnimplementedBpfInspectorServer
 // for forward compatibility.
@@ -136,6 +160,8 @@ type BpfInspectorServer interface {
 	DumpProgram(context.Context, *DumpProgramRequest) (*DumpProgramResponse, error)
 	ListLinks(context.Context, *ListLinksRequest) (*ListLinksResponse, error)
 	TraceLog(*TraceLogRequest, grpc.ServerStreamingServer[TraceLogEvent]) error
+	ResolveInode(context.Context, *ResolveInodeRequest) (*ResolveInodeResponse, error)
+	DescribeProcess(context.Context, *DescribeProcessRequest) (*DescribeProcessResponse, error)
 	mustEmbedUnimplementedBpfInspectorServer()
 }
 
@@ -163,6 +189,12 @@ func (UnimplementedBpfInspectorServer) ListLinks(context.Context, *ListLinksRequ
 }
 func (UnimplementedBpfInspectorServer) TraceLog(*TraceLogRequest, grpc.ServerStreamingServer[TraceLogEvent]) error {
 	return status.Error(codes.Unimplemented, "method TraceLog not implemented")
+}
+func (UnimplementedBpfInspectorServer) ResolveInode(context.Context, *ResolveInodeRequest) (*ResolveInodeResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ResolveInode not implemented")
+}
+func (UnimplementedBpfInspectorServer) DescribeProcess(context.Context, *DescribeProcessRequest) (*DescribeProcessResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method DescribeProcess not implemented")
 }
 func (UnimplementedBpfInspectorServer) mustEmbedUnimplementedBpfInspectorServer() {}
 func (UnimplementedBpfInspectorServer) testEmbeddedByValue()                      {}
@@ -286,6 +318,42 @@ func _BpfInspector_TraceLog_Handler(srv interface{}, stream grpc.ServerStream) e
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type BpfInspector_TraceLogServer = grpc.ServerStreamingServer[TraceLogEvent]
 
+func _BpfInspector_ResolveInode_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ResolveInodeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BpfInspectorServer).ResolveInode(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: BpfInspector_ResolveInode_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BpfInspectorServer).ResolveInode(ctx, req.(*ResolveInodeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _BpfInspector_DescribeProcess_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DescribeProcessRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BpfInspectorServer).DescribeProcess(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: BpfInspector_DescribeProcess_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BpfInspectorServer).DescribeProcess(ctx, req.(*DescribeProcessRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // BpfInspector_ServiceDesc is the grpc.ServiceDesc for BpfInspector service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -312,6 +380,14 @@ var BpfInspector_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListLinks",
 			Handler:    _BpfInspector_ListLinks_Handler,
+		},
+		{
+			MethodName: "ResolveInode",
+			Handler:    _BpfInspector_ResolveInode_Handler,
+		},
+		{
+			MethodName: "DescribeProcess",
+			Handler:    _BpfInspector_DescribeProcess_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

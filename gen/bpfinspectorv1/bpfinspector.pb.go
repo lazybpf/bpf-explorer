@@ -994,6 +994,597 @@ func (x *TraceLogEvent) GetDropped() uint64 {
 	return 0
 }
 
+// ResolveInode answers the question a BPF map full of inode numbers raises:
+// which file is this? The kernel offers no inode -> path call, so the agent
+// searches the two places on a node that already record both an inode and a
+// path - open file descriptors and mapped files, read from /proc.
+//
+// That bounds what an answer can mean. A hit is a file some process has open or
+// mapped RIGHT NOW. A miss is "nothing holds it at this moment", never "no such
+// file": a file nobody has open is invisible to this search, and so is one whose
+// holder exited between the map write and the lookup.
+//
+// Requires the agent to see host PIDs (hostPID), like ProcessRef.
+type ResolveInodeRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Inode uint64                 `protobuf:"varint,1,opt,name=inode,proto3" json:"inode,omitempty"`
+	// Optional "major:minor" (decimal) filter. An inode number is unique only
+	// within a filesystem, so an unfiltered lookup can match unrelated files on
+	// different devices - each match names its own device to make that visible.
+	Device string `protobuf:"bytes,2,opt,name=device,proto3" json:"device,omitempty"`
+	// Also walk the filesystem, which finds a file nothing holds - the case the
+	// /proc search cannot see at all. This is `find -inum`: minutes of stat calls
+	// on a large tree, so it runs only when asked for, never as a fallback.
+	Walk bool `protobuf:"varint,3,opt,name=walk,proto3" json:"walk,omitempty"`
+	// Where the walk starts. Empty means the host's root. The walk never crosses
+	// onto another filesystem, since the same inode number there is a different
+	// file - so a device narrows the start point to that device's mount, and an
+	// explicit root is the way to search a filesystem the default misses.
+	WalkRoot string `protobuf:"bytes,4,opt,name=walk_root,json=walkRoot,proto3" json:"walk_root,omitempty"`
+	// How long the walk may run before giving up and returning what it has. Zero
+	// means the agent's default.
+	WalkSeconds   uint32 `protobuf:"varint,5,opt,name=walk_seconds,json=walkSeconds,proto3" json:"walk_seconds,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ResolveInodeRequest) Reset() {
+	*x = ResolveInodeRequest{}
+	mi := &file_proto_bpfinspector_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ResolveInodeRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ResolveInodeRequest) ProtoMessage() {}
+
+func (x *ResolveInodeRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_bpfinspector_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ResolveInodeRequest.ProtoReflect.Descriptor instead.
+func (*ResolveInodeRequest) Descriptor() ([]byte, []int) {
+	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *ResolveInodeRequest) GetInode() uint64 {
+	if x != nil {
+		return x.Inode
+	}
+	return 0
+}
+
+func (x *ResolveInodeRequest) GetDevice() string {
+	if x != nil {
+		return x.Device
+	}
+	return ""
+}
+
+func (x *ResolveInodeRequest) GetWalk() bool {
+	if x != nil {
+		return x.Walk
+	}
+	return false
+}
+
+func (x *ResolveInodeRequest) GetWalkRoot() string {
+	if x != nil {
+		return x.WalkRoot
+	}
+	return ""
+}
+
+func (x *ResolveInodeRequest) GetWalkSeconds() uint32 {
+	if x != nil {
+		return x.WalkSeconds
+	}
+	return 0
+}
+
+// WalkStats says what the filesystem walk actually did, so a result that found
+// nothing can be told apart from one that ran out of time - and so the cost of
+// the answer is visible.
+type WalkStats struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Ran           bool                   `protobuf:"varint,1,opt,name=ran,proto3" json:"ran,omitempty"`
+	Root          string                 `protobuf:"bytes,2,opt,name=root,proto3" json:"root,omitempty"`     // where it started, as a path on the host
+	Device        string                 `protobuf:"bytes,3,opt,name=device,proto3" json:"device,omitempty"` // the one filesystem it stayed on
+	Dirs          uint64                 `protobuf:"varint,4,opt,name=dirs,proto3" json:"dirs,omitempty"`
+	Files         uint64                 `protobuf:"varint,5,opt,name=files,proto3" json:"files,omitempty"`                       // entries whose inode was checked
+	TimedOut      bool                   `protobuf:"varint,6,opt,name=timed_out,json=timedOut,proto3" json:"timed_out,omitempty"` // gave up with tree left to search
+	Seconds       float64                `protobuf:"fixed64,7,opt,name=seconds,proto3" json:"seconds,omitempty"`
+	Note          string                 `protobuf:"bytes,8,opt,name=note,proto3" json:"note,omitempty"` // why it could not run, when ran is false
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *WalkStats) Reset() {
+	*x = WalkStats{}
+	mi := &file_proto_bpfinspector_proto_msgTypes[18]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *WalkStats) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*WalkStats) ProtoMessage() {}
+
+func (x *WalkStats) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_bpfinspector_proto_msgTypes[18]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use WalkStats.ProtoReflect.Descriptor instead.
+func (*WalkStats) Descriptor() ([]byte, []int) {
+	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{18}
+}
+
+func (x *WalkStats) GetRan() bool {
+	if x != nil {
+		return x.Ran
+	}
+	return false
+}
+
+func (x *WalkStats) GetRoot() string {
+	if x != nil {
+		return x.Root
+	}
+	return ""
+}
+
+func (x *WalkStats) GetDevice() string {
+	if x != nil {
+		return x.Device
+	}
+	return ""
+}
+
+func (x *WalkStats) GetDirs() uint64 {
+	if x != nil {
+		return x.Dirs
+	}
+	return 0
+}
+
+func (x *WalkStats) GetFiles() uint64 {
+	if x != nil {
+		return x.Files
+	}
+	return 0
+}
+
+func (x *WalkStats) GetTimedOut() bool {
+	if x != nil {
+		return x.TimedOut
+	}
+	return false
+}
+
+func (x *WalkStats) GetSeconds() float64 {
+	if x != nil {
+		return x.Seconds
+	}
+	return 0
+}
+
+func (x *WalkStats) GetNote() string {
+	if x != nil {
+		return x.Note
+	}
+	return ""
+}
+
+// InodeHolder is one process holding a path open or mapped.
+type InodeHolder struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Pid   uint32                 `protobuf:"varint,1,opt,name=pid,proto3" json:"pid,omitempty"`
+	Comm  string                 `protobuf:"bytes,2,opt,name=comm,proto3" json:"comm,omitempty"`
+	// How this process was found to hold it: "fd" (an open file descriptor, with
+	// fd naming it) or "map" (a file-backed memory mapping).
+	Source        string `protobuf:"bytes,3,opt,name=source,proto3" json:"source,omitempty"`
+	Fd            string `protobuf:"bytes,4,opt,name=fd,proto3" json:"fd,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *InodeHolder) Reset() {
+	*x = InodeHolder{}
+	mi := &file_proto_bpfinspector_proto_msgTypes[19]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *InodeHolder) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*InodeHolder) ProtoMessage() {}
+
+func (x *InodeHolder) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_bpfinspector_proto_msgTypes[19]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use InodeHolder.ProtoReflect.Descriptor instead.
+func (*InodeHolder) Descriptor() ([]byte, []int) {
+	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{19}
+}
+
+func (x *InodeHolder) GetPid() uint32 {
+	if x != nil {
+		return x.Pid
+	}
+	return 0
+}
+
+func (x *InodeHolder) GetComm() string {
+	if x != nil {
+		return x.Comm
+	}
+	return ""
+}
+
+func (x *InodeHolder) GetSource() string {
+	if x != nil {
+		return x.Source
+	}
+	return ""
+}
+
+func (x *InodeHolder) GetFd() string {
+	if x != nil {
+		return x.Fd
+	}
+	return ""
+}
+
+// InodeMatch is one path found for the inode, with every process holding it.
+// Paths are grouped rather than repeated per process: one shared library can be
+// mapped by every process on the node, and that is one answer, not four hundred.
+type InodeMatch struct {
+	state   protoimpl.MessageState `protogen:"open.v1"`
+	Path    string                 `protobuf:"bytes,1,opt,name=path,proto3" json:"path,omitempty"`
+	Device  string                 `protobuf:"bytes,2,opt,name=device,proto3" json:"device,omitempty"`    // "major:minor" of the filesystem the inode lives on
+	Mount   string                 `protobuf:"bytes,3,opt,name=mount,proto3" json:"mount,omitempty"`      // mount point for device, empty when not resolvable
+	Deleted bool                   `protobuf:"varint,4,opt,name=deleted,proto3" json:"deleted,omitempty"` // unlinked; the holder keeps it alive
+	// The path is as the holder sees it. When the holder lives in another mount
+	// namespace (a container), that path does not exist on the host - reach it at
+	// /proc/<pid>/root<path> instead. host_path carries that form, and is empty
+	// when the holder shares the host's root.
+	HostPath string         `protobuf:"bytes,5,opt,name=host_path,json=hostPath,proto3" json:"host_path,omitempty"`
+	Holders  []*InodeHolder `protobuf:"bytes,6,rep,name=holders,proto3" json:"holders,omitempty"`
+	// Found by walking the filesystem rather than by a process holding it. Such a
+	// match has no holders: it is a file on disk that nothing has open.
+	FromWalk      bool `protobuf:"varint,7,opt,name=from_walk,json=fromWalk,proto3" json:"from_walk,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *InodeMatch) Reset() {
+	*x = InodeMatch{}
+	mi := &file_proto_bpfinspector_proto_msgTypes[20]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *InodeMatch) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*InodeMatch) ProtoMessage() {}
+
+func (x *InodeMatch) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_bpfinspector_proto_msgTypes[20]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use InodeMatch.ProtoReflect.Descriptor instead.
+func (*InodeMatch) Descriptor() ([]byte, []int) {
+	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{20}
+}
+
+func (x *InodeMatch) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
+}
+
+func (x *InodeMatch) GetDevice() string {
+	if x != nil {
+		return x.Device
+	}
+	return ""
+}
+
+func (x *InodeMatch) GetMount() string {
+	if x != nil {
+		return x.Mount
+	}
+	return ""
+}
+
+func (x *InodeMatch) GetDeleted() bool {
+	if x != nil {
+		return x.Deleted
+	}
+	return false
+}
+
+func (x *InodeMatch) GetHostPath() string {
+	if x != nil {
+		return x.HostPath
+	}
+	return ""
+}
+
+func (x *InodeMatch) GetHolders() []*InodeHolder {
+	if x != nil {
+		return x.Holders
+	}
+	return nil
+}
+
+func (x *InodeMatch) GetFromWalk() bool {
+	if x != nil {
+		return x.FromWalk
+	}
+	return false
+}
+
+type ResolveInodeResponse struct {
+	state   protoimpl.MessageState `protogen:"open.v1"`
+	Matches []*InodeMatch          `protobuf:"bytes,1,rep,name=matches,proto3" json:"matches,omitempty"`
+	// How many processes the answer is based on. Zero means /proc was unreadable
+	// or empty - a miss says nothing at all, and the UI should say so rather than
+	// report "not found".
+	ProcessesScanned uint32     `protobuf:"varint,2,opt,name=processes_scanned,json=processesScanned,proto3" json:"processes_scanned,omitempty"`
+	Walk             *WalkStats `protobuf:"bytes,3,opt,name=walk,proto3" json:"walk,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
+}
+
+func (x *ResolveInodeResponse) Reset() {
+	*x = ResolveInodeResponse{}
+	mi := &file_proto_bpfinspector_proto_msgTypes[21]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ResolveInodeResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ResolveInodeResponse) ProtoMessage() {}
+
+func (x *ResolveInodeResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_bpfinspector_proto_msgTypes[21]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ResolveInodeResponse.ProtoReflect.Descriptor instead.
+func (*ResolveInodeResponse) Descriptor() ([]byte, []int) {
+	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{21}
+}
+
+func (x *ResolveInodeResponse) GetMatches() []*InodeMatch {
+	if x != nil {
+		return x.Matches
+	}
+	return nil
+}
+
+func (x *ResolveInodeResponse) GetProcessesScanned() uint32 {
+	if x != nil {
+		return x.ProcessesScanned
+	}
+	return 0
+}
+
+func (x *ResolveInodeResponse) GetWalk() *WalkStats {
+	if x != nil {
+		return x.Walk
+	}
+	return nil
+}
+
+// DescribeProcess reports what /proc knows about one pid: the other half of the
+// same question, since BPF maps key on pid/tgid as often as on inode.
+type DescribeProcessRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Pid           uint32                 `protobuf:"varint,1,opt,name=pid,proto3" json:"pid,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DescribeProcessRequest) Reset() {
+	*x = DescribeProcessRequest{}
+	mi := &file_proto_bpfinspector_proto_msgTypes[22]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DescribeProcessRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DescribeProcessRequest) ProtoMessage() {}
+
+func (x *DescribeProcessRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_bpfinspector_proto_msgTypes[22]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DescribeProcessRequest.ProtoReflect.Descriptor instead.
+func (*DescribeProcessRequest) Descriptor() ([]byte, []int) {
+	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{22}
+}
+
+func (x *DescribeProcessRequest) GetPid() uint32 {
+	if x != nil {
+		return x.Pid
+	}
+	return 0
+}
+
+type DescribeProcessResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Found         bool                   `protobuf:"varint,1,opt,name=found,proto3" json:"found,omitempty"` // false when the pid is gone or /proc is not visible
+	Pid           uint32                 `protobuf:"varint,2,opt,name=pid,proto3" json:"pid,omitempty"`
+	Comm          string                 `protobuf:"bytes,3,opt,name=comm,proto3" json:"comm,omitempty"`
+	State         string                 `protobuf:"bytes,4,opt,name=state,proto3" json:"state,omitempty"` // the /proc/<pid>/status letter and word, e.g. "S (sleeping)"
+	Ppid          uint32                 `protobuf:"varint,5,opt,name=ppid,proto3" json:"ppid,omitempty"`
+	Uid           string                 `protobuf:"bytes,6,opt,name=uid,proto3" json:"uid,omitempty"`         // real UID
+	Cmdline       string                 `protobuf:"bytes,7,opt,name=cmdline,proto3" json:"cmdline,omitempty"` // NUL separators rendered as spaces
+	Exe           string                 `protobuf:"bytes,8,opt,name=exe,proto3" json:"exe,omitempty"`         // resolved /proc/<pid>/exe, empty when not readable
+	Cgroup        string                 `protobuf:"bytes,9,opt,name=cgroup,proto3" json:"cgroup,omitempty"`   // unified (v2) cgroup path, the one k8s pods carry
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DescribeProcessResponse) Reset() {
+	*x = DescribeProcessResponse{}
+	mi := &file_proto_bpfinspector_proto_msgTypes[23]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DescribeProcessResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DescribeProcessResponse) ProtoMessage() {}
+
+func (x *DescribeProcessResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_bpfinspector_proto_msgTypes[23]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DescribeProcessResponse.ProtoReflect.Descriptor instead.
+func (*DescribeProcessResponse) Descriptor() ([]byte, []int) {
+	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{23}
+}
+
+func (x *DescribeProcessResponse) GetFound() bool {
+	if x != nil {
+		return x.Found
+	}
+	return false
+}
+
+func (x *DescribeProcessResponse) GetPid() uint32 {
+	if x != nil {
+		return x.Pid
+	}
+	return 0
+}
+
+func (x *DescribeProcessResponse) GetComm() string {
+	if x != nil {
+		return x.Comm
+	}
+	return ""
+}
+
+func (x *DescribeProcessResponse) GetState() string {
+	if x != nil {
+		return x.State
+	}
+	return ""
+}
+
+func (x *DescribeProcessResponse) GetPpid() uint32 {
+	if x != nil {
+		return x.Ppid
+	}
+	return 0
+}
+
+func (x *DescribeProcessResponse) GetUid() string {
+	if x != nil {
+		return x.Uid
+	}
+	return ""
+}
+
+func (x *DescribeProcessResponse) GetCmdline() string {
+	if x != nil {
+		return x.Cmdline
+	}
+	return ""
+}
+
+func (x *DescribeProcessResponse) GetExe() string {
+	if x != nil {
+		return x.Exe
+	}
+	return ""
+}
+
+func (x *DescribeProcessResponse) GetCgroup() string {
+	if x != nil {
+		return x.Cgroup
+	}
+	return ""
+}
+
 var File_proto_bpfinspector_proto protoreflect.FileDescriptor
 
 const file_proto_bpfinspector_proto_rawDesc = "" +
@@ -1063,14 +1654,61 @@ const file_proto_bpfinspector_proto_rawDesc = "" +
 	"\x0fTraceLogRequest\"=\n" +
 	"\rTraceLogEvent\x12\x12\n" +
 	"\x04line\x18\x01 \x01(\tR\x04line\x12\x18\n" +
-	"\adropped\x18\x02 \x01(\x04R\adropped2\x88\x04\n" +
+	"\adropped\x18\x02 \x01(\x04R\adropped\"\x97\x01\n" +
+	"\x13ResolveInodeRequest\x12\x14\n" +
+	"\x05inode\x18\x01 \x01(\x04R\x05inode\x12\x16\n" +
+	"\x06device\x18\x02 \x01(\tR\x06device\x12\x12\n" +
+	"\x04walk\x18\x03 \x01(\bR\x04walk\x12\x1b\n" +
+	"\twalk_root\x18\x04 \x01(\tR\bwalkRoot\x12!\n" +
+	"\fwalk_seconds\x18\x05 \x01(\rR\vwalkSeconds\"\xbe\x01\n" +
+	"\tWalkStats\x12\x10\n" +
+	"\x03ran\x18\x01 \x01(\bR\x03ran\x12\x12\n" +
+	"\x04root\x18\x02 \x01(\tR\x04root\x12\x16\n" +
+	"\x06device\x18\x03 \x01(\tR\x06device\x12\x12\n" +
+	"\x04dirs\x18\x04 \x01(\x04R\x04dirs\x12\x14\n" +
+	"\x05files\x18\x05 \x01(\x04R\x05files\x12\x1b\n" +
+	"\ttimed_out\x18\x06 \x01(\bR\btimedOut\x12\x18\n" +
+	"\aseconds\x18\a \x01(\x01R\aseconds\x12\x12\n" +
+	"\x04note\x18\b \x01(\tR\x04note\"[\n" +
+	"\vInodeHolder\x12\x10\n" +
+	"\x03pid\x18\x01 \x01(\rR\x03pid\x12\x12\n" +
+	"\x04comm\x18\x02 \x01(\tR\x04comm\x12\x16\n" +
+	"\x06source\x18\x03 \x01(\tR\x06source\x12\x0e\n" +
+	"\x02fd\x18\x04 \x01(\tR\x02fd\"\xda\x01\n" +
+	"\n" +
+	"InodeMatch\x12\x12\n" +
+	"\x04path\x18\x01 \x01(\tR\x04path\x12\x16\n" +
+	"\x06device\x18\x02 \x01(\tR\x06device\x12\x14\n" +
+	"\x05mount\x18\x03 \x01(\tR\x05mount\x12\x18\n" +
+	"\adeleted\x18\x04 \x01(\bR\adeleted\x12\x1b\n" +
+	"\thost_path\x18\x05 \x01(\tR\bhostPath\x126\n" +
+	"\aholders\x18\x06 \x03(\v2\x1c.bpfinspector.v1.InodeHolderR\aholders\x12\x1b\n" +
+	"\tfrom_walk\x18\a \x01(\bR\bfromWalk\"\xaa\x01\n" +
+	"\x14ResolveInodeResponse\x125\n" +
+	"\amatches\x18\x01 \x03(\v2\x1b.bpfinspector.v1.InodeMatchR\amatches\x12+\n" +
+	"\x11processes_scanned\x18\x02 \x01(\rR\x10processesScanned\x12.\n" +
+	"\x04walk\x18\x03 \x01(\v2\x1a.bpfinspector.v1.WalkStatsR\x04walk\"*\n" +
+	"\x16DescribeProcessRequest\x12\x10\n" +
+	"\x03pid\x18\x01 \x01(\rR\x03pid\"\xd5\x01\n" +
+	"\x17DescribeProcessResponse\x12\x14\n" +
+	"\x05found\x18\x01 \x01(\bR\x05found\x12\x10\n" +
+	"\x03pid\x18\x02 \x01(\rR\x03pid\x12\x12\n" +
+	"\x04comm\x18\x03 \x01(\tR\x04comm\x12\x14\n" +
+	"\x05state\x18\x04 \x01(\tR\x05state\x12\x12\n" +
+	"\x04ppid\x18\x05 \x01(\rR\x04ppid\x12\x10\n" +
+	"\x03uid\x18\x06 \x01(\tR\x03uid\x12\x18\n" +
+	"\acmdline\x18\a \x01(\tR\acmdline\x12\x10\n" +
+	"\x03exe\x18\b \x01(\tR\x03exe\x12\x16\n" +
+	"\x06cgroup\x18\t \x01(\tR\x06cgroup2\xcb\x05\n" +
 	"\fBpfInspector\x12O\n" +
 	"\bListMaps\x12 .bpfinspector.v1.ListMapsRequest\x1a!.bpfinspector.v1.ListMapsResponse\x12L\n" +
 	"\aDumpMap\x12\x1f.bpfinspector.v1.DumpMapRequest\x1a .bpfinspector.v1.DumpMapResponse\x12[\n" +
 	"\fListPrograms\x12$.bpfinspector.v1.ListProgramsRequest\x1a%.bpfinspector.v1.ListProgramsResponse\x12X\n" +
 	"\vDumpProgram\x12#.bpfinspector.v1.DumpProgramRequest\x1a$.bpfinspector.v1.DumpProgramResponse\x12R\n" +
 	"\tListLinks\x12!.bpfinspector.v1.ListLinksRequest\x1a\".bpfinspector.v1.ListLinksResponse\x12N\n" +
-	"\bTraceLog\x12 .bpfinspector.v1.TraceLogRequest\x1a\x1e.bpfinspector.v1.TraceLogEvent0\x01BCZAgithub.com/lazybpf/bpf-explorer/gen/bpfinspectorv1;bpfinspectorv1b\x06proto3"
+	"\bTraceLog\x12 .bpfinspector.v1.TraceLogRequest\x1a\x1e.bpfinspector.v1.TraceLogEvent0\x01\x12[\n" +
+	"\fResolveInode\x12$.bpfinspector.v1.ResolveInodeRequest\x1a%.bpfinspector.v1.ResolveInodeResponse\x12d\n" +
+	"\x0fDescribeProcess\x12'.bpfinspector.v1.DescribeProcessRequest\x1a(.bpfinspector.v1.DescribeProcessResponseBCZAgithub.com/lazybpf/bpf-explorer/gen/bpfinspectorv1;bpfinspectorv1b\x06proto3"
 
 var (
 	file_proto_bpfinspector_proto_rawDescOnce sync.Once
@@ -1084,25 +1722,32 @@ func file_proto_bpfinspector_proto_rawDescGZIP() []byte {
 	return file_proto_bpfinspector_proto_rawDescData
 }
 
-var file_proto_bpfinspector_proto_msgTypes = make([]protoimpl.MessageInfo, 17)
+var file_proto_bpfinspector_proto_msgTypes = make([]protoimpl.MessageInfo, 24)
 var file_proto_bpfinspector_proto_goTypes = []any{
-	(*MapInfo)(nil),              // 0: bpfinspector.v1.MapInfo
-	(*ListMapsRequest)(nil),      // 1: bpfinspector.v1.ListMapsRequest
-	(*ListMapsResponse)(nil),     // 2: bpfinspector.v1.ListMapsResponse
-	(*MapEntry)(nil),             // 3: bpfinspector.v1.MapEntry
-	(*DumpMapRequest)(nil),       // 4: bpfinspector.v1.DumpMapRequest
-	(*DumpMapResponse)(nil),      // 5: bpfinspector.v1.DumpMapResponse
-	(*ProcessRef)(nil),           // 6: bpfinspector.v1.ProcessRef
-	(*ProgramInfo)(nil),          // 7: bpfinspector.v1.ProgramInfo
-	(*ListProgramsRequest)(nil),  // 8: bpfinspector.v1.ListProgramsRequest
-	(*ListProgramsResponse)(nil), // 9: bpfinspector.v1.ListProgramsResponse
-	(*DumpProgramRequest)(nil),   // 10: bpfinspector.v1.DumpProgramRequest
-	(*DumpProgramResponse)(nil),  // 11: bpfinspector.v1.DumpProgramResponse
-	(*LinkInfo)(nil),             // 12: bpfinspector.v1.LinkInfo
-	(*ListLinksRequest)(nil),     // 13: bpfinspector.v1.ListLinksRequest
-	(*ListLinksResponse)(nil),    // 14: bpfinspector.v1.ListLinksResponse
-	(*TraceLogRequest)(nil),      // 15: bpfinspector.v1.TraceLogRequest
-	(*TraceLogEvent)(nil),        // 16: bpfinspector.v1.TraceLogEvent
+	(*MapInfo)(nil),                 // 0: bpfinspector.v1.MapInfo
+	(*ListMapsRequest)(nil),         // 1: bpfinspector.v1.ListMapsRequest
+	(*ListMapsResponse)(nil),        // 2: bpfinspector.v1.ListMapsResponse
+	(*MapEntry)(nil),                // 3: bpfinspector.v1.MapEntry
+	(*DumpMapRequest)(nil),          // 4: bpfinspector.v1.DumpMapRequest
+	(*DumpMapResponse)(nil),         // 5: bpfinspector.v1.DumpMapResponse
+	(*ProcessRef)(nil),              // 6: bpfinspector.v1.ProcessRef
+	(*ProgramInfo)(nil),             // 7: bpfinspector.v1.ProgramInfo
+	(*ListProgramsRequest)(nil),     // 8: bpfinspector.v1.ListProgramsRequest
+	(*ListProgramsResponse)(nil),    // 9: bpfinspector.v1.ListProgramsResponse
+	(*DumpProgramRequest)(nil),      // 10: bpfinspector.v1.DumpProgramRequest
+	(*DumpProgramResponse)(nil),     // 11: bpfinspector.v1.DumpProgramResponse
+	(*LinkInfo)(nil),                // 12: bpfinspector.v1.LinkInfo
+	(*ListLinksRequest)(nil),        // 13: bpfinspector.v1.ListLinksRequest
+	(*ListLinksResponse)(nil),       // 14: bpfinspector.v1.ListLinksResponse
+	(*TraceLogRequest)(nil),         // 15: bpfinspector.v1.TraceLogRequest
+	(*TraceLogEvent)(nil),           // 16: bpfinspector.v1.TraceLogEvent
+	(*ResolveInodeRequest)(nil),     // 17: bpfinspector.v1.ResolveInodeRequest
+	(*WalkStats)(nil),               // 18: bpfinspector.v1.WalkStats
+	(*InodeHolder)(nil),             // 19: bpfinspector.v1.InodeHolder
+	(*InodeMatch)(nil),              // 20: bpfinspector.v1.InodeMatch
+	(*ResolveInodeResponse)(nil),    // 21: bpfinspector.v1.ResolveInodeResponse
+	(*DescribeProcessRequest)(nil),  // 22: bpfinspector.v1.DescribeProcessRequest
+	(*DescribeProcessResponse)(nil), // 23: bpfinspector.v1.DescribeProcessResponse
 }
 var file_proto_bpfinspector_proto_depIdxs = []int32{
 	6,  // 0: bpfinspector.v1.MapInfo.pids:type_name -> bpfinspector.v1.ProcessRef
@@ -1111,23 +1756,30 @@ var file_proto_bpfinspector_proto_depIdxs = []int32{
 	6,  // 3: bpfinspector.v1.ProgramInfo.pids:type_name -> bpfinspector.v1.ProcessRef
 	7,  // 4: bpfinspector.v1.ListProgramsResponse.programs:type_name -> bpfinspector.v1.ProgramInfo
 	12, // 5: bpfinspector.v1.ListLinksResponse.links:type_name -> bpfinspector.v1.LinkInfo
-	1,  // 6: bpfinspector.v1.BpfInspector.ListMaps:input_type -> bpfinspector.v1.ListMapsRequest
-	4,  // 7: bpfinspector.v1.BpfInspector.DumpMap:input_type -> bpfinspector.v1.DumpMapRequest
-	8,  // 8: bpfinspector.v1.BpfInspector.ListPrograms:input_type -> bpfinspector.v1.ListProgramsRequest
-	10, // 9: bpfinspector.v1.BpfInspector.DumpProgram:input_type -> bpfinspector.v1.DumpProgramRequest
-	13, // 10: bpfinspector.v1.BpfInspector.ListLinks:input_type -> bpfinspector.v1.ListLinksRequest
-	15, // 11: bpfinspector.v1.BpfInspector.TraceLog:input_type -> bpfinspector.v1.TraceLogRequest
-	2,  // 12: bpfinspector.v1.BpfInspector.ListMaps:output_type -> bpfinspector.v1.ListMapsResponse
-	5,  // 13: bpfinspector.v1.BpfInspector.DumpMap:output_type -> bpfinspector.v1.DumpMapResponse
-	9,  // 14: bpfinspector.v1.BpfInspector.ListPrograms:output_type -> bpfinspector.v1.ListProgramsResponse
-	11, // 15: bpfinspector.v1.BpfInspector.DumpProgram:output_type -> bpfinspector.v1.DumpProgramResponse
-	14, // 16: bpfinspector.v1.BpfInspector.ListLinks:output_type -> bpfinspector.v1.ListLinksResponse
-	16, // 17: bpfinspector.v1.BpfInspector.TraceLog:output_type -> bpfinspector.v1.TraceLogEvent
-	12, // [12:18] is the sub-list for method output_type
-	6,  // [6:12] is the sub-list for method input_type
-	6,  // [6:6] is the sub-list for extension type_name
-	6,  // [6:6] is the sub-list for extension extendee
-	0,  // [0:6] is the sub-list for field type_name
+	19, // 6: bpfinspector.v1.InodeMatch.holders:type_name -> bpfinspector.v1.InodeHolder
+	20, // 7: bpfinspector.v1.ResolveInodeResponse.matches:type_name -> bpfinspector.v1.InodeMatch
+	18, // 8: bpfinspector.v1.ResolveInodeResponse.walk:type_name -> bpfinspector.v1.WalkStats
+	1,  // 9: bpfinspector.v1.BpfInspector.ListMaps:input_type -> bpfinspector.v1.ListMapsRequest
+	4,  // 10: bpfinspector.v1.BpfInspector.DumpMap:input_type -> bpfinspector.v1.DumpMapRequest
+	8,  // 11: bpfinspector.v1.BpfInspector.ListPrograms:input_type -> bpfinspector.v1.ListProgramsRequest
+	10, // 12: bpfinspector.v1.BpfInspector.DumpProgram:input_type -> bpfinspector.v1.DumpProgramRequest
+	13, // 13: bpfinspector.v1.BpfInspector.ListLinks:input_type -> bpfinspector.v1.ListLinksRequest
+	15, // 14: bpfinspector.v1.BpfInspector.TraceLog:input_type -> bpfinspector.v1.TraceLogRequest
+	17, // 15: bpfinspector.v1.BpfInspector.ResolveInode:input_type -> bpfinspector.v1.ResolveInodeRequest
+	22, // 16: bpfinspector.v1.BpfInspector.DescribeProcess:input_type -> bpfinspector.v1.DescribeProcessRequest
+	2,  // 17: bpfinspector.v1.BpfInspector.ListMaps:output_type -> bpfinspector.v1.ListMapsResponse
+	5,  // 18: bpfinspector.v1.BpfInspector.DumpMap:output_type -> bpfinspector.v1.DumpMapResponse
+	9,  // 19: bpfinspector.v1.BpfInspector.ListPrograms:output_type -> bpfinspector.v1.ListProgramsResponse
+	11, // 20: bpfinspector.v1.BpfInspector.DumpProgram:output_type -> bpfinspector.v1.DumpProgramResponse
+	14, // 21: bpfinspector.v1.BpfInspector.ListLinks:output_type -> bpfinspector.v1.ListLinksResponse
+	16, // 22: bpfinspector.v1.BpfInspector.TraceLog:output_type -> bpfinspector.v1.TraceLogEvent
+	21, // 23: bpfinspector.v1.BpfInspector.ResolveInode:output_type -> bpfinspector.v1.ResolveInodeResponse
+	23, // 24: bpfinspector.v1.BpfInspector.DescribeProcess:output_type -> bpfinspector.v1.DescribeProcessResponse
+	17, // [17:25] is the sub-list for method output_type
+	9,  // [9:17] is the sub-list for method input_type
+	9,  // [9:9] is the sub-list for extension type_name
+	9,  // [9:9] is the sub-list for extension extendee
+	0,  // [0:9] is the sub-list for field type_name
 }
 
 func init() { file_proto_bpfinspector_proto_init() }
@@ -1141,7 +1793,7 @@ func file_proto_bpfinspector_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_bpfinspector_proto_rawDesc), len(file_proto_bpfinspector_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   17,
+			NumMessages:   24,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

@@ -15,6 +15,8 @@ service BpfInspector {
   rpc DumpProgram(DumpProgramRequest) returns (DumpProgramResponse);
   rpc ListLinks(ListLinksRequest) returns (ListLinksResponse);
   rpc TraceLog(TraceLogRequest) returns (stream TraceLogEvent);
+  rpc ResolveInode(ResolveInodeRequest) returns (ResolveInodeResponse);
+  rpc DescribeProcess(DescribeProcessRequest) returns (DescribeProcessResponse);
 }
 
 message MapInfo {
@@ -108,4 +110,103 @@ message TraceLogRequest {}
 message TraceLogEvent {
   string line = 1;    // one trace_pipe line, newline stripped
   uint64 dropped = 2; // lines dropped for this client since the previous event
+}
+
+// ResolveInode answers the question a BPF map full of inode numbers raises:
+// which file is this? The kernel offers no inode -> path call, so the agent
+// searches the two places on a node that already record both an inode and a
+// path - open file descriptors and mapped files, read from /proc.
+//
+// That bounds what an answer can mean. A hit is a file some process has open or
+// mapped RIGHT NOW. A miss is "nothing holds it at this moment", never "no such
+// file": a file nobody has open is invisible to this search, and so is one whose
+// holder exited between the map write and the lookup.
+//
+// Requires the agent to see host PIDs (hostPID), like ProcessRef.
+message ResolveInodeRequest {
+  uint64 inode = 1;
+  // Optional "major:minor" (decimal) filter. An inode number is unique only
+  // within a filesystem, so an unfiltered lookup can match unrelated files on
+  // different devices - each match names its own device to make that visible.
+  string device = 2;
+  // Also walk the filesystem, which finds a file nothing holds - the case the
+  // /proc search cannot see at all. This is `find -inum`: minutes of stat calls
+  // on a large tree, so it runs only when asked for, never as a fallback.
+  bool walk = 3;
+  // Where the walk starts. Empty means the host's root. The walk never crosses
+  // onto another filesystem, since the same inode number there is a different
+  // file - so a device narrows the start point to that device's mount, and an
+  // explicit root is the way to search a filesystem the default misses.
+  string walk_root = 4;
+  // How long the walk may run before giving up and returning what it has. Zero
+  // means the agent's default.
+  uint32 walk_seconds = 5;
+}
+
+// WalkStats says what the filesystem walk actually did, so a result that found
+// nothing can be told apart from one that ran out of time - and so the cost of
+// the answer is visible.
+message WalkStats {
+  bool ran = 1;
+  string root = 2;      // where it started, as a path on the host
+  string device = 3;    // the one filesystem it stayed on
+  uint64 dirs = 4;
+  uint64 files = 5;     // entries whose inode was checked
+  bool timed_out = 6;   // gave up with tree left to search
+  double seconds = 7;
+  string note = 8;      // why it could not run, when ran is false
+}
+
+// InodeHolder is one process holding a path open or mapped.
+message InodeHolder {
+  uint32 pid = 1;
+  string comm = 2;
+  // How this process was found to hold it: "fd" (an open file descriptor, with
+  // fd naming it) or "map" (a file-backed memory mapping).
+  string source = 3;
+  string fd = 4;
+}
+
+// InodeMatch is one path found for the inode, with every process holding it.
+// Paths are grouped rather than repeated per process: one shared library can be
+// mapped by every process on the node, and that is one answer, not four hundred.
+message InodeMatch {
+  string path = 1;
+  string device = 2;   // "major:minor" of the filesystem the inode lives on
+  string mount = 3;    // mount point for device, empty when not resolvable
+  bool deleted = 4;    // unlinked; the holder keeps it alive
+  // The path is as the holder sees it. When the holder lives in another mount
+  // namespace (a container), that path does not exist on the host - reach it at
+  // /proc/<pid>/root<path> instead. host_path carries that form, and is empty
+  // when the holder shares the host's root.
+  string host_path = 5;
+  repeated InodeHolder holders = 6;
+  // Found by walking the filesystem rather than by a process holding it. Such a
+  // match has no holders: it is a file on disk that nothing has open.
+  bool from_walk = 7;
+}
+
+message ResolveInodeResponse {
+  repeated InodeMatch matches = 1;
+  // How many processes the answer is based on. Zero means /proc was unreadable
+  // or empty - a miss says nothing at all, and the UI should say so rather than
+  // report "not found".
+  uint32 processes_scanned = 2;
+  WalkStats walk = 3;
+}
+
+// DescribeProcess reports what /proc knows about one pid: the other half of the
+// same question, since BPF maps key on pid/tgid as often as on inode.
+message DescribeProcessRequest { uint32 pid = 1; }
+
+message DescribeProcessResponse {
+  bool found = 1;      // false when the pid is gone or /proc is not visible
+  uint32 pid = 2;
+  string comm = 3;
+  string state = 4;    // the /proc/<pid>/status letter and word, e.g. "S (sleeping)"
+  uint32 ppid = 5;
+  string uid = 6;      // real UID
+  string cmdline = 7;  // NUL separators rendered as spaces
+  string exe = 8;      // resolved /proc/<pid>/exe, empty when not readable
+  string cgroup = 9;   // unified (v2) cgroup path, the one k8s pods carry
 }

@@ -203,6 +203,11 @@
     background: rgba(85, 255, 85, .07);
     box-shadow: inset 2px 0 0 var(--fg-hi);
   }
+  /* One record read down instead of across: field names in the left column,
+     values in the right. Not wrapped in .scroll - there is no third column to
+     push anything sideways. */
+  table.kv { width: auto; min-width: min(100%, 34rem); }
+  table.kv th { width: 8rem; }
 
   /* ── code and dumps ──────────────────────────────────────────────────── */
   code { color: var(--accent); word-break: break-all; }
@@ -238,7 +243,19 @@
   }
 
   /* ── forms: bracketed terminal buttons ───────────────────────────────── */
-  .tracectl { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; }
+  /* A row of controls: the trace log's buttons, a lookup form's fields. */
+  .controls { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; }
+  /* Label and field travel together, so a wrapping row never leaves a field
+     under someone else's name. */
+  .controls label {
+    display: inline-flex;
+    align-items: center;
+    gap: .35rem;
+    font-size: .9rem;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: var(--fg-dim);
+  }
   button, input {
     font: 400 .9rem/1.5 var(--font-mono);
     letter-spacing: .08em;

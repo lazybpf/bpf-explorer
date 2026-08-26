@@ -5,6 +5,7 @@ package server
 
 import (
 	"context"
+	"time"
 
 	pb "github.com/lazybpf/bpf-explorer/gen/bpfinspectorv1"
 	"github.com/lazybpf/bpf-explorer/internal/inspector"
@@ -131,6 +132,70 @@ func (s *Server) TraceLog(_ *pb.TraceLogRequest, stream pb.BpfInspector_TraceLog
 			}
 		}
 	}
+}
+
+// ResolveInode searches the node's open fds and mapped files for an inode. It
+// reports no error for a miss: "nothing holds it" is an answer, and the scanned
+// count tells the caller how much of /proc that answer rests on.
+func (s *Server) ResolveInode(_ context.Context, req *pb.ResolveInodeRequest) (*pb.ResolveInodeResponse, error) {
+	res := s.insp.ResolveInode(inspector.InodeQuery{
+		Inode:      req.GetInode(),
+		Device:     req.GetDevice(),
+		Walk:       req.GetWalk(),
+		WalkRoot:   req.GetWalkRoot(),
+		WalkBudget: time.Duration(req.GetWalkSeconds()) * time.Second,
+	})
+	matches := res.Matches
+	resp := &pb.ResolveInodeResponse{
+		Matches:          make([]*pb.InodeMatch, 0, len(matches)),
+		ProcessesScanned: res.Scanned,
+		Walk: &pb.WalkStats{
+			Ran:      res.Walk.Ran,
+			Root:     res.Walk.Root,
+			Device:   res.Walk.Device,
+			Dirs:     res.Walk.Dirs,
+			Files:    res.Walk.Files,
+			TimedOut: res.Walk.TimedOut,
+			Seconds:  res.Walk.Seconds,
+			Note:     res.Walk.Note,
+		},
+	}
+	for _, m := range matches {
+		holders := make([]*pb.InodeHolder, 0, len(m.Holders))
+		for _, h := range m.Holders {
+			holders = append(holders, &pb.InodeHolder{
+				Pid: h.PID, Comm: h.Comm, Source: h.Source, Fd: h.FD,
+			})
+		}
+		resp.Matches = append(resp.Matches, &pb.InodeMatch{
+			Path:     m.Path,
+			Device:   m.Device,
+			Mount:    m.Mount,
+			Deleted:  m.Deleted,
+			HostPath: m.HostPath,
+			Holders:  holders,
+			FromWalk: m.FromWalk,
+		})
+	}
+	return resp, nil
+}
+
+// DescribeProcess reports what /proc knows about one pid. A pid that is gone is
+// found=false rather than an error: asking about a dead process is the normal
+// case when the number came out of a BPF map.
+func (s *Server) DescribeProcess(_ context.Context, req *pb.DescribeProcessRequest) (*pb.DescribeProcessResponse, error) {
+	d := s.insp.DescribeProcess(req.GetPid())
+	return &pb.DescribeProcessResponse{
+		Found:   d.Found,
+		Pid:     d.PID,
+		Comm:    d.Comm,
+		State:   d.State,
+		Ppid:    d.PPID,
+		Uid:     d.UID,
+		Cmdline: d.Cmdline,
+		Exe:     d.Exe,
+		Cgroup:  d.Cgroup,
+	}, nil
 }
 
 func (s *Server) ListLinks(_ context.Context, _ *pb.ListLinksRequest) (*pb.ListLinksResponse, error) {
