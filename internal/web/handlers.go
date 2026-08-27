@@ -147,7 +147,7 @@ type dumpView struct {
 type progDumpView struct {
 	ID        uint32
 	Name      string
-	Lines     []string
+	Lines     []xlatedLine
 	Available bool
 	Note      string
 }
@@ -256,17 +256,14 @@ func (h *Handlers) programs(w http.ResponseWriter, r *http.Request) {
 	}
 	data.Programs = list.GetPrograms()
 
+	// Best-effort map metadata, so a map reference can say which map it is: a
+	// tooltip on the list's map-ref column, and on the map a dump's listing
+	// loads. A failure here must not break the page.
+	if maps, merr := client.ListMaps(ctx, &pb.ListMapsRequest{}); merr == nil {
+		data.MapsByID = mapsByID(maps.GetMaps())
+	}
+
 	if idStr == "" {
-		// Best-effort map metadata so program map-ref links can show name/type in
-		// a tooltip - a column only the list has. A failure here must not break
-		// the page.
-		if maps, merr := client.ListMaps(ctx, &pb.ListMapsRequest{}); merr == nil {
-			byID := make(map[uint32]*pb.MapInfo, len(maps.GetMaps()))
-			for _, m := range maps.GetMaps() {
-				byID[m.GetId()] = m
-			}
-			data.MapsByID = byID
-		}
 		h.render(w, page, data)
 		return
 	}
@@ -283,7 +280,7 @@ func (h *Handlers) programs(w http.ResponseWriter, r *http.Request) {
 		data.ProgDump = &progDumpView{
 			ID:        uint32(id),
 			Name:      progName(data.Programs, uint32(id)),
-			Lines:     dump.GetLines(),
+			Lines:     xlatedLines(dump.GetLines(), node, data.MapsByID),
 			Available: dump.GetAvailable(),
 			Note:      dump.GetNote(),
 		}

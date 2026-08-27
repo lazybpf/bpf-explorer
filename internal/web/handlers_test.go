@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"html"
 	"net/http/httptest"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -232,33 +233,55 @@ func TestProgramsXlatedDump(t *testing.T) {
 		Programs: []*pb.ProgramInfo{{Id: 5, Name: "trace_conn"}},
 	}
 
+	lines := []string{
+		"int trace_conn(struct __sk_buff * skb):",
+		"; if (skb->len > limit)",
+		"   0: (79) r1 = *(u64 *)(r8 +24)",
+		"   1: (2d) if r1 > r2 goto pc+3",
+		"   2: (85) call bpf_map_lookup_elem#149280",
+		"   3: (18) r1 = map[id:422]",
+		"; ",
+		"   5: (95) exit",
+	}
 	avail := base
 	avail.ProgDump = &progDumpView{
 		ID: 5, Name: "trace_conn", Available: true,
-		Lines: []string{
-			"trace_conn:",
-			"   0: (79) r1 = *(u64 *)(r8 +24)",
-			"   1: (2d) if r1 > r2 goto pc+3",
-			"   2: (95) exit",
-		},
+		Lines: xlatedLines(lines, "node-a", map[uint32]*pb.MapInfo{
+			422: {Id: 422, Name: "conns", Type: "hash"},
+		}),
 	}
 	var buf bytes.Buffer
 	if err := h.pages["progdump"].ExecuteTemplate(&buf, "layout", avail); err != nil {
 		t.Fatalf("execute: %v", err)
 	}
 	out := buf.String()
-	// html/template escapes the disassembly on its way into the <pre> - not
-	// only ">" but "+" as well - and the browser renders the entities back, so
-	// assert against the text a reader ends up seeing.
-	rendered := html.UnescapeString(out)
-	if !strings.Contains(rendered, "   0: (79) r1 = *(u64 *)(r8 +24)") {
-		t.Errorf("expected instruction listing in output\n%s", out)
+
+	// Marked up or not, the listing has to still read as the text the agent
+	// sent, since diffing it against bpftool is the point of the page. This
+	// also catches a stray newline in the template, which inside a pre would
+	// show up as a blank line between every pair of instructions.
+	if got := listingText(t, out); got != strings.Join(lines, "\n") {
+		t.Errorf("listing text changed:\n got %q\nwant %q", got, strings.Join(lines, "\n"))
 	}
-	if !strings.Contains(rendered, "   1: (2d) if r1 > r2 goto pc+3") {
-		t.Errorf("expected the jump condition in output\n%s", out)
+	// The helper a call lands in, and the map a load names - the two things
+	// worth picking out of the wall of instructions.
+	if !strings.Contains(out, `<span class="helper">bpf_map_lookup_elem</span>`) {
+		t.Errorf("expected the helper name marked in output\n%s", out)
 	}
-	// It has to be escaped in the markup, though: disassembly is full of
-	// characters that would otherwise read as tags.
+	if !strings.Contains(out, `href="/nodes/node-a/maps/422"`) {
+		t.Errorf("expected the map reference linked in output\n%s", out)
+	}
+	if !strings.Contains(out, `title="conns (hash) (new tab)"`) {
+		t.Errorf("expected the map link to name the map in output\n%s", out)
+	}
+	// Both views can be put aside; the buttons say what they will do.
+	for _, want := range []string{`id="comments"`, `id="instructions"`, ">hide comments<", ">hide instructions<"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("expected %s among the listing controls\n%s", want, out)
+		}
+	}
+	// Disassembly is full of characters that would otherwise read as markup, so
+	// it has to arrive escaped.
 	if strings.Contains(out, "if r1 > r2") {
 		t.Errorf("jump condition reached the page as raw markup\n%s", out)
 	}
@@ -537,4 +560,30 @@ func TestMapLoadersSkipsHolderlessProgram(t *testing.T) {
 	if got := mapLoaders(progs, 8); len(got) != 1 || got[0] != want {
 		t.Errorf("mapLoaders(8) = %v, want [%q]", got, want)
 	}
+}
+
+// tagPattern strips our own markup - not a general HTML parser, just enough to
+// read a rendered listing back as text.
+var tagPattern = regexp.MustCompile(`<[^>]*>`)
+
+// listingText recovers what a reader sees from a marked-up dump: the line divs
+// become the newlines they render as, the spans and links go, and the entities
+// come back.
+func listingText(t *testing.T, page string) string {
+	t.Helper()
+
+	const open = `<pre id="out" class="xlated">`
+	start := strings.Index(page, open)
+	if start < 0 {
+		t.Fatalf("no listing in page:\n%s", page)
+	}
+	inner := page[start+len(open):]
+	end := strings.Index(inner, "</pre>")
+	if end < 0 {
+		t.Fatalf("unterminated listing in page:\n%s", page)
+	}
+
+	text := strings.ReplaceAll(inner[:end], "</div>", "\n")
+	text = tagPattern.ReplaceAllString(text, "")
+	return html.UnescapeString(strings.TrimSuffix(text, "\n"))
 }

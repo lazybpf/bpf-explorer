@@ -300,6 +300,23 @@
   pre.tracelog .ts { color: var(--fg-dim); }
   pre.tracelog.no-time .ts { display: none; }
 
+  /* ── xlated program dump ─────────────────────────────────────────────── */
+  /* A listing is a wall of near-identical lines, so only what carries meaning
+     is coloured: the function, the helper a call lands in, the map it loads.
+     The bookkeeping columns recede, and the C source it was compiled from sits
+     a shade back from the instructions it produced. */
+  pre.xlated { line-height: 1.45; }
+  pre.xlated .fn { color: var(--fg-hi); }
+  pre.xlated .cmt { color: var(--fg-dim); }
+  pre.xlated .off, pre.xlated .op { color: var(--fg-dim); }
+  /* Not the link colour: a helper is a name worth spotting, not somewhere to
+     go, and a map reference next to it is. */
+  pre.xlated .helper { color: var(--warn); }
+  /* Whole lines go, rather than their text: hiding the text would leave the
+     line behind, empty. */
+  pre.xlated.no-cmt .cmt { display: none; }
+  pre.xlated.no-insn .insn { display: none; }
+
   /* ── status utilities ────────────────────────────────────────────────── */
   .muted { color: var(--fg-dim); }
   /* An action rendered in place but deliberately inert - the dump control for a

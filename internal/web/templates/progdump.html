@@ -7,8 +7,38 @@
 {{with .ProgDump}}
   <h2>program {{.ID}} — {{.Name}} xlated</h2>
   {{if .Available}}
-    <pre>{{range .Lines}}{{.}}
-{{end}}</pre>
+    {{/* Two views of the same listing: the source it was compiled from, and the
+         instructions it compiled to. Each button says what clicking it will do,
+         the way the trace log's do. */}}
+    <p class="controls">
+      <button id="comments" type="button">hide comments</button>
+      <button id="instructions" type="button">hide instructions</button>
+    </p>
+
+    {{/* No whitespace between the lines: inside a pre, a newline here would be
+         a blank line on the page. */}}
+    <pre id="out" class="xlated">{{range .Lines -}}
+{{if eq .Kind "comment"}}<div class="cmt">; {{.Text}}</div>
+{{- else if eq .Kind "func"}}<div class="fn">{{.Text}}</div>
+{{- else}}<div class="insn"><span class="off">{{.Offset}}</span>: {{with .Opcode}}<span class="op">({{.}})</span> {{end}}{{range .Parts}}{{if .Href}}<a href="{{.Href}}" target="_blank" rel="noopener"{{with .Title}} title="{{.}} (new tab)"{{end}}>{{.Text}}</a>{{else if .Helper}}<span class="helper">{{.Text}}</span>{{else}}{{.Text}}{{end}}{{end}}</div>
+{{- end}}
+{{- end}}</pre>
+
+    <script>
+    (() => {
+      const out = document.getElementById('out');
+      // Hiding is a class on the listing, so the CSS drops whole lines and
+      // nothing is left where they were.
+      const toggle = (id, cls, off, on) => {
+        const button = document.getElementById(id);
+        button.addEventListener('click', () => {
+          button.textContent = out.classList.toggle(cls) ? on : off;
+        });
+      };
+      toggle('comments', 'no-cmt', 'hide comments', 'show comments');
+      toggle('instructions', 'no-insn', 'hide instructions', 'show instructions');
+    })();
+    </script>
   {{else}}
     <p class="muted">xlated instructions unavailable{{if .Note}}: {{.Note}}{{end}}</p>
   {{end}}
