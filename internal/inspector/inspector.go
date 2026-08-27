@@ -11,7 +11,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"strings"
 	"syscall"
 
 	"github.com/cilium/ebpf"
@@ -238,16 +237,16 @@ func (i *Inspector) DumpProgram(id uint32) (*ProgramDump, error) {
 		return &ProgramDump{Available: false, Note: err.Error()}, nil
 	}
 
-	// Render the whole Instructions block: its Formatter interleaves function
-	// symbol headers and "; <source>" line-info comments (populated by
-	// Instructions() from BTF, when CAP_SYS_ADMIN is available) with the
-	// instructions, like `bpftool prog dump xlated`. The space flag switches
-	// tab indentation to spaces for the web <pre>.
-	listing := strings.TrimRight(fmt.Sprintf("% v", insns), "\n")
-	if listing == "" {
+	// formatListing, not cilium's own Instructions formatter, so the output can
+	// be diffed against `bpftool prog dump xlated`. It interleaves the function
+	// signatures and "; <source>" line-info comments that Instructions()
+	// populates from BTF - when CAP_SYS_ADMIN is available - with the
+	// instructions themselves, and resolveCalls names the helpers they call.
+	lines := formatListing(insns, resolveCalls(insns))
+	if len(lines) == 0 {
 		return &ProgramDump{Available: false, Note: "kernel exposed no instructions for this program"}, nil
 	}
-	return &ProgramDump{Available: true, Lines: strings.Split(listing, "\n")}, nil
+	return &ProgramDump{Available: true, Lines: lines}, nil
 }
 
 // undumpableReason explains why a map type does not support key iteration, or

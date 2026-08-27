@@ -2,6 +2,7 @@ package web
 
 import (
 	"bytes"
+	"html"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -234,15 +235,32 @@ func TestProgramsXlatedDump(t *testing.T) {
 	avail := base
 	avail.ProgDump = &progDumpView{
 		ID: 5, Name: "trace_conn", Available: true,
-		Lines: []string{"   0: MovImm dst: r0 imm: 0", "   1: Exit"},
+		Lines: []string{
+			"trace_conn:",
+			"   0: (79) r1 = *(u64 *)(r8 +24)",
+			"   1: (2d) if r1 > r2 goto pc+3",
+			"   2: (95) exit",
+		},
 	}
 	var buf bytes.Buffer
 	if err := h.pages["progdump"].ExecuteTemplate(&buf, "layout", avail); err != nil {
 		t.Fatalf("execute: %v", err)
 	}
 	out := buf.String()
-	if !strings.Contains(out, "MovImm dst: r0") {
+	// html/template escapes the disassembly on its way into the <pre> - not
+	// only ">" but "+" as well - and the browser renders the entities back, so
+	// assert against the text a reader ends up seeing.
+	rendered := html.UnescapeString(out)
+	if !strings.Contains(rendered, "   0: (79) r1 = *(u64 *)(r8 +24)") {
 		t.Errorf("expected instruction listing in output\n%s", out)
+	}
+	if !strings.Contains(rendered, "   1: (2d) if r1 > r2 goto pc+3") {
+		t.Errorf("expected the jump condition in output\n%s", out)
+	}
+	// It has to be escaped in the markup, though: disassembly is full of
+	// characters that would otherwise read as tags.
+	if strings.Contains(out, "if r1 > r2") {
+		t.Errorf("jump condition reached the page as raw markup\n%s", out)
 	}
 	if strings.Contains(out, "programs on node-a") {
 		t.Errorf("xlated page should not repeat the programs list\n%s", out)
