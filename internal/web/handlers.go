@@ -125,6 +125,21 @@ type lookupView struct {
 	Matches  []*pb.InodeMatch
 
 	Process *pb.DescribeProcessResponse
+
+	// Parent is what /proc says about Process's parent, fetched alongside it:
+	// a pid on its own rarely settles anything, and what launched it is the
+	// next question. Nil when there is no parent to ask about, or when asking
+	// failed - it is an extra, and must not cost the answer that was asked for.
+	Parent *pb.DescribeProcessResponse
+}
+
+// ParentComm names Parent for the ppid link. "?" when there is no name to give,
+// the same shorthand the inode holders use for a process that has none.
+func (l *lookupView) ParentComm() string {
+	if !l.Parent.GetFound() || l.Parent.GetComm() == "" {
+		return "?"
+	}
+	return l.Parent.GetComm()
 }
 
 // loaderSummary is one row of the loaders index: a loader and how many objects
@@ -412,6 +427,15 @@ func (h *Handlers) utils(w http.ResponseWriter, r *http.Request) {
 			}
 		} else {
 			look.Process = resp
+			// Pid 0 is the kernel's own ancestor, so only a real parent is
+			// worth a second call. A failure here is dropped: the parent is a
+			// convenience, and the process that was asked about has answered.
+			if resp.GetFound() && resp.GetPpid() != 0 {
+				parent, perr := client.DescribeProcess(ctx, &pb.DescribeProcessRequest{Pid: resp.GetPpid()})
+				if perr == nil {
+					look.Parent = parent
+				}
+			}
 		}
 	}
 	h.render(w, "utils", data)

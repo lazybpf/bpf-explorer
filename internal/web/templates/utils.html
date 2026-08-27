@@ -4,7 +4,7 @@
 
 <h2>utils on {{.Node}}</h2>
 <p class="muted">
-  the two questions a map full of raw numbers raises. Both lookups read
+  Resolve the raw numbers a map dump gives you. Both lookups read
   <code>/proc</code> on the node, so they see what the agent can see: with
   <code>hostPID</code> that is every process on the host.
 </p>
@@ -12,22 +12,84 @@
 {{/* ASCII arrow, not &rarr;: the display face has no glyph for it, so the
      browser substitutes another font for that one character and it lands
      misaligned in a row of monospace. */}}
+<h2>pid -&gt; process</h2>
+<p class="muted">
+  Describe a process by its pid - the number a map dump hands you most often,
+  since maps key on pid and tgid as often as on inode.
+</p>
+
+<form class="controls" method="get" action="/nodes/{{.Node}}/utils">
+  <label>pid
+    <input type="text" name="pid" value="{{with $look}}{{.PID}}{{end}}" size="12"
+           placeholder="1234" autofocus>
+  </label>
+  {{/* The hidden fields carry the other lookup along, otherwise submitting one
+       clears the other. */}}
+  <input type="hidden" name="inode" value="{{with $look}}{{.Inode}}{{end}}">
+  <input type="hidden" name="dev" value="{{with $look}}{{.Device}}{{end}}">
+  <button type="submit">describe</button>
+</form>
+
+{{with $look}}
+  {{with .PIDErr}}<p class="err">{{.}}</p>{{end}}
+
+  {{with .Process}}
+    {{if .Found}}
+      <table class="kv">
+        <tr><th>pid</th><td>{{.Pid}}</td></tr>
+        <tr><th>comm</th><td>{{.Comm}}</td></tr>
+        <tr><th>state</th><td>{{.State}}</td></tr>
+        <tr><th title="parent pid">ppid</th>
+            <td>
+              {{if .Ppid}}
+                {{/* Named, and a link onwards: what launched a process is the
+                     next thing asked of it, so its name comes back with it and
+                     the hop up the tree is one click. */}}
+                <a href="/nodes/{{$.Node}}/utils?inode={{$look.Inode}}&dev={{$look.Device}}&pid={{.Ppid}}" title="describe this process">{{$look.ParentComm}}({{.Ppid}})</a>
+                {{with $look.Parent}}
+                  {{if .Found}}
+                    {{with .Cmdline}}<div class="muted"><code>{{.}}</code></div>{{end}}
+                  {{else}}
+                    <div class="muted">gone - it exited between the two reads</div>
+                  {{end}}
+                {{end}}
+              {{else}}
+                {{/* Only the kernel's own ancestor has no parent. */}}
+                {{.Ppid}}
+              {{end}}
+            </td></tr>
+        <tr><th title="real user id">uid</th><td>{{.Uid}}</td></tr>
+        <tr><th>cmdline</th><td>{{with .Cmdline}}<code>{{.}}</code>{{else}}<span class="muted">(none - a kernel thread)</span>{{end}}</td></tr>
+        <tr><th>exe</th><td>{{with .Exe}}<code>{{.}}</code>{{else}}<span class="muted">-</span>{{end}}</td></tr>
+        <tr><th title="the unified (v2) cgroup, which carries the pod slice on a k8s node">cgroup</th>
+            <td>{{with .Cgroup}}<code>{{.}}</code>{{else}}<span class="muted">-</span>{{end}}</td></tr>
+      </table>
+    {{else}}
+      <p class="muted">
+        No process <code>{{$look.PID}}</code> on this node: it exited, or
+        <code>/proc</code> is not visible to the agent. A pid read out of a map
+        is often already gone - and the number gets reused.
+      </p>
+    {{end}}
+  {{end}}
+{{end}}
+
 <h2>inode -&gt; path</h2>
 <p class="muted">
-  the kernel has no inode-to-path call, so <em>look up</em> searches the two places
-  that record an inode next to a pathname: open file descriptors and file-backed
-  memory mappings. That is instant, and it only sees files some process holds
-  right now. <em>walk filesystem</em> is the other way - <code>find -inum</code>,
+  Find the path behind an inode number. The kernel has no inode-to-path call, so
+  both buttons search. The <em>look up</em> button reads open file descriptors
+  and file-backed memory mappings, the two places that record an inode next to a
+  pathname: instant, but it only finds files some process holds right now. The
+  <em>walk filesystem</em> button runs the equivalent of <code>find -inum</code>,
   which finds a file nothing has open, and every hard link to it, at the cost of
   stat-ing the tree.
 </p>
 
-{{/* GET, so an answer can be linked to and reloaded. The hidden field carries
-     the other lookup along, otherwise submitting one clears the other. */}}
+{{/* GET, so an answer can be linked to and reloaded. */}}
 <form class="controls" method="get" action="/nodes/{{.Node}}/utils">
   <label>inode
     <input type="text" name="inode" value="{{with $look}}{{.Inode}}{{end}}"
-           size="18" placeholder="1179921 or 0x120051" autofocus>
+           size="18" placeholder="1179921 or 0x120051">
   </label>
   <label>device
     <input type="text" name="dev" value="{{with $look}}{{.Device}}{{end}}"
@@ -99,7 +161,7 @@
       </div>
     {{else if .Scanned}}
       <p class="muted">
-        nothing holds inode <code>{{.Inode}}</code>{{with .Device}} on device <code>{{.}}</code>{{end}}:
+        Nothing holds inode <code>{{.Inode}}</code>{{with .Device}} on device <code>{{.}}</code>{{end}}:
         searched the open files and mappings of {{.Scanned}} processes.
         {{if not .Walk}}
           A file nobody has open is invisible to that search - it has to be found
@@ -111,7 +173,7 @@
     {{else}}
       {{/* Nothing was searched, so the empty result is not an answer. */}}
       <p class="warn">
-        no processes were searched: the agent cannot read <code>/proc</code>.
+        No processes were searched: the agent cannot read <code>/proc</code>.
         In a cluster that means the DaemonSet is missing <code>hostPID</code>;
         this says nothing about inode <code>{{.Inode}}</code>.
       </p>
@@ -122,7 +184,7 @@
     {{with .Stats}}
       {{if .Ran}}
         <p class="{{if .TimedOut}}warn{{else}}muted{{end}}">
-          walked <code>{{.Root}}</code> on device <code>{{.Device}}</code>:
+          Walked <code>{{.Root}}</code> on device <code>{{.Device}}</code>:
           {{comma .Files}} files in {{comma .Dirs}} directories,
           {{printf "%.1f" .Seconds}}s.
           {{if .TimedOut}}
@@ -132,49 +194,8 @@
           {{with .Note}}<br>{{.}}{{end}}
         </p>
       {{else if .Note}}
-        <p class="err">no walk: {{.Note}}</p>
+        <p class="err">No walk: {{.Note}}</p>
       {{end}}
-    {{end}}
-  {{end}}
-{{end}}
-
-<h2>pid -&gt; process</h2>
-<p class="muted">
-  what <code>/proc</code> knows about one pid - the other half of the same
-  question, since maps key on pid and tgid as often as on inode.
-</p>
-
-<form class="controls" method="get" action="/nodes/{{.Node}}/utils">
-  <label>pid
-    <input type="text" name="pid" value="{{with $look}}{{.PID}}{{end}}" size="12" placeholder="1234">
-  </label>
-  <input type="hidden" name="inode" value="{{with $look}}{{.Inode}}{{end}}">
-  <input type="hidden" name="dev" value="{{with $look}}{{.Device}}{{end}}">
-  <button type="submit">describe</button>
-</form>
-
-{{with $look}}
-  {{with .PIDErr}}<p class="err">{{.}}</p>{{end}}
-
-  {{with .Process}}
-    {{if .Found}}
-      <table class="kv">
-        <tr><th>pid</th><td>{{.Pid}}</td></tr>
-        <tr><th>comm</th><td>{{.Comm}}</td></tr>
-        <tr><th>state</th><td>{{.State}}</td></tr>
-        <tr><th title="parent pid">ppid</th><td>{{.Ppid}}</td></tr>
-        <tr><th title="real user id">uid</th><td>{{.Uid}}</td></tr>
-        <tr><th>cmdline</th><td>{{with .Cmdline}}<code>{{.}}</code>{{else}}<span class="muted">(none - a kernel thread)</span>{{end}}</td></tr>
-        <tr><th>exe</th><td>{{with .Exe}}<code>{{.}}</code>{{else}}<span class="muted">-</span>{{end}}</td></tr>
-        <tr><th title="the unified (v2) cgroup, which carries the pod slice on a k8s node">cgroup</th>
-            <td>{{with .Cgroup}}<code>{{.}}</code>{{else}}<span class="muted">-</span>{{end}}</td></tr>
-      </table>
-    {{else}}
-      <p class="muted">
-        no process <code>{{$look.PID}}</code> on this node: it exited, or
-        <code>/proc</code> is not visible to the agent. A pid read out of a map
-        is often already gone - and the number gets reused.
-      </p>
     {{end}}
   {{end}}
 {{end}}

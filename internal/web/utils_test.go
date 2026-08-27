@@ -2,6 +2,7 @@ package web
 
 import (
 	"net/http/httptest"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -68,7 +69,7 @@ func TestUtilsPageEmpty(t *testing.T) {
 			t.Errorf("expected page to contain %q\n%s", want, out)
 		}
 	}
-	if strings.Contains(out, "nothing holds inode") {
+	if strings.Contains(out, "Nothing holds inode") {
 		t.Error("page reported a miss without a lookup having run")
 	}
 }
@@ -145,7 +146,7 @@ func TestUtilsManyHoldersAreCapped(t *testing.T) {
 func TestUtilsInodeMissDistinguishesNothingSearched(t *testing.T) {
 	searched := renderUtils(t, pageData{Node: "node-a", Tab: "utils",
 		Lookup: &lookupView{Inode: "42", Searched: true, Scanned: 312}})
-	if !strings.Contains(searched, "nothing holds inode") {
+	if !strings.Contains(searched, "Nothing holds inode") {
 		t.Errorf("a real miss should say nothing holds it\n%s", searched)
 	}
 	if !strings.Contains(searched, "312 processes") {
@@ -154,10 +155,10 @@ func TestUtilsInodeMissDistinguishesNothingSearched(t *testing.T) {
 
 	blind := renderUtils(t, pageData{Node: "node-a", Tab: "utils",
 		Lookup: &lookupView{Inode: "42", Searched: true, Scanned: 0}})
-	if !strings.Contains(blind, "no processes were searched") {
+	if !strings.Contains(blind, "No processes were searched") {
 		t.Errorf("an unsearchable /proc must not read as a miss\n%s", blind)
 	}
-	if strings.Contains(blind, "nothing holds inode") {
+	if strings.Contains(blind, "Nothing holds inode") {
 		t.Errorf("nothing was searched, so nothing can be concluded\n%s", blind)
 	}
 }
@@ -198,6 +199,9 @@ func TestUtilsProcess(t *testing.T) {
 				Ppid: 1, Uid: "0", Cmdline: "./loader --verbose",
 				Exe: "/usr/local/bin/loader", Cgroup: "/kubepods.slice/pod0ddf.slice",
 			},
+			Parent: &pb.DescribeProcessResponse{
+				Found: true, Pid: 1, Comm: "systemd", Cmdline: "/sbin/init splash",
+			},
 		},
 	})
 
@@ -207,12 +211,23 @@ func TestUtilsProcess(t *testing.T) {
 			t.Errorf("expected page to contain %q\n%s", want, out)
 		}
 	}
+	// The parent came back with the process: named, described, and one click
+	// away rather than another number to type in.
+	for _, want := range []string{
+		"systemd(1)",
+		"/sbin/init splash",
+		`href="/nodes/node-a/utils?inode=&dev=&pid=1"`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("expected the parent's %q on the page\n%s", want, out)
+		}
+	}
 
 	// A pid that is gone is the common case for a number read out of a map, and
 	// must not look like a failure.
 	gone := renderUtils(t, pageData{Node: "node-a", Tab: "utils",
 		Lookup: &lookupView{PID: "1234", Process: &pb.DescribeProcessResponse{Found: false}}})
-	if !strings.Contains(gone, "no process <code>1234</code>") {
+	if !strings.Contains(gone, "No process <code>1234</code>") {
 		t.Errorf("expected the page to say the pid is gone\n%s", gone)
 	}
 }
@@ -292,7 +307,7 @@ func TestUtilsWalkTimedOut(t *testing.T) {
 	refused := renderUtils(t, pageData{Node: "node-a", Tab: "utils",
 		Lookup: &lookupView{Inode: "42", Searched: true, Scanned: 300, Walk: true,
 			Stats: &pb.WalkStats{Note: "device 99:1 is not in the mount table"}}})
-	if !strings.Contains(refused, "no walk: device 99:1 is not in the mount table") {
+	if !strings.Contains(refused, "No walk: device 99:1 is not in the mount table") {
 		t.Errorf("a refused walk should say why\n%s", refused)
 	}
 }
@@ -321,4 +336,82 @@ func renderUtils(t *testing.T, data pageData) string {
 	rec := httptest.NewRecorder()
 	h.render(rec, "utils", data)
 	return rec.Body.String()
+}
+
+// TestUtilsPidLookupComesFirst pins the order of the page: a pid is what a map
+// dump hands you most often, so its lookup is the one the page opens on.
+func TestUtilsPidLookupComesFirst(t *testing.T) {
+	out := renderUtils(t, pageData{Node: "node-a", Tab: "utils", Lookup: &lookupView{}})
+
+	pid, inode := strings.Index(out, "pid -&gt; process"), strings.Index(out, "inode -&gt; path")
+	if pid < 0 || inode < 0 {
+		t.Fatalf("expected both lookups on the page\n%s", out)
+	}
+	if pid > inode {
+		t.Errorf("the pid lookup should come before the inode one\n%s", out)
+	}
+	// The cursor belongs in the field at the top.
+	if !regexp.MustCompile(`<input[^>]*name="pid"[^>]*autofocus`).MatchString(out) {
+		t.Errorf("expected the pid field to take the focus\n%s", out)
+	}
+	if regexp.MustCompile(`<input[^>]*name="inode"[^>]*autofocus`).MatchString(out) {
+		t.Errorf("only one field can hold the focus, and it is the first\n%s", out)
+	}
+}
+
+// TestUtilsParentUnknown covers the parent lookups that answer nothing: the row
+// still links onwards, and says which kind of nothing it got.
+func TestUtilsParentUnknown(t *testing.T) {
+	process := func(ppid uint32) *pb.DescribeProcessResponse {
+		return &pb.DescribeProcessResponse{Found: true, Pid: 1234, Comm: "loader", Ppid: ppid}
+	}
+
+	// The parent exited between the two reads.
+	gone := renderUtils(t, pageData{Node: "node-a", Tab: "utils", Lookup: &lookupView{
+		PID: "1234", Process: process(4242),
+		Parent: &pb.DescribeProcessResponse{Found: false},
+	}})
+	if !strings.Contains(gone, "?(4242)") {
+		t.Errorf("a parent with no name still links by number\n%s", gone)
+	}
+	if !strings.Contains(gone, "exited between the two reads") {
+		t.Errorf("expected the page to say why the parent has no detail\n%s", gone)
+	}
+
+	// The parent was never asked about, because asking failed.
+	unasked := renderUtils(t, pageData{Node: "node-a", Tab: "utils",
+		Lookup: &lookupView{PID: "1234", Process: process(4242)}})
+	if !strings.Contains(unasked, "?(4242)") {
+		t.Errorf("the ppid links onwards whether or not it could be described\n%s", unasked)
+	}
+	if strings.Contains(unasked, "exited between the two reads") {
+		t.Errorf("nothing was learned about the parent, so nothing is claimed\n%s", unasked)
+	}
+
+	// Pid 0 is the kernel's own ancestor: there is nowhere to go from here.
+	kernel := renderUtils(t, pageData{Node: "node-a", Tab: "utils",
+		Lookup: &lookupView{PID: "2", Process: process(0)}})
+	if strings.Contains(kernel, "pid=0") {
+		t.Errorf("a process with no parent should not link to pid 0\n%s", kernel)
+	}
+}
+
+func TestParentComm(t *testing.T) {
+	tests := []struct {
+		name string
+		look lookupView
+		want string
+	}{
+		{"named", lookupView{Parent: &pb.DescribeProcessResponse{Found: true, Comm: "bash"}}, "bash"},
+		{"gone", lookupView{Parent: &pb.DescribeProcessResponse{Found: false}}, "?"},
+		{"nameless", lookupView{Parent: &pb.DescribeProcessResponse{Found: true}}, "?"},
+		{"never asked", lookupView{}, "?"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.look.ParentComm(); got != tt.want {
+				t.Errorf("ParentComm() = %q, want %q", got, tt.want)
+			}
+		})
+	}
 }

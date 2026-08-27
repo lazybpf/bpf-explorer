@@ -3,13 +3,13 @@
 
 <h2>trace log on {{.Node}}</h2>
 <p class="muted">
-  the kernel tracing pipe (tracefs <code>trace_pipe</code>), like
-  <code>bpftool prog tracelog</code> - where <code>bpf_trace_printk()</code>
-  output lands. Most programs ship events over a ring buffer instead, so an empty
-  view is normal. Newest line first.
+  This is the kernel's tracing pipe (tracefs <code>trace_pipe</code>), where
+  <code>bpf_trace_printk()</code> output lands - the same stream
+  <code>bpftool prog tracelog</code> reads. Most programs ship events over a ring
+  buffer instead, so an empty view is normal. Newest line first.
 </p>
 <p class="warn">
-  reading <code>trace_pipe</code> drains it. A node has one global trace buffer,
+  Reading <code>trace_pipe</code> drains it. A node has one global trace buffer,
   so every line shown here is consumed - anything else tailing the pipe on this
   node will not see it. The agent reads only while this page is streaming: pause,
   or leave, and it lets go of the pipe.
