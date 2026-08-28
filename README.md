@@ -63,6 +63,25 @@ flowchart LR
 
 Images are published to GHCR for `linux/amd64` and `linux/arm64`.
 
+## What you get
+
+The `loaders` tab shows the objects each loader created in the kernel. Links
+attach programs. Programs reference maps. In this example the Lima guest-agent
+has a `perf_event` link that attaches the `lima_ticker` tracepoint program, and
+that program writes events to a `RingBuf` map:
+
+![bpf-explorer loaders tab showing a link attached to the lima_ticker program, which references a RingBuf map](README/bpf-explorer-lima-guestagent-loader.png)
+
+Every program has an `xlated` tab. It shows the translated bytecode, the same
+disassembly as `bpftool prog dump xlated`. Map ids are links; calls to BPF
+helpers are highlighted:
+
+![bpf-explorer xlated tab showing the translated eBPF bytecode of the lima_ticker program](README/bpf-explorer-program-xlated.png)
+
+These are two views. There are more: maps and their contents, program details,
+links, the trace log for each node, and the `utils` lookups. Each one has its
+own tab. Run the tool to see them.
+
 ## Quick start
 
 Nothing to clone - label the node(s) you want an agent on and apply the manifest
