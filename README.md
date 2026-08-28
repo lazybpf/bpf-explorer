@@ -168,6 +168,22 @@ kubectl delete namespace bpf-explorer
 kubectl label node <node> bpf-explorer-
 ```
 
+## Develop on macOS
+
+There is no eBPF on macOS, so everything below needs a Linux machine.
+[`.lima/bpf-explorer-dev.yaml`](.lima/bpf-explorer-dev.yaml) is a
+[Lima](https://lima-vm.io) template for one, carrying the toolchain, a
+single-node Kubernetes cluster, and `bpftool` to check the output against:
+
+```console
+limactl start .lima/bpf-explorer-dev.yaml && limactl shell bpf-explorer-dev
+```
+
+Your home directory is mounted at the same path in the VM, so the clone you
+start from is the one you land in, and every command below runs in there
+unchanged - Lima forwards the ports, so the UI still opens in a browser on the
+Mac. The node is already labelled `bpf-explorer=true`.
+
 ## Build
 
 Pure Go - no CGO, and the gRPC stubs in `gen/` are committed, so there is no

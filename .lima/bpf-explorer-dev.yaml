@@ -1,0 +1,325 @@
+# A Linux VM for developing bpf-explorer from a Mac: Ubuntu 24.04 LTS with a
+# single-node Kubernetes cluster on it.
+#
+#     limactl start .lima/bpf-explorer-dev.yaml   # ~10 min the first time
+#     limactl shell bpf-explorer-dev
+#
+# The repo's README then applies as written, from inside the VM.
+#
+# What it installs, and why this repo needs it:
+#
+#   go                  build and test the binary (`go build ./...`, `go test ./...`)
+#   docker              build the image the manifest points at (:dev)
+#   containerd + k8s    single-node kubeadm cluster, so `bpf-explorer.yaml` can
+#                       actually be applied; containerd is also what
+#                       `ctr images import` loads a locally built image into
+#   bpftool             the reference output every view here is checked against
+#   bpftrace            the easiest way to put real programs and maps on the node
+#   k9s, kubectl        drive the cluster
+#   protoc + plugins    only needed if you edit proto/ - the stubs in gen/ are
+#                       committed, so a plain build never runs the generator
+minimumLimaVersion: "2.0.0"
+
+# https://github.com/lima-vm/lima/blob/master/templates/_images/ubuntu-24.04.yaml
+images:
+  # A dated release, pinned by digest. Dated directories are pruned from the
+  # mirror after several months; once this one 404s Lima falls through to the
+  # rolling entry below, and you can bump the pair from the SHA256SUMS file
+  # next to the image.
+  - location: "https://cloud-images.ubuntu.com/releases/noble/release-20260826/ubuntu-24.04-server-cloudimg-amd64.img"
+    arch: "x86_64"
+    digest: "sha256:d0fe84bb5f80853425fa6be28e2c106f30104c3cfe8611933f2e65c9b63f0e30"
+  - location: "https://cloud-images.ubuntu.com/releases/noble/release-20260826/ubuntu-24.04-server-cloudimg-arm64.img"
+    arch: "aarch64"
+    digest: "sha256:afa139bac6f2629c1e1f2f8f34215f3a9ad9779801bcb945521ba1a45016743f"
+  # Fallback to the latest release image.
+  # Hint: run `limactl prune` to invalidate the cache
+  - location: "https://cloud-images.ubuntu.com/releases/noble/release/ubuntu-24.04-server-cloudimg-amd64.img"
+    arch: "x86_64"
+  - location: "https://cloud-images.ubuntu.com/releases/noble/release/ubuntu-24.04-server-cloudimg-arm64.img"
+    arch: "aarch64"
+
+# The heavy parts are a Go build, a docker build and a control plane. Trim if
+# your Mac is smaller.
+cpus: 4
+memory: 8GiB
+disk: 50GiB
+
+# The host home, mounted at the same path in the guest: a clone at
+# ~/go/src/github.com/lazybpf/bpf-explorer on the Mac is that same path in here,
+# so you edit on the host and build in the VM. The guest user's own home is
+# /home/<user>.linux, so this does not collide with the guest's ~/.kube or ~/go.
+mounts:
+  - location: "~"
+    writable: true
+
+# Lima's own containerd is off: the cluster below drives the containerd that
+# comes with the Docker packages, and one containerd per VM is enough.
+containerd:
+  system: false
+  user: false
+
+provision:
+  # Packages the later steps and a from-source build assume are there.
+  - mode: system
+    script: |
+      #!/bin/bash
+      set -eux -o pipefail
+
+      command -v jq >/dev/null 2>&1 && exit 0
+
+      export DEBIAN_FRONTEND=noninteractive
+      apt-get update -qq && apt-get install -y \
+        ca-certificates \
+        curl \
+        git \
+        gnupg \
+        jq \
+        unzip \
+        wget
+  # See <https://docs.docker.com/engine/install/ubuntu/>
+  - mode: system
+    script: |
+      #!/bin/bash
+      set -eux -o pipefail
+
+      command -v docker >/dev/null 2>&1 && exit 0
+
+      export DEBIAN_FRONTEND=noninteractive
+
+      # Add Docker's official GPG key:
+      apt-get update -qq && apt-get install -y \
+        ca-certificates \
+        curl
+
+      install -m 0755 -d /etc/apt/keyrings
+      curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+      chmod a+r /etc/apt/keyrings/docker.asc
+
+      # Add the repository to Apt sources:
+      echo \
+        "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu \
+        $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
+        tee /etc/apt/sources.list.d/docker.list > /dev/null
+
+      # Install the Docker packages
+      apt-get update -qq && apt-get install -y \
+        docker-ce \
+        docker-ce-cli \
+        containerd.io \
+        docker-buildx-plugin \
+        docker-compose-plugin
+  # See <https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/install-kubeadm/>
+  - mode: system
+    script: |
+      #!/bin/bash
+      set -eux -o pipefail
+
+      command -v kubeadm >/dev/null 2>&1 && exit 0
+      # Install and configure prerequisites
+      cat <<EOF | sudo tee /etc/modules-load.d/containerd.conf
+      overlay
+      br_netfilter
+      EOF
+      modprobe overlay
+      modprobe br_netfilter
+      cat <<EOF | sudo tee /etc/sysctl.d/99-kubernetes-cri.conf
+      net.bridge.bridge-nf-call-iptables  = 1
+      net.ipv4.ip_forward                 = 1
+      net.bridge.bridge-nf-call-ip6tables = 1
+      EOF
+      sysctl --system
+      # Installing kubeadm, kubelet and kubectl. The version tracks upstream
+      # stable; pin VERSION here to reproduce a specific control plane.
+      export DEBIAN_FRONTEND=noninteractive
+      apt-get update
+      apt-get install -y apt-transport-https ca-certificates curl
+      VERSION=$(curl -L -s https://dl.k8s.io/release/stable.txt | sed -e 's/v//' | cut -d'.' -f1-2)
+      echo "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v${VERSION}/deb/ /" | sudo tee /etc/apt/sources.list.d/kubernetes.list
+      curl -fsSL https://pkgs.k8s.io/core:/stable:/v${VERSION}/deb/Release.key | sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+      apt-get update
+      apt-get install -y kubelet kubeadm kubectl && apt-mark hold kubelet kubeadm kubectl
+      systemctl enable --now kubelet
+  - mode: system
+    script: |
+      #!/bin/bash
+      set -eux -o pipefail
+      [ -e /etc/containerd/conf.d/k8s.toml ] && exit 0
+      mkdir -p /etc/containerd/conf.d
+      containerd config default > /etc/containerd/config.toml
+      sed -i 's/imports.*/imports = ["\/etc\/containerd\/conf.d\/*.toml"]/g' /etc/containerd/config.toml
+      # Configuring the systemd cgroup driver
+      # Overriding the sandbox (pause) image
+      cat <<EOF >>/etc/containerd/conf.d/k8s.toml
+        [plugins]
+          [plugins."io.containerd.grpc.v1.cri"]
+            sandbox_image = "$(kubeadm config images list | grep pause | sort -r | head -n1)"
+            [plugins."io.containerd.grpc.v1.cri".containerd]
+              [plugins."io.containerd.grpc.v1.cri".containerd.runtimes]
+                [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc]
+                  runtime_type = "io.containerd.runc.v2"
+                  [plugins.'io.containerd.cri.v1.runtime'.containerd.runtimes.runc.options]
+                    SystemdCgroup = true
+        [plugins."io.containerd.cri.v1.runtime".cni]
+          bin_dirs = ["/usr/local/libexec/cni","/opt/cni/bin"]
+      EOF
+      systemctl restart containerd
+  # See <https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/create-cluster-kubeadm/>
+  - mode: system
+    script: |
+      #!/bin/bash
+      set -eux -o pipefail
+      test -e /etc/kubernetes/admin.conf && exit 0
+      export KUBECONFIG=/etc/kubernetes/admin.conf
+      systemctl stop kubelet
+      kubeadm config images list
+      kubeadm config images pull --cri-socket=unix:///run/containerd/containerd.sock
+      systemctl start kubelet
+      # Initializing your control-plane node
+      cat <<EOF >kubeadm-config.yaml
+      kind: InitConfiguration
+      apiVersion: kubeadm.k8s.io/v1beta4
+      nodeRegistration:
+        criSocket: unix:///run/containerd/containerd.sock
+      ---
+      kind: ClusterConfiguration
+      apiVersion: kubeadm.k8s.io/v1beta4
+      apiServer:
+        certSANs: # --apiserver-cert-extra-sans
+        - "127.0.0.1"
+      networking:
+        podSubnet: "10.244.0.0/16" # --pod-network-cidr
+      ---
+      kind: KubeletConfiguration
+      apiVersion: kubelet.config.k8s.io/v1beta1
+      cgroupDriver: systemd
+      EOF
+      kubeadm init --node-name control-plane --config kubeadm-config.yaml
+      # Installing a Pod network add-on
+      kubectl apply -f https://github.com/flannel-io/flannel/releases/download/v0.28.9/kube-flannel.yml
+      # Control plane node isolation
+      kubectl taint nodes --all node-role.kubernetes.io/control-plane-
+      # The agent DaemonSet has a nodeSelector, so the one node here has to carry
+      # the label or `kubectl apply -f bpf-explorer.yaml` schedules no agent at
+      # all. Doing it here is the whole point of this VM.
+      kubectl label node control-plane bpf-explorer=true --overwrite
+      # Replace the server address with localhost, so that it works also from the host
+      sed -e "/server:/ s|https://.*:\([0-9]*\)$|https://127.0.0.1:\1|" -i $KUBECONFIG
+      mkdir -p ${HOME:-/root}/.kube && cp -f $KUBECONFIG ${HOME:-/root}/.kube/config
+  - mode: system
+    script: |
+      #!/bin/bash
+      set -eux -o pipefail
+      export KUBECONFIG=/etc/kubernetes/admin.conf
+      mkdir -p {{.Home}}/.kube
+      cp -f $KUBECONFIG {{.Home}}/.kube/config
+      chown -R {{.User}} {{.Home}}/.kube
+  # Go. Keep the minor in step with the `go` directive in go.mod, so a build in
+  # here is the build CI runs (it takes its toolchain from go.mod).
+  - mode: system
+    script: |
+      #!/bin/bash
+      set -eux -o pipefail
+
+      command -v go >/dev/null 2>&1 && exit 0
+
+      export GO_VERSION="1.25.14"
+
+      wget https://go.dev/dl/go$GO_VERSION.linux-$(dpkg --print-architecture).tar.gz -O go.tar.gz
+      rm -rf /usr/local/go && tar -C /usr/local -xzf go.tar.gz
+      rm -f go.tar.gz
+      # Login shells, root's included - the user's ~/.bashrc gets the same below.
+      cat >/etc/profile.d/go.sh <<'EOF'
+      export GOROOT=/usr/local/go
+      export GOPATH=$HOME/go
+      export PATH=$GOPATH/bin:$GOROOT/bin:$PATH
+      EOF
+  # bpftool: the reference this project is written against. Ubuntu ships it in
+  # the tools package for the running kernel - the one whose objects the agent
+  # will be reading.
+  - mode: system
+    script: |
+      #!/bin/bash
+      set -eux -o pipefail
+
+      command -v bpftool >/dev/null 2>&1 && exit 0
+
+      export DEBIAN_FRONTEND=noninteractive
+      apt-get update -qq
+      # Non-fatal: a kernel with no matching tools package in the archive should
+      # not cost you the rest of the VM.
+      apt-get install -y "linux-tools-$(uname -r)" \
+        || echo "WARNING: no linux-tools-$(uname -r); install bpftool by hand" >&2
+  # bpftrace, to put something worth looking at in the kernel: every one-liner
+  # loads programs and creates maps, which is what the UI then has to render.
+  - mode: system
+    script: |
+      #!/bin/bash
+      set -eux -o pipefail
+
+      command -v bpftrace >/dev/null 2>&1 && exit 0
+
+      export DEBIAN_FRONTEND=noninteractive
+      apt-get update -qq && apt-get install -y bpftrace
+  - mode: system
+    script: |
+      #!/bin/bash
+      set -eux -o pipefail
+
+      command -v k9s >/dev/null 2>&1 && exit 0
+      export DEBIAN_FRONTEND=noninteractive
+      export K9S_VERSION="v0.51.0"
+
+      # Install K9s
+      wget https://github.com/derailed/k9s/releases/download/$K9S_VERSION/k9s_linux_$(dpkg --print-architecture).deb -O k9s.deb
+      apt install --yes ./k9s.deb && rm ./k9s.deb
+  # protoc, for `go generate -tags tools ./...`. Only matters if you edit
+  # proto/bpfinspector.proto - gen/ is committed. Ubuntu 24.04's protoc is
+  # 3.21.12, the version stamped into the committed stubs, so regenerating here
+  # leaves no incidental diff.
+  - mode: system
+    script: |
+      #!/bin/bash
+      set -eux -o pipefail
+
+      command -v protoc >/dev/null 2>&1 && exit 0
+
+      export DEBIAN_FRONTEND=noninteractive
+      apt-get update -qq && apt-get install -y protobuf-compiler
+  - mode: system
+    script: |
+      #!/bin/bash
+      set -eux -o pipefail
+
+      usermod -aG docker {{.User}}
+  # The protoc plugins, pinned to the versions the committed stubs name in their
+  # header (protoc-gen-go tracks google.golang.org/protobuf in go.mod).
+  - mode: user
+    script: |
+      #!/bin/bash
+      set -eux -o pipefail
+
+      export PATH=$PATH:/usr/local/go/bin
+
+      command -v protoc-gen-go-grpc >/dev/null 2>&1 && exit 0
+
+      go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.11
+      go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.6.2
+  - mode: user
+    script: |
+      #!/bin/bash
+      set -eux -o pipefail
+
+      if grep -q "Lima provision START" ~/.bashrc; then
+        exit 0
+      fi
+
+      echo '# Lima provision START' >> ~/.bashrc
+      echo 'export GOROOT=/usr/local/go' >> ~/.bashrc
+      echo 'export GOPATH=$HOME/go' >> ~/.bashrc
+      echo 'export PATH=$GOPATH/bin:$GOROOT/bin:$PATH' >> ~/.bashrc
+
+      echo 'source <(kubectl completion bash)' >> ~/.bashrc
+      echo 'alias k=kubectl' >> ~/.bashrc
+      echo 'complete -o default -F __start_kubectl k' >> ~/.bashrc
+      echo '# Lima provision END' >> ~/.bashrc
