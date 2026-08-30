@@ -28,6 +28,11 @@
     --fg:        #4aeb6b;
     --fg-hi:     #8bffa3;
     --fg-dim:    #38a457;
+    /* One rung below dim, for a column that is read only when something sends
+       you looking for it - a jump's target offset. Still ~4:1 on the inset
+       background: --border is darker, but it is a rule colour, and text set in
+       it stops being readable at all. */
+    --fg-faint:  #2a7d43;
 
     --accent:    #55ffff;
     --warn:      #ffb000;
@@ -303,12 +308,23 @@
   /* ── xlated program dump ─────────────────────────────────────────────── */
   /* A listing is a wall of near-identical lines, so only what carries meaning
      is coloured: the function, the helper a call lands in, the map it loads.
-     The bookkeeping columns recede, and the C source it was compiled from sits
-     a shade back from the instructions it produced. */
+     Four levels of phosphor, brightest to faintest: the function header, the
+     instructions, the C source they were compiled from, the bookkeeping. */
   pre.xlated { line-height: 1.45; }
   pre.xlated .fn { color: var(--fg-hi); }
-  pre.xlated .cmt { color: var(--fg-dim); }
-  pre.xlated .off, pre.xlated .op { color: var(--fg-dim); }
+  /* A rung below the source, so dim green means "the C" and nothing else. These
+     two columns are scaffolding you read only when a jump sends you looking for
+     an offset. */
+  pre.xlated .off, pre.xlated .op { color: var(--fg-faint); }
+  /* Slanted as well as dim: it is the one thing in the listing that is not the
+     program, and the slant says so without putting another mark in a left
+     margin that already carries the pre's rule and bpftool's ";". No italic
+     face exists for this family, so the browser shears the upright - which is
+     what a terminal that could not change font did too. */
+  pre.xlated .cmt {
+    color: var(--fg-dim);
+    font-style: italic;
+  }
   /* Not the link colour: a helper is a name worth spotting, not somewhere to
      go, and a map reference next to it is. */
   pre.xlated .helper { color: var(--warn); }
