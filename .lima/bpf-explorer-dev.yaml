@@ -16,6 +16,7 @@
 #   bpftool             the reference output every view here is checked against
 #   bpftrace            the easiest way to put real programs and maps on the node
 #   k9s, kubectl        drive the cluster
+#   krew                kubectl plugin manager, for whatever plugins you reach for
 #   protoc + plugins    only needed if you edit proto/ - the stubs in gen/ are
 #                       committed, so a plain build never runs the generator
 minimumLimaVersion: "2.0.0"
@@ -305,6 +306,22 @@ provision:
 
       go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.11
       go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.6.2
+  # See <https://krew.sigs.k8s.io/docs/user-guide/setup/install/>
+  - mode: user
+    script: |
+      # ~/.krew/bin is not on PATH in a provision shell, so test the path itself:
+      # `krew install krew` over an existing install exits non-zero, which would
+      # fail provisioning on every subsequent `limactl start`.
+      [ -x "${KREW_ROOT:-$HOME/.krew}/bin/kubectl-krew" ] && exit 0
+      (
+        set -x; cd "$(mktemp -d)" &&
+        OS="$(uname | tr '[:upper:]' '[:lower:]')" &&
+        ARCH="$(uname -m | sed -e 's/x86_64/amd64/' -e 's/\(arm\)\(64\)\?.*/\1\2/' -e 's/aarch64$/arm64/')" &&
+        KREW="krew-${OS}_${ARCH}" &&
+        curl -fsSLO "https://github.com/kubernetes-sigs/krew/releases/latest/download/${KREW}.tar.gz" &&
+        tar zxvf "${KREW}.tar.gz" &&
+        ./"${KREW}" install krew
+      )
   - mode: user
     script: |
       #!/bin/bash
@@ -322,4 +339,5 @@ provision:
       echo 'source <(kubectl completion bash)' >> ~/.bashrc
       echo 'alias k=kubectl' >> ~/.bashrc
       echo 'complete -o default -F __start_kubectl k' >> ~/.bashrc
+      echo 'export PATH="${KREW_ROOT:-$HOME/.krew}/bin:$PATH"' >> ~/.bashrc
       echo '# Lima provision END' >> ~/.bashrc
