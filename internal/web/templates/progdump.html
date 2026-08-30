@@ -20,7 +20,7 @@
     <pre id="out" class="xlated">{{range .Lines -}}
 {{if eq .Kind "comment"}}<div class="cmt">; {{.Text}}</div>
 {{- else if eq .Kind "func"}}<div class="fn">{{.Text}}</div>
-{{- else}}<div class="insn"><span class="off">{{.Offset}}</span>: {{with .Opcode}}<span class="op">({{.}})</span> {{end}}{{range .Parts}}{{if .Href}}<a href="{{.Href}}" target="_blank" rel="noopener"{{with .Title}} title="{{.}} (new tab)"{{end}}>{{.Text}}</a>{{else if .Helper}}<span class="helper">{{.Text}}</span>{{else}}{{.Text}}{{end}}{{end}}</div>
+{{- else}}<div class="insn"><span class="off">{{.Offset}}</span>: {{with .Opcode}}<span class="op">({{.}})</span> {{end}}{{range .Parts}}{{if .Href}}<a href="{{.Href}}" target="_blank" rel="noopener"{{with .Title}} title="{{.}} (new tab)"{{end}}>{{.Text}}</a>{{else if .Helper}}<span class="helper">{{.Text}}</span>{{else if .Title}}<span class="hex" title="{{.Title}}">{{.Text}}</span>{{else}}{{.Text}}{{end}}{{end}}</div>
 {{- end}}
 {{- end}}</pre>
 

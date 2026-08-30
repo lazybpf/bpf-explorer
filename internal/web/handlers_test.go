@@ -237,11 +237,12 @@ func TestProgramsXlatedDump(t *testing.T) {
 		"int trace_conn(struct __sk_buff * skb):",
 		"; if (skb->len > limit)",
 		"   0: (79) r1 = *(u64 *)(r8 +24)",
-		"   1: (2d) if r1 > r2 goto pc+3",
-		"   2: (85) call bpf_map_lookup_elem#149280",
-		"   3: (18) r1 = map[id:422]",
+		"   1: (2d) if r1 > r2 goto pc+4",
+		"   2: (15) if r1 == 0xfffffff5 goto pc+3",
+		"   3: (85) call bpf_map_lookup_elem#149280",
+		"   4: (18) r1 = map[id:422]",
 		"; ",
-		"   5: (95) exit",
+		"   6: (95) exit",
 	}
 	avail := base
 	avail.ProgDump = &progDumpView{
@@ -273,6 +274,11 @@ func TestProgramsXlatedDump(t *testing.T) {
 	}
 	if !strings.Contains(out, `title="conns (hash) (new tab)"`) {
 		t.Errorf("expected the map link to name the map in output\n%s", out)
+	}
+	// A hex value keeps the text bpftool printed and hangs its decimal off a
+	// tooltip, so the listing still diffs but the number can be read.
+	if !strings.Contains(out, `<span class="hex" title="4294967285₁₀ (signed -11)">0xfffffff5</span>`) {
+		t.Errorf("expected the hex comparand to carry its decimal in output\n%s", out)
 	}
 	// Both views can be put aside; the buttons say what they will do.
 	for _, want := range []string{`id="comments"`, `id="instructions"`, ">hide comments<", ">hide instructions<"} {

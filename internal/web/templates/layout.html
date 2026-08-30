@@ -312,6 +312,13 @@
   /* Not the link colour: a helper is a name worth spotting, not somewhere to
      go, and a map reference next to it is. */
   pre.xlated .helper { color: var(--warn); }
+  /* A hex value holds its decimal in a tooltip, marked the way code[title] is:
+     dotted underline, dimmed, since the value itself is already the text. */
+  pre.xlated .hex {
+    text-decoration: underline dotted var(--fg-dim);
+    text-underline-offset: .2em;
+    cursor: help;
+  }
   /* Whole lines go, rather than their text: hiding the text would leave the
      line behind, empty. */
   pre.xlated.no-cmt .cmt { display: none; }

@@ -118,6 +118,52 @@ func TestXlatedParts(t *testing.T) {
 				{Text: ""},
 			},
 		},
+		{
+			"a jump comparand carries its decimal",
+			"if r1 == 0xff goto pc+3",
+			[]xlatedPart{
+				{Text: "if r1 == "},
+				{Text: "0xff", Title: "255₁₀"},
+				{Text: " goto pc+3"},
+			},
+		},
+		{
+			// The kernel prints the comparand unsigned however the comparison
+			// reads it, so an errno check arrives here as a large number.
+			"a comparand with the top bit set also reads as signed",
+			"if r0 s> 0xfffffff5 goto pc+2",
+			[]xlatedPart{
+				{Text: "if r0 s> "},
+				{Text: "0xfffffff5", Title: "4294967285₁₀ (signed -11)"},
+				{Text: " goto pc+2"},
+			},
+		},
+		{
+			"a wide immediate reads as a 64-bit value",
+			"r1 = 0xffffffffffffffff",
+			[]xlatedPart{
+				{Text: "r1 = "},
+				{Text: "0xffffffffffffffff", Title: "18446744073709551615₁₀ (signed -1)"},
+				{Text: ""},
+			},
+		},
+		{
+			// Past 32 bits but with room to spare: nothing to read as signed.
+			"a wide immediate with no top bit set is just decimal",
+			"r1 = 0x100000000",
+			[]xlatedPart{
+				{Text: "r1 = "},
+				{Text: "0x100000000", Title: "4294967296₁₀"},
+				{Text: ""},
+			},
+		},
+		{
+			// The ALU immediates already print decimal, so there is nothing here
+			// to restate.
+			"a decimal immediate is left alone",
+			"r2 += 255",
+			[]xlatedPart{{Text: "r2 += 255"}},
+		},
 	}
 
 	for _, tt := range tests {

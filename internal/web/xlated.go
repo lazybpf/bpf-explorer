@@ -2,6 +2,7 @@ package web
 
 import (
 	"fmt"
+	"math"
 	"net/url"
 	"regexp"
 	"strconv"
@@ -24,6 +25,10 @@ var (
 	callPattern = regexp.MustCompile(`^call ([A-Za-z_][A-Za-z0-9_]*)#`)
 	// "map[id:422]", which is also the head of "map[id:422][0]+8".
 	mapPattern = regexp.MustCompile(`map\[id:(\d+)\]`)
+	// A hex literal: a jump's comparand, and the value of a wide immediate
+	// load. The word boundaries keep it out of a name that happens to contain
+	// "0x", since a call's target is whatever kallsyms called it.
+	hexPattern = regexp.MustCompile(`\b0x[0-9a-fA-F]+\b`)
 )
 
 // Line kinds. A dump is a listing of instructions with the function headers and
@@ -47,13 +52,13 @@ type xlatedLine struct {
 	Parts  []xlatedPart
 }
 
-// xlatedPart is a run of an instruction's text: plain, the name of a helper, or
-// a reference to a map, which links to that map's own dump.
+// xlatedPart is a run of an instruction's text: plain, the name of a helper, a
+// hex value, or a reference to a map, which links to that map's own dump.
 type xlatedPart struct {
 	Text   string
 	Helper bool
 	Href   string // non-empty: link Text there
-	Title  string // a link's tooltip: what the map is
+	Title  string // tooltip: what the map is, or what the hex value is in decimal
 }
 
 // xlatedLines parses a dump into the page's model. maps may be nil, in which
@@ -84,17 +89,18 @@ func xlatedLines(lines []string, node string, maps map[uint32]*pb.MapInfo) []xla
 
 // xlatedParts splits one instruction's text at the name worth marking. There is
 // at most one per instruction: a call names what it lands in, and nothing else
-// does; a load of a map pointer names the map, and nothing else does.
+// does; a load of a map pointer names the map, and nothing else does. Whatever
+// is left over is still split at its hex values by plainParts.
 func xlatedParts(text, node string, maps map[uint32]*pb.MapInfo) []xlatedPart {
 	// A call the dump could not name has no name to mark - "unknown" is a
 	// placeholder, not a symbol.
 	if m := callPattern.FindStringSubmatch(text); m != nil && m[1] != "unknown" {
-		return []xlatedPart{
+		parts := []xlatedPart{
 			{Text: "call "},
 			{Text: m[1], Helper: true},
-			// From the "#" on: the id or offset the call carries.
-			{Text: text[len(m[0])-1:]},
 		}
+		// From the "#" on: the id or offset the call carries.
+		return append(parts, plainParts(text[len(m[0])-1:])...)
 	}
 
 	// A map reference is the one thing in a listing that points at another
@@ -108,11 +114,63 @@ func xlatedParts(text, node string, maps map[uint32]*pb.MapInfo) []xlatedPart {
 			if info := maps[uint32(id)]; info != nil {
 				ref.Title = fmt.Sprintf("%s (%s)", info.GetName(), info.GetType())
 			}
-			return []xlatedPart{{Text: text[:m[0]]}, ref, {Text: text[m[1]:]}}
+			parts := append(plainParts(text[:m[0]]), ref)
+			return append(parts, plainParts(text[m[1]:])...)
 		}
 	}
 
-	return []xlatedPart{{Text: text}}
+	return plainParts(text)
+}
+
+// plainParts splits a run of instruction text at its hex values, so each can
+// carry what it is in decimal. The listing prints hex because bpftool does, but
+// what a comparand means is a number - an errno, a size, a flag - and reading
+// it back out of the hex is otherwise the reader's job.
+func plainParts(text string) []xlatedPart {
+	matches := hexPattern.FindAllStringIndex(text, -1)
+	if matches == nil {
+		return []xlatedPart{{Text: text}}
+	}
+
+	parts := make([]xlatedPart, 0, 2*len(matches)+1)
+	end := 0
+	for _, m := range matches {
+		dec, ok := hexDecimal(text[m[0]:m[1]])
+		if !ok {
+			// Wider than 64 bits, so nothing we can restate. Leaving it in the
+			// run that follows prints it unchanged.
+			continue
+		}
+		parts = append(parts,
+			xlatedPart{Text: text[end:m[0]]},
+			xlatedPart{Text: text[m[0]:m[1]], Title: dec})
+		end = m[1]
+	}
+	return append(parts, xlatedPart{Text: text[end:]})
+}
+
+// base10 is the subscript the tooltip carries, marking that what it shows is
+// the same value in another base rather than a different value. A tooltip is a
+// title attribute, which is text: the subscript has to be the characters, since
+// there is no markup to be had there.
+const base10 = "₁₀" // subscript one, subscript zero
+
+// hexDecimal restates a hex value in decimal. One whose top bit is set at its
+// width gets its signed reading too, because that is usually what it is: the
+// kernel prints a jump's comparand unsigned whatever the signedness of the
+// comparison, so a check against -EAGAIN arrives here as 0xfffffff5.
+func hexDecimal(lit string) (string, bool) {
+	v, err := strconv.ParseUint(lit[len("0x"):], 16, 64)
+	if err != nil {
+		return "", false
+	}
+	switch {
+	case v > math.MaxInt64:
+		return fmt.Sprintf("%d%s (signed %d)", v, base10, int64(v)), true
+	case v > math.MaxInt32 && v <= math.MaxUint32:
+		return fmt.Sprintf("%d%s (signed %d)", v, base10, int32(uint32(v))), true
+	}
+	return strconv.FormatUint(v, 10) + base10, true
 }
 
 // mapsByID indexes a map listing for the pages that resolve a map id to what it
