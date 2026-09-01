@@ -280,8 +280,12 @@ func TestProgramsXlatedDump(t *testing.T) {
 	if !strings.Contains(out, `<span class="hex" title="4294967285₁₀ (signed -11)">0xfffffff5</span>`) {
 		t.Errorf("expected the hex comparand to carry its decimal in output\n%s", out)
 	}
-	// Both views can be put aside; the buttons say what they will do.
-	for _, want := range []string{`id="comments"`, `id="instructions"`, ">hide comments<", ">hide instructions<"} {
+	// Both views can be put aside, and the listing can be taken away as text;
+	// the buttons say what they will do.
+	for _, want := range []string{
+		`id="comments"`, `id="instructions"`, `id="copy"`,
+		">hide comments<", ">hide instructions<", ">copy listing<",
+	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("expected %s among the listing controls\n%s", want, out)
 		}

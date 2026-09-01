@@ -8,11 +8,13 @@
   <h2>program {{.ID}} — {{.Name}} xlated</h2>
   {{if .Available}}
     {{/* Two views of the same listing: the source it was compiled from, and the
-         instructions it compiled to. Each button says what clicking it will do,
-         the way the trace log's do. */}}
+         instructions it compiled to. Then the listing itself, as text, for
+         wherever you were going to read it next. Each button says what clicking
+         it will do, the way the trace log's do. */}}
     <p class="controls">
       <button id="comments" type="button">hide comments</button>
       <button id="instructions" type="button">hide instructions</button>
+      <button id="copy" type="button">copy listing</button>
     </p>
 
     {{/* No whitespace between the lines: inside a pre, a newline here would be
@@ -37,6 +39,44 @@
       };
       toggle('comments', 'no-cmt', 'hide comments', 'show comments');
       toggle('instructions', 'no-insn', 'hide instructions', 'show instructions');
+
+      // Copying takes the plain text back out of the markup, which is the text
+      // the agent sent - what bpftool prints - ready to paste into an editor,
+      // an issue, or a model. What is hidden is left out: the copy is the
+      // listing you are looking at, not everything the page happens to hold.
+      // The class names line up for that, a "cmt" line being the one "no-cmt"
+      // hides.
+      const listing = () => Array.from(out.children)
+        .filter((line) => !out.classList.contains('no-' + line.className))
+        .map((line) => line.textContent)
+        .join('\n');
+
+      const copy = document.getElementById('copy');
+      // The button reports what happened and then goes back to naming what it
+      // does. One timer, so a second click restarts the message instead of
+      // having the first click's timer clear it early.
+      let revert;
+      const say = (text) => {
+        copy.textContent = text;
+        clearTimeout(revert);
+        revert = setTimeout(() => { copy.textContent = 'copy listing'; }, 1500);
+      };
+      copy.addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText(listing());
+          say('copied');
+        } catch {
+          // No clipboard to write to: it needs a secure context, which this
+          // page is only over https or through a port-forward to localhost.
+          // Select the listing instead, leaving the copy one keystroke away.
+          const range = document.createRange();
+          range.selectNodeContents(out);
+          const selection = getSelection();
+          selection.removeAllRanges();
+          selection.addRange(range);
+          say('selected - copy it');
+        }
+      });
     })();
     </script>
   {{else}}
