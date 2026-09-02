@@ -4,13 +4,16 @@
 <h2>programs on {{.Node}} <span class="muted">({{len .Programs}})</span></h2>
 <div class="scroll">
 <table>
-  <thead><tr><th>ID</th><th>Name</th><th>Type</th><th>Tag</th><th>Maps</th><th title="processes holding an open fd to this program; the lowest-numbered one is treated as its loader">Holders</th><th></th></tr></thead>
+  <thead><tr><th>ID</th><th>Name</th><th>Type</th><th>Tag</th><th>Maps</th><th title="the BTF object carrying this program's function and line info - what makes its xlated dump show source lines">BTF</th><th title="processes holding an open fd to this program; the lowest-numbered one is treated as its loader">Holders</th><th></th></tr></thead>
   <tbody>
   {{range .Programs}}
     <tr>
       <td>{{.Id}}</td><td>{{.Name}}</td><td>{{.Type}}</td><td><code>{{.Tag}}</code></td>
       <td>
         {{range .MapIds}}{{$id := .}}{{$m := index $.MapsByID $id}}<a href="/nodes/{{$.Node}}/maps/{{$id}}" target="_blank" rel="noopener"{{with $m}} title="{{.Name}} ({{.Type}})"{{end}}>{{$id}}</a>{{" "}}{{else}}<span class="muted">-</span>{{end}}
+      </td>
+      <td>
+        {{if .BtfId}}<a href="/nodes/{{$.Node}}/btf#btf-{{.BtfId}}" target="_blank" rel="noopener" title="this program's BTF object, and what else carries it (new tab)">{{.BtfId}}</a>{{else}}<span class="muted" title="loaded without BTF">-</span>{{end}}
       </td>
       <td>
         {{range .Pids}}{{.Comm}}({{.Pid}}){{" "}}{{else}}<span class="muted">-</span>{{end}}
@@ -21,7 +24,7 @@
       </td>
     </tr>
   {{else}}
-    <tr><td colspan="7" class="muted">(no programs)</td></tr>
+    <tr><td colspan="8" class="muted">(no programs)</td></tr>
   {{end}}
   </tbody>
 </table>

@@ -81,8 +81,8 @@ helpers are highlighted:
 ![bpf-explorer xlated tab showing the translated eBPF bytecode of the lima_ticker program](README/bpf-explorer-program-xlated.png)
 
 These are two views. There are more: maps and their contents, program details,
-links, the trace log for each node, and the `utils` lookups. Each one has its
-own tab. Run the tool to see them.
+links, the BTF objects behind them, the trace log for each node, and the `utils`
+lookups. Each one has its own tab. Run the tool to see them.
 
 ## Quick start
 
@@ -155,6 +155,25 @@ host's filesystem.
 > belong to different files on different disks. That is why every hit names its
 > device, and why you can narrow a search to one `major:minor` device or one
 > directory.
+
+## BTF
+
+The `btf` tab lists the BTF objects loaded on a node, the same roster as
+`bpftool btf show` - id, name, kind and raw size - and joins each one to what
+carries it: the programs whose xlated dumps get their source lines from it, and
+the maps whose keys and values it decodes. The programs and maps tabs link back,
+so a map that dumps into named struct fields says which BTF taught it to.
+
+The last column names the processes holding an fd to the BTF object. Usually
+none do: a loader closes that fd once its programs are loaded, and the objects
+keep the BTF alive on their own references. So when nothing holds it, the page
+shows the loaders of the programs carrying it instead, marked as the inference it
+is - the same fallback the maps tab makes for a map nobody holds.
+
+Most of the list is the kernel's own BTF - `vmlinux` plus one object per module
+that carries BTF, well over a hundred on an ordinary node. None of it is
+cross-referenced by anything, so it is folded into a section of its own at the
+bottom of the page, and only what a loader brought in is shown above.
 
 ## Cleanup
 

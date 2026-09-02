@@ -14,6 +14,7 @@ service BpfInspector {
   rpc ListPrograms(ListProgramsRequest) returns (ListProgramsResponse);
   rpc DumpProgram(DumpProgramRequest) returns (DumpProgramResponse);
   rpc ListLinks(ListLinksRequest) returns (ListLinksResponse);
+  rpc ListBTF(ListBTFRequest) returns (ListBTFResponse);
   rpc TraceLog(TraceLogRequest) returns (stream TraceLogEvent);
   rpc ResolveInode(ResolveInodeRequest) returns (ResolveInodeResponse);
   rpc DescribeProcess(DescribeProcessRequest) returns (DescribeProcessResponse);
@@ -33,6 +34,9 @@ message MapInfo {
   // Why this map cannot be dumped, for the UI to show; empty when dumpable.
   // Mirrors DumpProgramResponse.note, which serves the same purpose.
   string dump_note = 11;
+  // The BTF object describing this map's key and value types, 0 when it was
+  // loaded without BTF. Joins this map to a BTFInfo.id.
+  uint32 btf_id = 12;
 }
 
 message ListMapsRequest {}
@@ -73,6 +77,10 @@ message ProgramInfo {
   string tag = 4;
   repeated uint32 map_ids = 5;
   repeated ProcessRef pids = 6;
+  // The BTF object carrying this program's function and line info - what makes
+  // an xlated dump show source lines. 0 when loaded without BTF. Joins this
+  // program to a BTFInfo.id.
+  uint32 btf_id = 7;
 }
 message ListProgramsRequest {}
 message ListProgramsResponse { repeated ProgramInfo programs = 1; }
@@ -96,6 +104,24 @@ message LinkInfo {
 }
 message ListLinksRequest {}
 message ListLinksResponse { repeated LinkInfo links = 1; }
+
+// BTFInfo is one BTF object loaded in the kernel, as `bpftool btf show` lists
+// them. The cross-reference to programs and maps is not here: both already carry
+// their btf_id, and the UI joins them - which also lets it reach the loaders
+// behind those programs, something no per-object listing can see.
+message BTFInfo {
+  uint32 id = 1;
+  // Empty for anonymous BTF, which is what most program BTF is. The kernel's
+  // own carry a name: "vmlinux", or the module's.
+  string name = 2;
+  // "vmlinux" | "module" | "user" - the kernel's own BTF, a module's, or BTF
+  // loaded from userspace with a program or map.
+  string kind = 3;
+  uint32 size = 4;               // raw BTF bytes, bpftool's "size <n>B"
+  repeated ProcessRef pids = 5;  // holders of an open fd to this BTF object
+}
+message ListBTFRequest {}
+message ListBTFResponse { repeated BTFInfo btfs = 1; }
 
 // TraceLog streams the node's kernel tracing pipe (tracefs trace_pipe), the
 // same source as `bpftool prog tracelog` - where bpf_trace_printk() output

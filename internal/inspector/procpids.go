@@ -15,6 +15,10 @@ const (
 	bpfProgIDKey      = "prog_id:"
 	bpfMapLinkPrefix  = "anon_inode:bpf-map"
 	bpfMapIDKey       = "map_id:"
+	// A BTF fd is named "btf" rather than "bpf-btf" - the kernel's anon inode
+	// for it predates the "bpf-" prefix the other object kinds carry.
+	bpfBTFLinkPrefix = "anon_inode:btf"
+	bpfBTFIDKey      = "btf_id:"
 )
 
 // scanProgramPIDs returns, per program ID, the processes holding an open fd to
@@ -27,6 +31,15 @@ func scanProgramPIDs(procRoot string) map[uint32][]ProcessRef {
 // - the same information `bpftool map show` reports as `pids`.
 func scanMapPIDs(procRoot string) map[uint32][]ProcessRef {
 	return scanObjectPIDs(procRoot, bpfMapLinkPrefix, bpfMapIDKey)
+}
+
+// scanBTFPIDs returns, per BTF ID, the processes holding an open fd to that BTF
+// object - the same information `bpftool btf show` reports as `pids`. Expect
+// this to be empty more often than for maps and programs: a loader closes the
+// BTF fd once its programs are loaded, and the objects keep the BTF alive on
+// their own kernel references.
+func scanBTFPIDs(procRoot string) map[uint32][]ProcessRef {
+	return scanObjectPIDs(procRoot, bpfBTFLinkPrefix, bpfBTFIDKey)
 }
 
 // scanObjectPIDs walks procRoot (normally /proc) and returns, per BPF object ID,

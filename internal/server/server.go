@@ -47,6 +47,7 @@ func (s *Server) ListMaps(_ context.Context, _ *pb.ListMapsRequest) (*pb.ListMap
 			Dumpable:   m.Dumpable,
 			DumpNote:   m.DumpNote,
 			Pids:       pids,
+			BtfId:      m.BTFID,
 		})
 	}
 	return resp, nil
@@ -90,6 +91,7 @@ func (s *Server) ListPrograms(_ context.Context, _ *pb.ListProgramsRequest) (*pb
 			Tag:    p.Tag,
 			MapIds: p.MapIDs,
 			Pids:   pids,
+			BtfId:  p.BTFID,
 		})
 	}
 	return resp, nil
@@ -196,6 +198,29 @@ func (s *Server) DescribeProcess(_ context.Context, req *pb.DescribeProcessReque
 		Exe:     d.Exe,
 		Cgroup:  d.Cgroup,
 	}, nil
+}
+
+// ListBTF lists the BTF objects loaded on the node, like `bpftool btf show`.
+func (s *Server) ListBTF(_ context.Context, _ *pb.ListBTFRequest) (*pb.ListBTFResponse, error) {
+	btfs, err := s.insp.ListBTF()
+	if err != nil {
+		return nil, err
+	}
+	resp := &pb.ListBTFResponse{Btfs: make([]*pb.BTFInfo, 0, len(btfs))}
+	for _, b := range btfs {
+		pids := make([]*pb.ProcessRef, 0, len(b.PIDs))
+		for _, ref := range b.PIDs {
+			pids = append(pids, &pb.ProcessRef{Pid: ref.PID, Comm: ref.Comm})
+		}
+		resp.Btfs = append(resp.Btfs, &pb.BTFInfo{
+			Id:   b.ID,
+			Name: b.Name,
+			Kind: b.Kind,
+			Size: b.Size,
+			Pids: pids,
+		})
+	}
+	return resp, nil
 }
 
 func (s *Server) ListLinks(_ context.Context, _ *pb.ListLinksRequest) (*pb.ListLinksResponse, error) {

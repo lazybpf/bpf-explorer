@@ -43,7 +43,7 @@ func New(disc discovery.Discoverer, hiddenLoaders map[uint32]bool) (*Handlers, e
 	}
 	pages := map[string]*template.Template{}
 	for _, name := range []string{"index", "maps", "mapdump", "programs", "progdump",
-		"links", "loaders", "loader", "tracelog", "utils"} {
+		"links", "btf", "loaders", "loader", "tracelog", "utils"} {
 		t, err := template.New(name).Funcs(funcs).ParseFS(templatesFS,
 			"templates/layout.html", "templates/partials.html", "templates/"+name+".html")
 		if err != nil {
@@ -63,6 +63,7 @@ func (h *Handlers) Router() http.Handler {
 	mux.HandleFunc("GET /nodes/{node}/programs", h.programs)
 	mux.HandleFunc("GET /nodes/{node}/programs/{id}", h.programs)
 	mux.HandleFunc("GET /nodes/{node}/links", h.links)
+	mux.HandleFunc("GET /nodes/{node}/btf", h.btf)
 	mux.HandleFunc("GET /nodes/{node}/loaders", h.loadersIndex)
 	// The per-program and per-map diagrams are not loaders, but they share the
 	// loader tab and its template; they keep this prefix until the URLs get a
@@ -82,15 +83,20 @@ type pageData struct {
 	// Title is the browser tab title and Sub says whether this page sits under
 	// its tab rather than being it. Both are filled in by render from the page
 	// name and the data below - handlers do not set them.
-	Title      string
-	Sub        bool
-	Nodes      []string
-	Node       string
-	Tab        string
-	Err        string
-	Maps       []*pb.MapInfo
-	Programs   []*pb.ProgramInfo
-	Links      []*pb.LinkInfo
+	Title    string
+	Sub      bool
+	Nodes    []string
+	Node     string
+	Tab      string
+	Err      string
+	Maps     []*pb.MapInfo
+	Programs []*pb.ProgramInfo
+	Links    []*pb.LinkInfo
+	// The btf page, already split: what a loader brought in, and the kernel's
+	// own - vmlinux plus one per module, which is most of the list and none of
+	// the interest.
+	BTFLoaded  []btfRow
+	BTFKernel  []btfRow
 	MapsByID   map[uint32]*pb.MapInfo // id -> map, for program map-ref tooltips
 	Dump       *dumpView
 	ProgDump   *progDumpView
@@ -334,6 +340,50 @@ func (h *Handlers) links(w http.ResponseWriter, r *http.Request) {
 		data.Programs = progs.GetPrograms()
 	}
 	h.render(w, "links", data)
+}
+
+// btf lists the BTF objects on a node, like `bpftool btf show`, joined to the
+// programs and maps carrying each one's btf_id - and through those programs, to
+// the loaders behind them.
+func (h *Handlers) btf(w http.ResponseWriter, r *http.Request) {
+	node := r.PathValue("node")
+	data := pageData{Node: node, Tab: "btf"}
+	data.Nodes, _ = h.nodes()
+
+	conn, err := h.dial(node)
+	if err != nil {
+		data.Err = err.Error()
+		h.render(w, "btf", data)
+		return
+	}
+	defer conn.Close()
+	client := pb.NewBpfInspectorClient(conn)
+
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+
+	list, err := client.ListBTF(ctx, &pb.ListBTFRequest{})
+	if err != nil {
+		data.Err = err.Error()
+		h.render(w, "btf", data)
+		return
+	}
+
+	// Programs and maps are what make this page more than a size listing, but
+	// they are still best-effort, as on the links page: a BTF roster without its
+	// cross-references beats no page at all.
+	var progs []*pb.ProgramInfo
+	if pl, perr := client.ListPrograms(ctx, &pb.ListProgramsRequest{}); perr == nil {
+		progs = pl.GetPrograms()
+	}
+	var maps []*pb.MapInfo
+	if ml, merr := client.ListMaps(ctx, &pb.ListMapsRequest{}); merr == nil {
+		maps = ml.GetMaps()
+	}
+	data.Programs = progs
+	data.MapsByID = mapsByID(maps)
+	data.BTFLoaded, data.BTFKernel = btfRows(list.GetBtfs(), progs, maps)
+	h.render(w, "btf", data)
 }
 
 // utils answers the two questions a map full of raw numbers raises: which file
@@ -847,6 +897,15 @@ func loaderRef(p *pb.ProgramInfo) *pb.ProcessRef {
 // alive on the program's kernel reference alone. Each entry reads
 // "comm(pid) via prog <ids>", one per distinct loader, in program-id order.
 func mapLoaders(progs []*pb.ProgramInfo, id uint32) []string {
+	return loadersVia(progs, func(p *pb.ProgramInfo) bool { return refsMap(p, id) })
+}
+
+// loadersVia names the loaders of the programs match selects, as
+// "comm(pid) via prog <ids>" - one entry per distinct loader, in program-id
+// order. It is the shared half of every "nothing holds an fd to this, so who
+// loaded the programs that use it?" inference on the site, so a map's answer and
+// a BTF object's cannot drift apart in wording or in who counts as a loader.
+func loadersVia(progs []*pb.ProgramInfo, match func(*pb.ProgramInfo) bool) []string {
 	type loader struct {
 		ref   *pb.ProcessRef
 		progs []string
@@ -855,7 +914,7 @@ func mapLoaders(progs []*pb.ProgramInfo, id uint32) []string {
 	var order []uint32
 
 	for _, p := range progs {
-		if !refsMap(p, id) {
+		if !match(p) {
 			continue
 		}
 		ref := loaderRef(p)

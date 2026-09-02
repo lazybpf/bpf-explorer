@@ -32,6 +32,7 @@ type MapSummary struct {
 	Dumpable   bool
 	DumpNote   string // why Dumpable is false; empty when it is true
 	PIDs       []ProcessRef
+	BTFID      uint32 // 0 when the map was loaded without BTF
 }
 
 // Entry is one key/value pair, in both raw hex and BTF-formatted forms.
@@ -62,6 +63,7 @@ type ProgramSummary struct {
 	Tag    string
 	MapIDs []uint32
 	PIDs   []ProcessRef
+	BTFID  uint32 // 0 when the program was loaded without BTF
 }
 
 // Inspector reads maps/programs/links from the host kernel.
@@ -102,6 +104,7 @@ func (i *Inspector) ListMaps() ([]MapSummary, error) {
 		}
 		mapID, _ := info.ID()
 		note := undumpableReason(info.Type)
+		btfID, _ := info.BTFID()
 		out = append(out, MapSummary{
 			ID:         uint32(mapID),
 			Name:       info.Name,
@@ -113,6 +116,7 @@ func (i *Inspector) ListMaps() ([]MapSummary, error) {
 			Dumpable:   note == "",
 			DumpNote:   note,
 			PIDs:       pidsByMap[uint32(mapID)],
+			BTFID:      uint32(btfID),
 		})
 		m.Close()
 	}
@@ -196,6 +200,7 @@ func (i *Inspector) ListPrograms() ([]ProgramSummary, error) {
 		for _, mid := range mapIDs {
 			ids = append(ids, uint32(mid))
 		}
+		btfID, _ := info.BTFID()
 		out = append(out, ProgramSummary{
 			ID:     uint32(progID),
 			Name:   info.Name,
@@ -203,6 +208,7 @@ func (i *Inspector) ListPrograms() ([]ProgramSummary, error) {
 			Tag:    info.Tag,
 			MapIDs: ids,
 			PIDs:   pidsByProg[uint32(progID)],
+			BTFID:  uint32(btfID),
 		})
 		p.Close()
 	}

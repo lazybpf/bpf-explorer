@@ -24,6 +24,7 @@ const (
 	BpfInspector_ListPrograms_FullMethodName    = "/bpfinspector.v1.BpfInspector/ListPrograms"
 	BpfInspector_DumpProgram_FullMethodName     = "/bpfinspector.v1.BpfInspector/DumpProgram"
 	BpfInspector_ListLinks_FullMethodName       = "/bpfinspector.v1.BpfInspector/ListLinks"
+	BpfInspector_ListBTF_FullMethodName         = "/bpfinspector.v1.BpfInspector/ListBTF"
 	BpfInspector_TraceLog_FullMethodName        = "/bpfinspector.v1.BpfInspector/TraceLog"
 	BpfInspector_ResolveInode_FullMethodName    = "/bpfinspector.v1.BpfInspector/ResolveInode"
 	BpfInspector_DescribeProcess_FullMethodName = "/bpfinspector.v1.BpfInspector/DescribeProcess"
@@ -43,6 +44,7 @@ type BpfInspectorClient interface {
 	ListPrograms(ctx context.Context, in *ListProgramsRequest, opts ...grpc.CallOption) (*ListProgramsResponse, error)
 	DumpProgram(ctx context.Context, in *DumpProgramRequest, opts ...grpc.CallOption) (*DumpProgramResponse, error)
 	ListLinks(ctx context.Context, in *ListLinksRequest, opts ...grpc.CallOption) (*ListLinksResponse, error)
+	ListBTF(ctx context.Context, in *ListBTFRequest, opts ...grpc.CallOption) (*ListBTFResponse, error)
 	TraceLog(ctx context.Context, in *TraceLogRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[TraceLogEvent], error)
 	ResolveInode(ctx context.Context, in *ResolveInodeRequest, opts ...grpc.CallOption) (*ResolveInodeResponse, error)
 	DescribeProcess(ctx context.Context, in *DescribeProcessRequest, opts ...grpc.CallOption) (*DescribeProcessResponse, error)
@@ -106,6 +108,16 @@ func (c *bpfInspectorClient) ListLinks(ctx context.Context, in *ListLinksRequest
 	return out, nil
 }
 
+func (c *bpfInspectorClient) ListBTF(ctx context.Context, in *ListBTFRequest, opts ...grpc.CallOption) (*ListBTFResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListBTFResponse)
+	err := c.cc.Invoke(ctx, BpfInspector_ListBTF_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *bpfInspectorClient) TraceLog(ctx context.Context, in *TraceLogRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[TraceLogEvent], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	stream, err := c.cc.NewStream(ctx, &BpfInspector_ServiceDesc.Streams[0], BpfInspector_TraceLog_FullMethodName, cOpts...)
@@ -159,6 +171,7 @@ type BpfInspectorServer interface {
 	ListPrograms(context.Context, *ListProgramsRequest) (*ListProgramsResponse, error)
 	DumpProgram(context.Context, *DumpProgramRequest) (*DumpProgramResponse, error)
 	ListLinks(context.Context, *ListLinksRequest) (*ListLinksResponse, error)
+	ListBTF(context.Context, *ListBTFRequest) (*ListBTFResponse, error)
 	TraceLog(*TraceLogRequest, grpc.ServerStreamingServer[TraceLogEvent]) error
 	ResolveInode(context.Context, *ResolveInodeRequest) (*ResolveInodeResponse, error)
 	DescribeProcess(context.Context, *DescribeProcessRequest) (*DescribeProcessResponse, error)
@@ -186,6 +199,9 @@ func (UnimplementedBpfInspectorServer) DumpProgram(context.Context, *DumpProgram
 }
 func (UnimplementedBpfInspectorServer) ListLinks(context.Context, *ListLinksRequest) (*ListLinksResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListLinks not implemented")
+}
+func (UnimplementedBpfInspectorServer) ListBTF(context.Context, *ListBTFRequest) (*ListBTFResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListBTF not implemented")
 }
 func (UnimplementedBpfInspectorServer) TraceLog(*TraceLogRequest, grpc.ServerStreamingServer[TraceLogEvent]) error {
 	return status.Error(codes.Unimplemented, "method TraceLog not implemented")
@@ -307,6 +323,24 @@ func _BpfInspector_ListLinks_Handler(srv interface{}, ctx context.Context, dec f
 	return interceptor(ctx, in, info, handler)
 }
 
+func _BpfInspector_ListBTF_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListBTFRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BpfInspectorServer).ListBTF(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: BpfInspector_ListBTF_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BpfInspectorServer).ListBTF(ctx, req.(*ListBTFRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _BpfInspector_TraceLog_Handler(srv interface{}, stream grpc.ServerStream) error {
 	m := new(TraceLogRequest)
 	if err := stream.RecvMsg(m); err != nil {
@@ -380,6 +414,10 @@ var BpfInspector_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListLinks",
 			Handler:    _BpfInspector_ListLinks_Handler,
+		},
+		{
+			MethodName: "ListBTF",
+			Handler:    _BpfInspector_ListBTF_Handler,
 		},
 		{
 			MethodName: "ResolveInode",

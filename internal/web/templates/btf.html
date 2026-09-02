@@ -1,0 +1,63 @@
+{{define "content"}}
+{{template "nodebar" .}}
+
+<h2>btf on {{.Node}} <span class="muted">({{len .BTFLoaded}} loaded, {{len .BTFKernel}} kernel)</span></h2>
+
+{{/* The loaded table is the page. Kernel BTF is the bulk of the list and none of
+     the interest - vmlinux plus one object per module with BTF, cross-referenced
+     by nothing - so it goes below, folded away. A kernel BTF something does
+     point at is not filed there; see btfRows. */}}
+<div class="scroll">
+<table>
+  <thead><tr><th>ID</th><th>Name</th><th>Kind</th><th title="raw BTF size in bytes, as bpftool reports it">Size</th><th>Progs</th><th>Maps</th><th title="processes holding an open fd to this BTF object; when none do, the inferred loader of a program carrying it is shown instead">Holders</th></tr></thead>
+  <tbody>
+  {{range .BTFLoaded}}
+    {{/* Anchored so the BTF column on the programs and maps pages can land on
+         the row rather than the top of the table. */}}
+    <tr id="btf-{{.BTF.Id}}">
+      <td>{{.BTF.Id}}</td>
+      <td>{{with .BTF.Name}}{{.}}{{else}}<span class="muted" title="anonymous BTF: loaded with a program or map rather than named, which is the usual case">&lt;anon&gt;</span>{{end}}</td>
+      <td>{{.BTF.Kind}}</td>
+      <td>{{.Size}}</td>
+      <td>
+        {{range .Progs}}<a href="/nodes/{{$.Node}}/programs/{{.}}" target="_blank" rel="noopener"{{with progName $.Programs .}} title="{{.}}"{{end}}>{{.}}</a>{{" "}}{{else}}<span class="muted">-</span>{{end}}
+      </td>
+      <td>
+        {{range .Maps}}{{$id := .}}{{$m := index $.MapsByID $id}}<a href="/nodes/{{$.Node}}/maps/{{$id}}" target="_blank" rel="noopener"{{with $m}} title="{{.Name}} ({{.Type}})"{{end}}>{{$id}}</a>{{" "}}{{else}}<span class="muted">-</span>{{end}}
+      </td>
+      <td>
+        {{if .BTF.Pids}}
+          {{range .BTF.Pids}}{{.Comm}}({{.Pid}}){{" "}}{{end}}
+        {{else}}
+          {{range .Loaders}}<span class="muted" title="inferred: no process holds an fd to this BTF object, so this is the loader of a program carrying it">{{.}}</span>{{" "}}{{else}}<span class="muted">-</span>{{end}}
+        {{end}}
+      </td>
+    </tr>
+  {{else}}
+    <tr><td colspan="7" class="muted">(no BTF loaded by userspace)</td></tr>
+  {{end}}
+  </tbody>
+</table>
+</div>
+
+{{if .BTFKernel}}
+<details>
+  <summary>kernel BTF <span class="muted">({{len .BTFKernel}}) - vmlinux and one object per module that carries BTF</span></summary>
+  <div class="scroll">
+  <table>
+    <thead><tr><th>ID</th><th>Name</th><th>Kind</th><th title="raw BTF size in bytes, as bpftool reports it">Size</th></tr></thead>
+    <tbody>
+    {{range .BTFKernel}}
+      <tr id="btf-{{.BTF.Id}}">
+        <td>{{.BTF.Id}}</td>
+        <td>{{.BTF.Name}}</td>
+        <td>{{.BTF.Kind}}</td>
+        <td>{{.Size}}</td>
+      </tr>
+    {{end}}
+    </tbody>
+  </table>
+  </div>
+</details>
+{{end}}
+{{end}}

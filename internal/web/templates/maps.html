@@ -4,12 +4,15 @@
 <h2>maps on {{.Node}} <span class="muted">({{len .Maps}})</span></h2>
 <div class="scroll">
 <table>
-  <thead><tr><th>ID</th><th>Name</th><th>Type</th><th>Key</th><th>Value</th><th>Max</th><th>Flags</th><th title="processes holding an open fd to this map; when none do, the inferred loader of a program referencing it is shown instead">Holders</th><th></th></tr></thead>
+  <thead><tr><th>ID</th><th>Name</th><th>Type</th><th>Key</th><th>Value</th><th>Max</th><th>Flags</th><th title="the BTF object describing this map's key and value types - what lets a dump decode them into named fields">BTF</th><th title="processes holding an open fd to this map; when none do, the inferred loader of a program referencing it is shown instead">Holders</th><th></th></tr></thead>
   <tbody>
   {{range .Maps}}
     <tr>
       <td>{{.Id}}</td><td>{{.Name}}</td><td>{{.Type}}</td>
       <td>{{.KeySize}}</td><td>{{.ValueSize}}</td><td>{{.MaxEntries}}</td><td title="0x{{printf "%x" .Flags}}">{{mapFlags .Flags}}</td>
+      <td>
+        {{if .BtfId}}<a href="/nodes/{{$.Node}}/btf#btf-{{.BtfId}}" target="_blank" rel="noopener" title="this map's BTF object, and what else carries it (new tab)">{{.BtfId}}</a>{{else}}<span class="muted" title="loaded without BTF: a dump falls back to hex">-</span>{{end}}
+      </td>
       <td>
         {{if .Pids}}
           {{range .Pids}}{{.Comm}}({{.Pid}}){{" "}}{{end}}
@@ -31,7 +34,7 @@
       </td>
     </tr>
   {{else}}
-    <tr><td colspan="9" class="muted">(no maps)</td></tr>
+    <tr><td colspan="10" class="muted">(no maps)</td></tr>
   {{end}}
   </tbody>
 </table>
