@@ -213,6 +213,12 @@
      push anything sideways. */
   table.kv { width: auto; min-width: min(100%, 34rem); }
   table.kv th { width: 8rem; }
+  /* The dump page's register cheat sheet. Capped rather than left to run to
+     the window's edge - these cells are prose, and prose read across a wide
+     screen loses its place. The register names keep the lowercase the listing
+     spells them in, since that is what the reader is matching them against. */
+  table.regs { max-width: 62rem; }
+  table.regs th { text-transform: none; letter-spacing: .04em; }
 
   /* ── code and dumps ──────────────────────────────────────────────────── */
   code { color: var(--accent); word-break: break-all; }
@@ -335,6 +341,12 @@
     text-underline-offset: .2em;
     cursor: help;
   }
+  /* A register carries its role in a tooltip but wears no mark: there are two
+     or three on most lines, and dotting every one of them would turn the
+     listing into a field of underlines. Hovering brightens it instead, which
+     says a tooltip is there only to whoever is already pointing at it. */
+  pre.xlated .reg { cursor: help; }
+  pre.xlated .reg:hover { color: var(--fg-hi); }
   /* Whole lines go, rather than their text: hiding the text would leave the
      line behind, empty. */
   pre.xlated.no-cmt .cmt { display: none; }

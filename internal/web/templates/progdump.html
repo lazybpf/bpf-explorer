@@ -14,15 +14,25 @@
     <p class="controls">
       <button id="comments" type="button">hide comments</button>
       <button id="instructions" type="button">hide instructions</button>
+      <button id="registers" type="button">show registers</button>
       <button id="copy" type="button">copy listing</button>
     </p>
+
+    {{/* The calling convention the listing is written in. Every line names
+         registers and none of them says what they are for, so it is here - but
+         folded away, because it is read once and then not again, and the
+         instructions are what the page is for. Each register in the listing
+         carries the short version of this in a tooltip. */}}
+    <table id="regs" class="kv regs" hidden>{{range registers}}
+      <tr><th scope="row">{{.Regs}}</th><td>{{.Role}}</td></tr>{{end}}
+    </table>
 
     {{/* No whitespace between the lines: inside a pre, a newline here would be
          a blank line on the page. */}}
     <pre id="out" class="xlated">{{range .Lines -}}
 {{if eq .Kind "comment"}}<div class="cmt">; {{.Text}}</div>
 {{- else if eq .Kind "func"}}<div class="fn">{{.Text}}</div>
-{{- else}}<div class="insn"><span class="off">{{.Offset}}</span>: {{with .Opcode}}<span class="op">({{.}})</span> {{end}}{{range .Parts}}{{if .Href}}<a href="{{.Href}}" target="_blank" rel="noopener"{{with .Title}} title="{{.}} (new tab)"{{end}}>{{.Text}}</a>{{else if .Helper}}<span class="helper">{{.Text}}</span>{{else if .Title}}<span class="hex" title="{{.Title}}">{{.Text}}</span>{{else}}{{.Text}}{{end}}{{end}}</div>
+{{- else}}<div class="insn"><span class="off">{{.Offset}}</span>: {{with .Opcode}}<span class="op">({{.}})</span> {{end}}{{range .Parts}}{{if .Href}}<a href="{{.Href}}" target="_blank" rel="noopener"{{with .Title}} title="{{.}} (new tab)"{{end}}>{{.Text}}</a>{{else if .Class}}<span class="{{.Class}}"{{with .Title}} title="{{.}}"{{end}}>{{.Text}}</span>{{else}}{{.Text}}{{end}}{{end}}</div>
 {{- end}}
 {{- end}}</pre>
 
@@ -39,6 +49,15 @@
       };
       toggle('comments', 'no-cmt', 'hide comments', 'show comments');
       toggle('instructions', 'no-insn', 'hide instructions', 'show instructions');
+
+      // The cheat sheet is its own element rather than part of the listing, so
+      // it hides with the attribute and stays out of what gets copied.
+      const regs = document.getElementById('regs');
+      const registers = document.getElementById('registers');
+      registers.addEventListener('click', () => {
+        regs.hidden = !regs.hidden;
+        registers.textContent = regs.hidden ? 'show registers' : 'hide registers';
+      });
 
       // Copying takes the plain text back out of the markup, which is the text
       // the agent sent - what bpftool prints - ready to paste into an editor,

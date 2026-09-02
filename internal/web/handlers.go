@@ -36,7 +36,7 @@ func New(disc discovery.Discoverer, hiddenLoaders map[uint32]bool) (*Handlers, e
 	funcs := template.FuncMap{
 		"mapFlags": mapFlags, "progName": progName, "progLoader": progLoader,
 		"mapLoaders": mapLoaders, "hexASCII": hexASCII, "tabClass": tabClass,
-		"holders": holders, "comma": comma,
+		"holders": holders, "comma": comma, "registers": registerSheet,
 		// Exposed as a func so every page gets it without threading it through
 		// each handler's pageData.
 		"version": version.String,

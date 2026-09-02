@@ -280,11 +280,24 @@ func TestProgramsXlatedDump(t *testing.T) {
 	if !strings.Contains(out, `<span class="hex" title="4294967285₁₀ (signed -11)">0xfffffff5</span>`) {
 		t.Errorf("expected the hex comparand to carry its decimal in output\n%s", out)
 	}
-	// Both views can be put aside, and the listing can be taken away as text;
-	// the buttons say what they will do.
+	// A register says what it is for on hover, which is the one thing the
+	// listing never spells out anywhere.
+	if !strings.Contains(out, `<span class="reg" title="argument 1, and the context pointer when the program starts">r1</span>`) {
+		t.Errorf("expected a register to carry its role in output\n%s", out)
+	}
+	// And the convention behind all of them is on the page too, folded away
+	// until it is asked for.
+	if !strings.Contains(out, `<table id="regs" class="kv regs" hidden>`) {
+		t.Errorf("expected the register cheat sheet, hidden, in output\n%s", out)
+	}
+	if !strings.Contains(out, `<th scope="row">r6–r9</th>`) {
+		t.Errorf("expected the callee-saved registers on the cheat sheet\n%s", out)
+	}
+	// Both views can be put aside, the convention can be opened, and the listing
+	// can be taken away as text; the buttons say what they will do.
 	for _, want := range []string{
-		`id="comments"`, `id="instructions"`, `id="copy"`,
-		">hide comments<", ">hide instructions<", ">copy listing<",
+		`id="comments"`, `id="instructions"`, `id="registers"`, `id="copy"`,
+		">hide comments<", ">hide instructions<", ">show registers<", ">copy listing<",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("expected %s among the listing controls\n%s", want, out)

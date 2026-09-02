@@ -56,6 +56,12 @@ func TestXlatedLines(t *testing.T) {
 	}
 }
 
+// reg is what a register part looks like: the roles themselves are checked by
+// TestRegTitle, so naming them here would only restate the table twice.
+func reg(name string) xlatedPart {
+	return xlatedPart{Text: name, Class: classReg, Title: regTitle(name)}
+}
+
 func TestXlatedParts(t *testing.T) {
 	maps := map[uint32]*pb.MapInfo{422: {Id: 422, Name: "exec_args", Type: "hash"}}
 
@@ -65,16 +71,22 @@ func TestXlatedParts(t *testing.T) {
 		want []xlatedPart
 	}{
 		{
-			"a plain instruction is one run",
+			"every register is marked, and what is between them is one run",
 			"r8 = r1",
-			[]xlatedPart{{Text: "r8 = r1"}},
+			[]xlatedPart{reg("r8"), {Text: " = "}, reg("r1")},
+		},
+		{
+			// The 32-bit view of a register is still that register.
+			"a 32-bit operand is marked too",
+			"w2 += w3",
+			[]xlatedPart{reg("w2"), {Text: " += "}, reg("w3")},
 		},
 		{
 			"a helper call marks the name, not the offset it carries",
 			"call bpf_get_current_uid_gid#242800",
 			[]xlatedPart{
 				{Text: "call "},
-				{Text: "bpf_get_current_uid_gid", Helper: true},
+				{Text: "bpf_get_current_uid_gid", Class: classHelper},
 				{Text: "#242800"},
 			},
 		},
@@ -94,9 +106,9 @@ func TestXlatedParts(t *testing.T) {
 			"a map reference links to the map, and says which it is",
 			"r1 = map[id:422]",
 			[]xlatedPart{
-				{Text: "r1 = "},
+				reg("r1"),
+				{Text: " = "},
 				{Text: "map[id:422]", Href: "/nodes/node-a/maps/422", Title: "exec_args (hash)"},
-				{Text: ""},
 			},
 		},
 		{
@@ -104,7 +116,8 @@ func TestXlatedParts(t *testing.T) {
 			"a direct value load links only the map",
 			"r1 = map[id:422][0]+8",
 			[]xlatedPart{
-				{Text: "r1 = "},
+				reg("r1"),
+				{Text: " = "},
 				{Text: "map[id:422]", Href: "/nodes/node-a/maps/422", Title: "exec_args (hash)"},
 				{Text: "[0]+8"},
 			},
@@ -113,17 +126,19 @@ func TestXlatedParts(t *testing.T) {
 			"a map the node did not list still links",
 			"r1 = map[id:999]",
 			[]xlatedPart{
-				{Text: "r1 = "},
+				reg("r1"),
+				{Text: " = "},
 				{Text: "map[id:999]", Href: "/nodes/node-a/maps/999"},
-				{Text: ""},
 			},
 		},
 		{
 			"a jump comparand carries its decimal",
 			"if r1 == 0xff goto pc+3",
 			[]xlatedPart{
-				{Text: "if r1 == "},
-				{Text: "0xff", Title: "255₁₀"},
+				{Text: "if "},
+				reg("r1"),
+				{Text: " == "},
+				{Text: "0xff", Class: classHex, Title: "255₁₀"},
 				{Text: " goto pc+3"},
 			},
 		},
@@ -133,8 +148,10 @@ func TestXlatedParts(t *testing.T) {
 			"a comparand with the top bit set also reads as signed",
 			"if r0 s> 0xfffffff5 goto pc+2",
 			[]xlatedPart{
-				{Text: "if r0 s> "},
-				{Text: "0xfffffff5", Title: "4294967285₁₀ (signed -11)"},
+				{Text: "if "},
+				reg("r0"),
+				{Text: " s> "},
+				{Text: "0xfffffff5", Class: classHex, Title: "4294967285₁₀ (signed -11)"},
 				{Text: " goto pc+2"},
 			},
 		},
@@ -142,9 +159,9 @@ func TestXlatedParts(t *testing.T) {
 			"a wide immediate reads as a 64-bit value",
 			"r1 = 0xffffffffffffffff",
 			[]xlatedPart{
-				{Text: "r1 = "},
-				{Text: "0xffffffffffffffff", Title: "18446744073709551615₁₀ (signed -1)"},
-				{Text: ""},
+				reg("r1"),
+				{Text: " = "},
+				{Text: "0xffffffffffffffff", Class: classHex, Title: "18446744073709551615₁₀ (signed -1)"},
 			},
 		},
 		{
@@ -152,9 +169,9 @@ func TestXlatedParts(t *testing.T) {
 			"a wide immediate with no top bit set is just decimal",
 			"r1 = 0x100000000",
 			[]xlatedPart{
-				{Text: "r1 = "},
-				{Text: "0x100000000", Title: "4294967296₁₀"},
-				{Text: ""},
+				reg("r1"),
+				{Text: " = "},
+				{Text: "0x100000000", Class: classHex, Title: "4294967296₁₀"},
 			},
 		},
 		{
@@ -162,7 +179,19 @@ func TestXlatedParts(t *testing.T) {
 			// to restate.
 			"a decimal immediate is left alone",
 			"r2 += 255",
-			[]xlatedPart{{Text: "r2 += 255"}},
+			[]xlatedPart{reg("r2"), {Text: " += 255"}},
+		},
+		{
+			// A load off the frame pointer, which is where every stack slot in
+			// a listing is addressed from.
+			"a stack load marks both registers",
+			"r1 = *(u64 *)(r10 -8)",
+			[]xlatedPart{
+				reg("r1"),
+				{Text: " = *(u64 *)("},
+				reg("r10"),
+				{Text: " -8)"},
+			},
 		},
 	}
 
@@ -185,7 +214,31 @@ func TestXlatedParts(t *testing.T) {
 // rather than trusted to be a bare hostname.
 func TestXlatedPartsEscapesNode(t *testing.T) {
 	parts := xlatedParts("r1 = map[id:1]", "node/../a b", nil)
-	if len(parts) < 2 || parts[1].Href != "/nodes/node%2F..%2Fa%20b/maps/1" {
-		t.Errorf("xlatedParts() href = %q, want the node path-escaped", parts[1].Href)
+	if len(parts) < 3 || parts[2].Href != "/nodes/node%2F..%2Fa%20b/maps/1" {
+		t.Errorf("xlatedParts() href = %q, want the node path-escaped", parts[2].Href)
+	}
+}
+
+// The tooltip is the whole of what the page says about a register in place, so
+// what it says is the feature: which slot of the calling convention this is,
+// and for a wN that it is only the low half of it.
+func TestRegTitle(t *testing.T) {
+	tests := []struct {
+		tok  string
+		want string
+	}{
+		{"r0", "the return value: a helper call's result, and the program's exit code"},
+		{"r1", "argument 1, and the context pointer when the program starts"},
+		{"r5", "argument 5, destroyed by a call"},
+		{"r6", "callee-saved: it keeps its value across a call"},
+		{"r10", "the frame pointer: the top of this frame's stack, and read-only"},
+		{"w1", "the low 32 bits of r1 - argument 1, and the context pointer when the program starts"},
+		{"w10", "the low 32 bits of r10 - the frame pointer: the top of this frame's stack, and read-only"},
+	}
+
+	for _, tt := range tests {
+		if got := regTitle(tt.tok); got != tt.want {
+			t.Errorf("regTitle(%q) = %q, want %q", tt.tok, got, tt.want)
+		}
 	}
 }

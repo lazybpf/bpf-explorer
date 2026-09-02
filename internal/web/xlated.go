@@ -25,10 +25,17 @@ var (
 	callPattern = regexp.MustCompile(`^call ([A-Za-z_][A-Za-z0-9_]*)#`)
 	// "map[id:422]", which is also the head of "map[id:422][0]+8".
 	mapPattern = regexp.MustCompile(`map\[id:(\d+)\]`)
-	// A hex literal: a jump's comparand, and the value of a wide immediate
-	// load. The word boundaries keep it out of a name that happens to contain
-	// "0x", since a call's target is whatever kallsyms called it.
-	hexPattern = regexp.MustCompile(`\b0x[0-9a-fA-F]+\b`)
+	// What is worth a tooltip inside a run of instruction text, in one pass
+	// because the two never overlap - there is no letter r or w in a hex digit.
+	//
+	// A hex literal is a jump's comparand or the value of a wide immediate
+	// load. A register is "r1", or "w1" where the operation works on the low 32
+	// bits; r10 is spelled before the single digits, or the alternation would
+	// match "r1" and leave a stray "0" behind. The word boundaries keep both out
+	// of a name that happens to contain one, since a call's target is whatever
+	// kallsyms called it - and an underscore is a word character, so a helper
+	// named like bpf_r1_read is safe too.
+	tokenPattern = regexp.MustCompile(`\b0x[0-9a-fA-F]+\b|\b[rw](?:10|[0-9])\b`)
 )
 
 // Line kinds. A dump is a listing of instructions with the function headers and
@@ -38,6 +45,13 @@ const (
 	xlatedFunc    = "func"
 	xlatedComment = "comment"
 	xlatedInsn    = "insn"
+)
+
+// Part classes, which are the CSS classes the listing marks a run with.
+const (
+	classHelper = "helper"
+	classHex    = "hex"
+	classReg    = "reg"
 )
 
 // xlatedLine is one line of a program dump, split into what the page marks up.
@@ -53,12 +67,15 @@ type xlatedLine struct {
 }
 
 // xlatedPart is a run of an instruction's text: plain, the name of a helper, a
-// hex value, or a reference to a map, which links to that map's own dump.
+// hex value, a register, or a reference to a map, which links to that map's own
+// dump.
 type xlatedPart struct {
-	Text   string
-	Helper bool
-	Href   string // non-empty: link Text there
-	Title  string // tooltip: what the map is, or what the hex value is in decimal
+	Text  string
+	Class string // non-empty: wrap Text in a span of this class
+	Href  string // non-empty: link Text there
+	// Tooltip: what the map is, what the hex value is in decimal, or what the
+	// register is for.
+	Title string
 }
 
 // xlatedLines parses a dump into the page's model. maps may be nil, in which
@@ -97,7 +114,7 @@ func xlatedParts(text, node string, maps map[uint32]*pb.MapInfo) []xlatedPart {
 	if m := callPattern.FindStringSubmatch(text); m != nil && m[1] != "unknown" {
 		parts := []xlatedPart{
 			{Text: "call "},
-			{Text: m[1], Helper: true},
+			{Text: m[1], Class: classHelper},
 		}
 		// From the "#" on: the id or offset the call carries.
 		return append(parts, plainParts(text[len(m[0])-1:])...)
@@ -122,31 +139,101 @@ func xlatedParts(text, node string, maps map[uint32]*pb.MapInfo) []xlatedPart {
 	return plainParts(text)
 }
 
-// plainParts splits a run of instruction text at its hex values, so each can
-// carry what it is in decimal. The listing prints hex because bpftool does, but
-// what a comparand means is a number - an errno, a size, a flag - and reading
-// it back out of the hex is otherwise the reader's job.
+// plainParts splits a run of instruction text at the values that can say more
+// about themselves than they print.
+//
+// A hex value carries what it is in decimal: the listing prints hex because
+// bpftool does, but what a comparand means is a number - an errno, a size, a
+// flag - and reading it back out of the hex is otherwise the reader's job. A
+// register carries what it is for, which is nowhere in the listing at all: rN
+// is a name for a slot in a calling convention the reader is expected to have
+// memorised.
 func plainParts(text string) []xlatedPart {
-	matches := hexPattern.FindAllStringIndex(text, -1)
+	matches := tokenPattern.FindAllStringIndex(text, -1)
 	if matches == nil {
-		return []xlatedPart{{Text: text}}
+		return plainRun(text)
 	}
 
 	parts := make([]xlatedPart, 0, 2*len(matches)+1)
 	end := 0
 	for _, m := range matches {
-		dec, ok := hexDecimal(text[m[0]:m[1]])
-		if !ok {
-			// Wider than 64 bits, so nothing we can restate. Leaving it in the
-			// run that follows prints it unchanged.
-			continue
+		tok := text[m[0]:m[1]]
+		part := xlatedPart{Text: tok, Class: classReg, Title: regTitle(tok)}
+		if strings.HasPrefix(tok, "0x") {
+			dec, ok := hexDecimal(tok)
+			if !ok {
+				// Wider than 64 bits, so nothing we can restate. Leaving it in
+				// the run that follows prints it unchanged.
+				continue
+			}
+			part.Class, part.Title = classHex, dec
 		}
-		parts = append(parts,
-			xlatedPart{Text: text[end:m[0]]},
-			xlatedPart{Text: text[m[0]:m[1]], Title: dec})
+		parts = append(parts, plainRun(text[end:m[0]])...)
+		parts = append(parts, part)
 		end = m[1]
 	}
-	return append(parts, xlatedPart{Text: text[end:]})
+	return append(parts, plainRun(text[end:])...)
+}
+
+// plainRun is a run with nothing to mark in it, and nothing at all when it is
+// empty: most instructions begin or end on a register, and a part that renders
+// as no characters is not a run of the listing.
+func plainRun(text string) []xlatedPart {
+	if text == "" {
+		return nil
+	}
+	return []xlatedPart{{Text: text}}
+}
+
+// regRoles is what each register is for, by number. Terse deliberately: this is
+// read at a glance with the eye still on the instruction, and the cheat sheet
+// the page can open is where the fuller version lives.
+var regRoles = [11]string{
+	"the return value: a helper call's result, and the program's exit code",
+	"argument 1, and the context pointer when the program starts",
+	"argument 2, destroyed by a call",
+	"argument 3, destroyed by a call",
+	"argument 4, destroyed by a call",
+	"argument 5, destroyed by a call",
+	"callee-saved: it keeps its value across a call",
+	"callee-saved: it keeps its value across a call",
+	"callee-saved: it keeps its value across a call",
+	"callee-saved: it keeps its value across a call",
+	"the frame pointer: the top of this frame's stack, and read-only",
+}
+
+// regTitle is the tooltip for a register: what it is for, and for a wN that it
+// is the low half of the register of the same number. tokenPattern matched to
+// get here, so the number is one of the eleven.
+func regTitle(tok string) string {
+	n, _ := strconv.Atoi(tok[1:])
+	if tok[0] == 'w' {
+		return fmt.Sprintf("the low 32 bits of r%d - %s", n, regRoles[n])
+	}
+	return regRoles[n]
+}
+
+// registerRow is one row of the register cheat sheet the dump page can open.
+type registerRow struct {
+	Regs string
+	Role string
+}
+
+// registerSheet says what the tooltips say, at the grain of the convention
+// rather than of one register: eleven rows, one per register, would bury the
+// three groups that are the thing to learn.
+//
+// Short sentences, plain verbs, no idiom: this is the row a reader falls back
+// on when the terse tooltip did not land, and half of them are reading it in a
+// second language.
+func registerSheet() []registerRow {
+	return []registerRow{
+		{"r0", "the return value. A helper call stores its result here, and the program returns its exit code here."},
+		{"r1–r5", "the arguments to a call, in order. Every call destroys all five values, so a value that is needed after the call must be copied to r6–r9 first. When the program starts, r1 holds the context pointer, and the function header above gives its type."},
+		{"r6–r9", "safe across a call: these four keep their values, so the compiler uses them for values it needs later."},
+		{"r10", "the frame pointer, which no instruction can write to. It marks the top of this frame's 512-byte stack, and local variables are below it: \"r10 -8\" is the first 8 bytes of them."},
+		{"w0–w10", "the low 32 bits of the register with the same number. The listing prints wN when the operation is 32-bit. Such an operation sets the upper 32 bits to zero."},
+	}
 }
 
 // base10 is the subscript the tooltip carries, marking that what it shows is
