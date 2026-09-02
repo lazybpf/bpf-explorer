@@ -1,5 +1,8 @@
 # Single image carrying the one bpf-explorer binary; the DaemonSet and the UI
-# Deployment select behavior with --role=agent|ui.
+# Deployment select behavior with --role=agent|ui. Both pass it explicitly, so
+# the binary's --role=local default never applies in-cluster - but it does mean
+# running this image with no args starts the all-in-one local process rather
+# than exiting on a usage error.
 #
 # Build (local, native arch):
 #     $ docker build -t ghcr.io/lazybpf/bpf-explorer:dev .

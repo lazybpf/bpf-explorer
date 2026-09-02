@@ -24,6 +24,8 @@ It runs as two components:
 One binary serves both roles; one image runs both workloads. A third role,
 `--role=local`, runs the two together in a single process for development
 without a cluster - see [Run locally without a cluster](#run-locally-without-a-cluster).
+It is the default, so a bare `bpf-explorer` runs both halves; the manifest names
+`--role` explicitly for the two cluster workloads.
 
 In a three-node cluster with an agent on every node:
 
@@ -236,10 +238,11 @@ kubectl apply -f bpf-explorer.yaml
 ## Run locally without a cluster
 
 `--role=local` runs both components in one process, with the UI pointed at the
-bundled agent by static discovery. No cluster, no RBAC, one terminal:
+bundled agent by static discovery. No cluster, no RBAC, one terminal - and it is
+the default role, so the flag is what a bare invocation already means:
 
 ```console
-sudo ./bpf-explorer --role=local
+sudo ./bpf-explorer
 ```
 
 Then browse http://localhost:8080; the node is listed as `local`. Ports move

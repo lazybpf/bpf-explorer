@@ -4,10 +4,12 @@
 //
 //	bpf-explorer --role=agent --listen=:50051
 //	bpf-explorer --role=ui    --listen=:8080 --namespace=bpf-explorer
-//	bpf-explorer --role=local --listen=:8080 --agent-listen=:50051
+//	bpf-explorer              --listen=:8080 --agent-listen=:50051
 //
 // The local role runs the other two together in one process, for development
-// without a cluster. See runLocal.
+// without a cluster. See runLocal. It is the default because it is the only
+// role anyone types by hand: the two cluster workloads always pass --role
+// explicitly in bpf-explorer.yaml.
 package main
 
 import (
@@ -22,7 +24,7 @@ import (
 )
 
 func main() {
-	role := flag.String("role", "", "which component to run: agent | ui | local")
+	role := flag.String("role", "local", "which component to run: agent | ui | local")
 	listen := flag.String("listen", "", "listen address (agent default :50051, ui and local default :8080)")
 	agentListen := flag.String("agent-listen", ":50051", "local: listen address for the bundled agent")
 	namespace := flag.String("namespace", "bpf-explorer", "ui: namespace to discover agent pods in")
@@ -60,8 +62,10 @@ func main() {
 		}
 		// --agents would point the UI at some other agent while this process
 		// is also running its own; that is contradictory rather than useful.
+		// Name the role in full: local is the default, so whoever hit this may
+		// never have typed --role at all.
 		if *agents != "" {
-			log.Fatalf("--agents cannot be combined with --role=local (local runs its own agent on %s)", *agentListen)
+			log.Fatalf("--agents is for --role=ui; --role=local (the default) runs its own agent on %s", *agentListen)
 		}
 		if err := runLocal(addr, *agentListen); err != nil {
 			log.Fatalf("local: %v", err)
