@@ -172,6 +172,17 @@ kubectl delete namespace bpf-explorer
 kubectl label node <node> bpf-explorer-
 ```
 
+## Related projects
+
+[`ebpfdev/explorer`](https://github.com/ebpfdev/explorer) is the closest thing to
+this tool - a web UI over one Linux host, `docker run` instead of a DaemonSet. It
+looks dormant: nothing committed to any of its three repos since June 2023.
+
+It can do two things this cannot: edit map entries (Hash/Array, including
+per-CPU), and expose map values and per-program run counts to Prometheus. What it
+lacks: more than one node, and any bytecode disassembly - both unchecked boxes on
+its roadmap - plus the trace log and `/proc` lookups.
+
 ## Develop on macOS
 
 There is no eBPF on macOS, so everything below needs a Linux machine.
