@@ -1,0 +1,69 @@
+{{define "content"}}
+{{template "nodebar" .}}
+{{template "utilnav" .}}
+{{$look := .PIDLookup}}
+
+{{/* ASCII arrow, not &rarr;: the display face has no glyph for it, so the
+     browser substitutes another font for that one character and it lands
+     misaligned in a row of monospace. */}}
+<h2>pid -&gt; process on {{.Node}}</h2>
+<p class="muted">
+  Describe a process by its pid - the number a map dump hands you most often,
+  since maps key on pid and tgid as often as on inode. The lookup reads
+  <code>/proc</code> on the node, so it sees what the agent can see: with
+  <code>hostPID</code> that is every process on the host.
+</p>
+
+{{/* GET, so an answer can be linked to and reloaded. */}}
+<form class="controls" method="get" action="/nodes/{{.Node}}/utils/pid">
+  <label>pid
+    <input type="text" name="pid" value="{{with $look}}{{.PID}}{{end}}" size="12"
+           placeholder="1234" autofocus>
+  </label>
+  <button type="submit">describe</button>
+</form>
+
+{{with $look}}
+  {{with .Err}}<p class="err">{{.}}</p>{{end}}
+
+  {{with .Process}}
+    {{if .Found}}
+      <table class="kv">
+        <tr><th>pid</th><td>{{.Pid}}</td></tr>
+        <tr><th>comm</th><td>{{.Comm}}</td></tr>
+        <tr><th>state</th><td>{{.State}}</td></tr>
+        <tr><th title="parent pid">ppid</th>
+            <td>
+              {{if .Ppid}}
+                {{/* Named, and a link onwards: what launched a process is the
+                     next thing asked of it, so its name comes back with it and
+                     the hop up the tree is one click. */}}
+                <a href="/nodes/{{$.Node}}/utils/pid?pid={{.Ppid}}" title="describe this process">{{$look.ParentComm}}({{.Ppid}})</a>
+                {{with $look.Parent}}
+                  {{if .Found}}
+                    {{with .Cmdline}}<div class="muted"><code>{{.}}</code></div>{{end}}
+                  {{else}}
+                    <div class="muted">gone - it exited between the two reads</div>
+                  {{end}}
+                {{end}}
+              {{else}}
+                {{/* Only the kernel's own ancestor has no parent. */}}
+                {{.Ppid}}
+              {{end}}
+            </td></tr>
+        <tr><th title="real user id">uid</th><td>{{.Uid}}</td></tr>
+        <tr><th>cmdline</th><td>{{with .Cmdline}}<code>{{.}}</code>{{else}}<span class="muted">(none - a kernel thread)</span>{{end}}</td></tr>
+        <tr><th>exe</th><td>{{with .Exe}}<code>{{.}}</code>{{else}}<span class="muted">-</span>{{end}}</td></tr>
+        <tr><th title="the unified (v2) cgroup, which carries the pod slice on a k8s node">cgroup</th>
+            <td>{{with .Cgroup}}<code>{{.}}</code>{{else}}<span class="muted">-</span>{{end}}</td></tr>
+      </table>
+    {{else}}
+      <p class="muted">
+        No process <code>{{$look.PID}}</code> on this node: it exited, or
+        <code>/proc</code> is not visible to the agent. A pid read out of a map
+        is often already gone - and the number gets reused.
+      </p>
+    {{end}}
+  {{end}}
+{{end}}
+{{end}}

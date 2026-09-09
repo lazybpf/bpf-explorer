@@ -1,13 +1,14 @@
 {{define "nodebar"}}
 <nav class="nodes">
   {{if .Nodes}}
-    {{$node := .Node}}{{$tab := .Tab}}
+    {{$node := .Node}}{{$tab := .Tab}}{{$util := .Util}}
     {{/* Switching node from a sub-page cannot carry the object across - map 42
          on another node is a different map - so these always point at the
          node's list, and the tooltip says so rather than letting the button
-         imply "same page, other node". */}}
-    {{range .Nodes}}
-      <a class="{{if eq . $node}}active{{end}}" href="/nodes/{{.}}/{{$tab}}" title="{{$tab}} on {{.}}">{{.}}</a>
+         imply "same page, other node". A utility does carry across: it is a
+         question, not an object, so the same one is asked of the next node. */}}
+    {{range $n := .Nodes}}
+      <a class="{{if eq $n $node}}active{{end}}" href="/nodes/{{$n}}/{{$tab}}{{with $util}}/{{.}}{{end}}" title="{{$tab}} on {{$n}}">{{$n}}</a>
     {{end}}
   {{else}}
     <span class="muted">no agents discovered</span>
@@ -27,4 +28,21 @@
 </p>
 {{end}}
 {{if .Err}}<p class="err">error: {{.Err}}</p>{{end}}
+{{end}}
+
+{{/* The utils tab's own menu. Every utility there answers a different question
+     about the node and shares nothing with its neighbours, so each is a page of
+     its own and this row is how you get between them. A utility added later is
+     one more entry here.
+
+     ASCII arrows, not &rarr;: the display face has no glyph for it, so the
+     browser substitutes another font for that one character and it lands
+     misaligned in a row of monospace. */}}
+{{define "utilnav"}}
+<p class="tabs subtabs">
+  <a class="{{tabClass .Util false "pid"}}" href="/nodes/{{.Node}}/utils/pid"
+     title="describe a process by its pid">pid -&gt; process</a>
+  <a class="{{tabClass .Util false "inode"}}" href="/nodes/{{.Node}}/utils/inode"
+     title="find the path behind an inode number">inode -&gt; path</a>
+</p>
 {{end}}

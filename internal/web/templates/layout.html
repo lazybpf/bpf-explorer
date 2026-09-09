@@ -176,6 +176,19 @@
     color: var(--fg-hi);
     box-shadow: inset 0 -2px 0 var(--fg-hi);
   }
+  /* A section's own menu - the utilities under the utils tab - hanging off the
+     bar above it: no top border and an inset ground, so it reads as one menu
+     opened out of another rather than a second tab bar competing with it. Its
+     selected entry is inverse like a tab's, one rung of phosphor down, which
+     puts the two markings in the order they are read: the tab you are in, then
+     the utility you are on. */
+  .tabs.subtabs {
+    margin-top: 0;
+    border-top: none;
+    background: var(--bg-inset);
+  }
+  .tabs.subtabs a { font-size: .85rem; }
+  .tabs.subtabs a.active { background: var(--fg-dim); color: var(--bg); }
 
   /* ── tables ──────────────────────────────────────────────────────────── */
   /* Every table is wrapped in .scroll so a wide one - the nine-column map
