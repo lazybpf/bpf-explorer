@@ -69,6 +69,102 @@ func TestUtilPid(t *testing.T) {
 	}
 }
 
+// TestUtilPidNSPid checks the pid row carries the number the process goes by
+// inside its container, which is the one anything run in there reports.
+func TestUtilPidNSPid(t *testing.T) {
+	out := renderUtilPid(t, &pidLookup{
+		PID: "4711",
+		Process: &pb.DescribeProcessResponse{
+			Found: true, Pid: 4711, Comm: "nginx", NsPids: []uint32{4711, 1},
+		},
+	})
+	if !strings.Contains(out, "1 in its pid namespace") {
+		t.Errorf("expected the in-container pid on the page\n%s", out)
+	}
+
+	// A process in the agent's own pid namespace goes by one number, and the
+	// page has nothing to add to the one it was asked about.
+	host := renderUtilPid(t, &pidLookup{
+		PID: "4711",
+		Process: &pb.DescribeProcessResponse{
+			Found: true, Pid: 4711, Comm: "sshd", NsPids: []uint32{4711},
+		},
+	})
+	if strings.Contains(host, "in its pid namespace") {
+		t.Errorf("nothing to say about a pid that is the same inside\n%s", host)
+	}
+}
+
+func TestInnerPIDs(t *testing.T) {
+	tests := []struct {
+		name string
+		pids []uint32
+		want string
+	}{
+		{"container init", []uint32{4711, 1}, "1"},
+		{"nested", []uint32{4711, 812, 1}, "812 -> 1"},
+		{"same inside", []uint32{4711}, ""},
+		{"not reported", nil, ""},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := innerPIDs(tc.pids); got != tc.want {
+				t.Errorf("innerPIDs(%v) = %q, want %q", tc.pids, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestUtilPidNamespaces checks the page places a process among the namespaces a
+// container is built from: every kind listed by its number, and the ones that
+// are not init's marked as the process's own.
+func TestUtilPidNamespaces(t *testing.T) {
+	out := renderUtilPid(t, &pidLookup{
+		PID: "1234",
+		Process: &pb.DescribeProcessResponse{
+			Found: true, Pid: 1234, Comm: "nginx",
+			Namespaces: []*pb.Namespace{
+				{Kind: "net", Inode: 4026532345, Pid1Inode: 4026531840},
+				{Kind: "uts", Inode: 4026531838, Pid1Inode: 4026531838},
+			},
+		},
+	})
+
+	for _, want := range []string{"net", "4026532345", "uts", "4026531838"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("expected page to contain %q\n%s", want, out)
+		}
+	}
+	if !strings.Contains(out, `<span class="badge"`) {
+		t.Errorf("a namespace that is not pid 1's should be marked as the process's own\n%s", out)
+	}
+	if !strings.Contains(out, "shared with pid 1") {
+		t.Errorf("a namespace pid 1 is in too should say so\n%s", out)
+	}
+
+	// Nothing was compared - this is pid 1 itself, or init's links were not
+	// readable - so the page marks neither way rather than implying a container.
+	uncompared := renderUtilPid(t, &pidLookup{
+		PID: "1",
+		Process: &pb.DescribeProcessResponse{
+			Found: true, Pid: 1, Comm: "systemd",
+			Namespaces: []*pb.Namespace{{Kind: "net", Inode: 4026531840}},
+		},
+	})
+	if strings.Contains(uncompared, `<span class="badge"`) || strings.Contains(uncompared, "shared with pid 1") {
+		t.Errorf("an unmade comparison must not be reported either way\n%s", uncompared)
+	}
+
+	// An agent that cannot read /proc/<pid>/ns has no namespaces to show, and
+	// the section is left out rather than shown empty.
+	none := renderUtilPid(t, &pidLookup{
+		PID: "1234", Process: &pb.DescribeProcessResponse{Found: true, Pid: 1234, Comm: "nginx"},
+	})
+	if strings.Contains(none, "namespaces") {
+		t.Errorf("no namespaces were read, so nothing is claimed about them\n%s", none)
+	}
+}
+
 // TestUtilPidParentUnknown covers the parent lookups that answer nothing: the
 // row still links onwards, and says which kind of nothing it got.
 func TestUtilPidParentUnknown(t *testing.T) {

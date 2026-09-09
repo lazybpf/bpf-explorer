@@ -142,7 +142,11 @@ something you can read, per node:
   `/sys/fs/cgroup`). Every hit names the device it was found on and the processes
   holding it.
 - **pid -> process.** comm, state, ppid, uid, command line, exe and the cgroup
-  path - which on a Kubernetes node tells you the pod.
+  path - which on a Kubernetes node tells you the pod. The pid row also carries
+  the number the process goes by inside its own pid namespace, which is what
+  `ps` prints for it in the container. Then the namespaces it is in, by the same
+  inode numbers `lsns` prints: two pids sharing a number are in one container,
+  and a namespace pid 1 is not in is marked as the process's own.
 
 Both read `/proc` on the node, so they see every process on the host and the
 host's filesystem.

@@ -25,6 +25,41 @@ type pidLookup struct {
 	Parent *pb.DescribeProcessResponse
 }
 
+// innerPIDs renders the pids a process goes by below the agent's own pid
+// namespace, as a chain: NSpid lists one number per level, outermost - the
+// number this page was asked about - first, so the rest are the numbers it
+// answers to further in. Empty when there is no level below, which is every
+// process on a node running no containers, and on a kernel that does not report
+// the line at all.
+func innerPIDs(pids []uint32) string {
+	if len(pids) < 2 {
+		return ""
+	}
+	inner := make([]string, 0, len(pids)-1)
+	for _, pid := range pids[1:] {
+		inner = append(inner, strconv.FormatUint(uint64(pid), 10))
+	}
+	return strings.Join(inner, " -> ")
+}
+
+// nsHelp says what each kind of namespace isolates. A reader who works in
+// containers all day does not need it, but the page is also read by someone who
+// has met namespaces only as the thing containers are built from.
+var nsHelp = map[string]string{
+	"pid":    "the process ids it can see - inside a container it is pid 1 there, and this pid out here",
+	"mnt":    "the filesystem tree it sees: a container's own root and mounts",
+	"net":    "its own interfaces, addresses, routes and sockets",
+	"user":   "its own uid and gid mapping - root inside, unprivileged outside",
+	"uts":    "its own hostname and domain name",
+	"ipc":    "its own System V IPC objects and POSIX message queues",
+	"cgroup": "what it sees as the cgroup root, so its /proc cgroup path reads relative to that",
+	"time":   "its own boot and monotonic clock offsets",
+}
+
+// namespaceHelp is the template's accessor. A kind with nothing to say about it
+// - one a newer kernel has added - gets no tooltip rather than a wrong one.
+func namespaceHelp(kind string) string { return nsHelp[kind] }
+
 // ParentComm names Parent for the ppid link. "?" when there is no name to give,
 // the same shorthand the inode holders use for a process that has none.
 func (l *pidLookup) ParentComm() string {

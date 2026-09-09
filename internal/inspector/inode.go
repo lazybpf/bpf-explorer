@@ -600,16 +600,38 @@ func hostPath(procRoot string, pid uint32, path, selfNS string) string {
 
 // ProcessDetail is what /proc knows about one pid.
 type ProcessDetail struct {
-	Found   bool
-	PID     uint32
-	Comm    string
-	State   string
-	PPID    uint32
-	UID     string
-	Cmdline string
-	Exe     string
-	Cgroup  string
+	Found      bool
+	PID        uint32
+	Comm       string
+	State      string
+	PPID       uint32
+	UID        string
+	Cmdline    string
+	Exe        string
+	Cgroup     string
+	Namespaces []Namespace
+	// NSPids is the pid the process has in each pid namespace, outermost first:
+	// the number this reader sees, then the one it goes by inside each namespace
+	// below it. A process in the reader's own namespace has just the one.
+	NSPids []uint32
 }
+
+// Namespace is one of the namespaces a process is in.
+type Namespace struct {
+	Kind  string // the /proc/<pid>/ns link name: "mnt", "net", "pid", ...
+	Inode uint64 // the number in "net:[4026531840]", what lsns prints
+	// PID1Inode is pid 1's namespace of the same kind, when there is a
+	// comparison to make: zero for pid 1 itself, and when its /proc entry could
+	// not be read. A different number means this process has a namespace of its
+	// own - with hostPID, pid 1 is the node's init, so that is a container.
+	PID1Inode uint64
+}
+
+// nsKinds are the namespaces asked about, in the order they are reported: the
+// three that place a process in a container first, then the rest. The
+// "_for_children" links are left out - they name the namespace the process's
+// next child will be put in, not the one the process is in itself.
+var nsKinds = []string{"pid", "mnt", "net", "user", "uts", "ipc", "cgroup", "time"}
 
 // describeProcess reads one process's identity out of procRoot. Every field is
 // best-effort: a process may exit mid-read, and an unprivileged agent can see
@@ -643,6 +665,8 @@ func describeProcess(procRoot string, pid uint32) ProcessDetail {
 			if f := strings.Fields(value); len(f) > 0 {
 				d.UID = f[0]
 			}
+		case "NSpid":
+			d.NSPids = parseNSPids(value)
 		}
 	}
 
@@ -655,7 +679,80 @@ func describeProcess(procRoot string, pid uint32) ProcessDetail {
 		d.Exe = exe
 	}
 	d.Cgroup = readCgroup(procDir)
+	d.Namespaces = readNamespaces(procRoot, pid)
 	return d
+}
+
+// parseNSPids reads status's "NSpid" value - one pid per pid namespace, from
+// the reader's own down to the process's, e.g. "4711 1" for a container's init.
+// A field that will not parse abandons the whole line: the answer is a chain
+// read positionally, and a chain missing a link says the wrong thing.
+func parseNSPids(value string) []uint32 {
+	fields := strings.Fields(value)
+	pids := make([]uint32, 0, len(fields))
+	for _, f := range fields {
+		pid, err := strconv.ParseUint(f, 10, 32)
+		if err != nil {
+			return nil
+		}
+		pids = append(pids, uint32(pid))
+	}
+	if len(pids) == 0 {
+		return nil
+	}
+	return pids
+}
+
+// readNamespaces reports the namespaces a process is in, each next to pid 1's
+// of the same kind so the caller can tell a container's own from the node's. A
+// kind the kernel does not have (time, before 5.6) or will not show has no link
+// to read and is left out: a namespace nobody can see is not a fact about the
+// process. Pid 1 is read per call - eight readlinks, next to the same for the
+// process itself.
+func readNamespaces(procRoot string, pid uint32) []Namespace {
+	procDir := filepath.Join(procRoot, strconv.FormatUint(uint64(pid), 10))
+	initDir := filepath.Join(procRoot, "1")
+
+	var out []Namespace
+	for _, kind := range nsKinds {
+		inode, ok := nsInode(procDir, kind)
+		if !ok {
+			continue
+		}
+		ns := Namespace{Kind: kind, Inode: inode}
+		// Pid 1 against itself compares nothing, and an unprivileged agent
+		// cannot read init's links at all. Both leave the comparison unmade
+		// rather than claiming the process has a namespace of its own.
+		if pid != 1 {
+			if initInode, ok := nsInode(initDir, kind); ok {
+				ns.PID1Inode = initInode
+			}
+		}
+		out = append(out, ns)
+	}
+	return out
+}
+
+// nsInode reads the inode out of a /proc/<pid>/ns/<kind> link, which the kernel
+// spells "net:[4026531840]".
+func nsInode(procDir, kind string) (uint64, bool) {
+	link, err := os.Readlink(filepath.Join(procDir, "ns", kind))
+	if err != nil {
+		return 0, false
+	}
+	rest, ok := strings.CutPrefix(link, kind+":[")
+	if !ok {
+		return 0, false
+	}
+	rest, ok = strings.CutSuffix(rest, "]")
+	if !ok {
+		return 0, false
+	}
+	inode, err := strconv.ParseUint(rest, 10, 64)
+	if err != nil {
+		return 0, false
+	}
+	return inode, true
 }
 
 // readCgroup returns the process's unified (cgroup v2) path - the "0::" line,

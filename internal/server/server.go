@@ -185,16 +185,24 @@ func (s *Server) ResolveInode(_ context.Context, req *pb.ResolveInodeRequest) (*
 // case when the number came out of a BPF map.
 func (s *Server) DescribeProcess(_ context.Context, req *pb.DescribeProcessRequest) (*pb.DescribeProcessResponse, error) {
 	d := s.insp.DescribeProcess(req.GetPid())
+	namespaces := make([]*pb.Namespace, 0, len(d.Namespaces))
+	for _, ns := range d.Namespaces {
+		namespaces = append(namespaces, &pb.Namespace{
+			Kind: ns.Kind, Inode: ns.Inode, Pid1Inode: ns.PID1Inode,
+		})
+	}
 	return &pb.DescribeProcessResponse{
-		Found:   d.Found,
-		Pid:     d.PID,
-		Comm:    d.Comm,
-		State:   d.State,
-		Ppid:    d.PPID,
-		Uid:     d.UID,
-		Cmdline: d.Cmdline,
-		Exe:     d.Exe,
-		Cgroup:  d.Cgroup,
+		Found:      d.Found,
+		Pid:        d.PID,
+		Comm:       d.Comm,
+		State:      d.State,
+		Ppid:       d.PPID,
+		Uid:        d.UID,
+		Cmdline:    d.Cmdline,
+		Exe:        d.Exe,
+		Cgroup:     d.Cgroup,
+		Namespaces: namespaces,
+		NsPids:     d.NSPids,
 	}, nil
 }
 

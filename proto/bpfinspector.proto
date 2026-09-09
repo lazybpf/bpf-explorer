@@ -209,4 +209,22 @@ message DescribeProcessResponse {
   string cmdline = 7;  // NUL separators rendered as spaces
   string exe = 8;      // resolved /proc/<pid>/exe, empty when not readable
   string cgroup = 9;   // unified (v2) cgroup path, the one k8s pods carry
+  repeated Namespace namespaces = 10; // what /proc/<pid>/ns links to
+  // The pid this process has in each pid namespace, outermost first: the number
+  // the agent sees, then the one it goes by inside each namespace below - the
+  // number `ps` prints in the container. One entry for a process in the agent's
+  // own namespace, and none on a kernel too old to report them.
+  repeated uint32 ns_pids = 11;
+}
+
+// Namespace is one of the namespaces a process is in - the halves a container
+// is actually built from, so a pid out of a map can be placed in one.
+message Namespace {
+  string kind = 1;   // the /proc/<pid>/ns link name: "mnt", "net", "pid", ...
+  uint64 inode = 2;  // the number in "net:[4026531840]", what lsns prints
+  // Pid 1's namespace of the same kind, when there is a comparison to make:
+  // zero for pid 1 itself, and when its /proc entry could not be read. A
+  // different number means the process has a namespace of its own - with
+  // hostPID, pid 1 is the node's init, so that is the mark of a container.
+  uint64 pid1_inode = 3;
 }

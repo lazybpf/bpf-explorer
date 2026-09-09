@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -448,7 +449,7 @@ func TestDescribeProcess(t *testing.T) {
 		t.Fatal(err)
 	}
 	status := "Name:\ttrace_loader\nState:\tS (sleeping)\nTgid:\t1234\nPid:\t1234\nPPid:\t1\n" +
-		"Uid:\t1000\t1000\t1000\t1000\n"
+		"Uid:\t1000\t1000\t1000\t1000\nNStgid:\t1234\t7\nNSpid:\t1234\t7\n"
 	write := func(name, contents string) {
 		if err := os.WriteFile(filepath.Join(procDir, name), []byte(contents), 0o644); err != nil {
 			t.Fatal(err)
@@ -457,20 +458,126 @@ func TestDescribeProcess(t *testing.T) {
 	write("status", status)
 	write("cmdline", "./loader\x00--verbose\x00")
 	write("cgroup", "0::/kubepods.slice/kubepods-besteffort.slice/pod0ddf.slice\n")
+	writeNS(t, procDir, map[string]string{"net": "net:[4026532345]"})
 
 	got := describeProcess(root, 1234)
 	want := ProcessDetail{
 		Found: true, PID: 1234, Comm: "trace_loader", State: "S (sleeping)", PPID: 1,
 		UID: "1000", Cmdline: "./loader --verbose",
-		Cgroup: "/kubepods.slice/kubepods-besteffort.slice/pod0ddf.slice",
+		Cgroup:     "/kubepods.slice/kubepods-besteffort.slice/pod0ddf.slice",
+		Namespaces: []Namespace{{Kind: "net", Inode: 4026532345}},
+		NSPids:     []uint32{1234, 7},
 	}
-	if got != want {
+	if !reflect.DeepEqual(got, want) {
 		t.Errorf("describeProcess =\n%+v\nwant\n%+v", got, want)
 	}
 
 	// A pid that is gone reports not-found rather than an empty-looking process.
 	if gone := describeProcess(root, 9999); gone.Found {
 		t.Errorf("missing pid reported as found: %+v", gone)
+	}
+}
+
+// TestParseNSPids covers the chain a container's pid is read out of.
+func TestParseNSPids(t *testing.T) {
+	tests := []struct {
+		name  string
+		value string
+		want  []uint32
+	}{
+		// A process in the reader's own pid namespace: one level, nothing to say.
+		{"host process", "4711", []uint32{4711}},
+		{"container init", "4711\t1", []uint32{4711, 1}},
+		{"nested", "4711 812 1", []uint32{4711, 812, 1}},
+		// Read positionally, so a chain with a link missing is no answer at all.
+		{"malformed", "4711 x 1", nil},
+		{"empty", "", nil},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := parseNSPids(tc.value); !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("parseNSPids(%q) = %v, want %v", tc.value, got, tc.want)
+			}
+		})
+	}
+}
+
+// writeNS lays out a process's /proc/<pid>/ns directory, one symlink per kind.
+// The targets are the kernel's "kind:[inode]" strings and point nowhere, which
+// is what /proc's own links do - only readlink is ever called on them.
+func writeNS(t *testing.T, procDir string, links map[string]string) {
+	t.Helper()
+	nsDir := filepath.Join(procDir, "ns")
+	if err := os.MkdirAll(nsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for kind, target := range links {
+		if err := os.Symlink(target, filepath.Join(nsDir, kind)); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+// TestReadNamespaces covers the reading a container is recognised by: which
+// namespaces a process is in, and which of them are not init's.
+func TestReadNamespaces(t *testing.T) {
+	root := t.TempDir()
+	initDir := filepath.Join(root, "1")
+	procDir := filepath.Join(root, "1234")
+	// Init is in the node's namespaces; the process has its own mount, network
+	// and pid namespaces, as a container does, and shares the rest.
+	writeNS(t, initDir, map[string]string{
+		"pid": "pid:[4026531836]", "mnt": "mnt:[4026531841]", "net": "net:[4026531840]",
+		"user": "user:[4026531837]", "uts": "uts:[4026531838]", "ipc": "ipc:[4026531839]",
+		"cgroup": "cgroup:[4026531835]", "time": "time:[4026531834]",
+	})
+	writeNS(t, procDir, map[string]string{
+		"pid": "pid:[4026532347]", "mnt": "mnt:[4026532189]", "net": "net:[4026532345]",
+		"user": "user:[4026531837]", "uts": "uts:[4026531838]", "ipc": "ipc:[4026531839]",
+		"cgroup": "cgroup:[4026531835]",
+		// No time link: the kind an older kernel does not have.
+		// A link the kernel would never write, to be skipped rather than
+		// reported as a namespace with no number.
+		"mangled": "mnt:4026532189",
+	})
+
+	got := readNamespaces(root, 1234)
+	want := []Namespace{
+		{Kind: "pid", Inode: 4026532347, PID1Inode: 4026531836},
+		{Kind: "mnt", Inode: 4026532189, PID1Inode: 4026531841},
+		{Kind: "net", Inode: 4026532345, PID1Inode: 4026531840},
+		{Kind: "user", Inode: 4026531837, PID1Inode: 4026531837},
+		{Kind: "uts", Inode: 4026531838, PID1Inode: 4026531838},
+		{Kind: "ipc", Inode: 4026531839, PID1Inode: 4026531839},
+		{Kind: "cgroup", Inode: 4026531835, PID1Inode: 4026531835},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("readNamespaces =\n%+v\nwant\n%+v", got, want)
+	}
+}
+
+// TestReadNamespacesNoComparison covers the two cases where pid 1 settles
+// nothing. Both must leave the comparison unmade: a zero there means "not
+// compared", and reporting it as a namespace of the process's own would call
+// every process on the node a container.
+func TestReadNamespacesNoComparison(t *testing.T) {
+	root := t.TempDir()
+	writeNS(t, filepath.Join(root, "1"), map[string]string{"net": "net:[4026531840]"})
+	writeNS(t, filepath.Join(root, "1234"), map[string]string{"net": "net:[4026531840]"})
+
+	// Pid 1 compared against itself.
+	if got := readNamespaces(root, 1); len(got) != 1 || got[0].PID1Inode != 0 {
+		t.Errorf("pid 1 compared against itself: %+v", got)
+	}
+
+	// An agent that cannot read init's links - unprivileged, or without
+	// hostPID - still reports the process's own namespaces.
+	blind := t.TempDir()
+	writeNS(t, filepath.Join(blind, "1234"), map[string]string{"net": "net:[4026532345]"})
+	got := readNamespaces(blind, 1234)
+	want := []Namespace{{Kind: "net", Inode: 4026532345}}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("readNamespaces with no readable init =\n%+v\nwant\n%+v", got, want)
 	}
 }
 

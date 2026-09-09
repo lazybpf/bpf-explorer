@@ -29,7 +29,17 @@
   {{with .Process}}
     {{if .Found}}
       <table class="kv">
-        <tr><th>pid</th><td>{{.Pid}}</td></tr>
+        <tr><th>pid</th>
+            <td>
+              {{.Pid}}
+              {{/* The same process, counted from inside: a container's init is
+                   pid 1 to everything in it, and this number to the node. Only
+                   shown when the two differ, which is what makes it worth
+                   saying. */}}
+              {{with innerPIDs .NsPids}}
+                <span class="muted" title="the pid this process goes by inside its own pid namespace - the number ps prints in the container">{{.}} in its pid namespace</span>
+              {{end}}
+            </td></tr>
         <tr><th>comm</th><td>{{.Comm}}</td></tr>
         <tr><th>state</th><td>{{.State}}</td></tr>
         <tr><th title="parent pid">ppid</th>
@@ -57,6 +67,38 @@
         <tr><th title="the unified (v2) cgroup, which carries the pod slice on a k8s node">cgroup</th>
             <td>{{with .Cgroup}}<code>{{.}}</code>{{else}}<span class="muted">-</span>{{end}}</td></tr>
       </table>
+
+      {{/* The other half of "which container is this": the cgroup says which
+           slice it is accounted to, the namespaces say what it can see. */}}
+      {{with .Namespaces}}
+        <h2>namespaces</h2>
+        <p class="muted">
+          The namespaces this process is in, by the inode number the kernel names
+          each one by - the numbers <code>lsns</code> prints. Two processes in one
+          namespace carry the same number, which is how two pids read out of a map
+          are shown to belong to the same container. Pid 1 is the comparison: with
+          <code>hostPID</code> that is the node's init, so a namespace it is not
+          in is this process's own.
+        </p>
+        <table class="kv">
+          {{range .}}
+            <tr><th{{with nsHelp .Kind}} title="{{.}}"{{end}}>{{.Kind}}</th>
+                <td>
+                  <code>{{.Inode}}</code>
+                  {{/* Zero means no comparison was made - this is pid 1 itself,
+                       or init's links were not readable - and an unmade
+                       comparison must not read as "shares with the node". */}}
+                  {{if .Pid1Inode}}
+                    {{if eq .Pid1Inode .Inode}}
+                      <span class="muted">shared with pid 1</span>
+                    {{else}}
+                      <span class="badge" title="not the namespace pid 1 is in: the process is in a container, or unshared this one">own</span>
+                    {{end}}
+                  {{end}}
+                </td></tr>
+          {{end}}
+        </table>
+      {{end}}
     {{else}}
       <p class="muted">
         No process <code>{{$look.PID}}</code> on this node: it exited, or

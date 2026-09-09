@@ -1478,16 +1478,22 @@ func (x *DescribeProcessRequest) GetPid() uint32 {
 }
 
 type DescribeProcessResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Found         bool                   `protobuf:"varint,1,opt,name=found,proto3" json:"found,omitempty"` // false when the pid is gone or /proc is not visible
-	Pid           uint32                 `protobuf:"varint,2,opt,name=pid,proto3" json:"pid,omitempty"`
-	Comm          string                 `protobuf:"bytes,3,opt,name=comm,proto3" json:"comm,omitempty"`
-	State         string                 `protobuf:"bytes,4,opt,name=state,proto3" json:"state,omitempty"` // the /proc/<pid>/status letter and word, e.g. "S (sleeping)"
-	Ppid          uint32                 `protobuf:"varint,5,opt,name=ppid,proto3" json:"ppid,omitempty"`
-	Uid           string                 `protobuf:"bytes,6,opt,name=uid,proto3" json:"uid,omitempty"`         // real UID
-	Cmdline       string                 `protobuf:"bytes,7,opt,name=cmdline,proto3" json:"cmdline,omitempty"` // NUL separators rendered as spaces
-	Exe           string                 `protobuf:"bytes,8,opt,name=exe,proto3" json:"exe,omitempty"`         // resolved /proc/<pid>/exe, empty when not readable
-	Cgroup        string                 `protobuf:"bytes,9,opt,name=cgroup,proto3" json:"cgroup,omitempty"`   // unified (v2) cgroup path, the one k8s pods carry
+	state      protoimpl.MessageState `protogen:"open.v1"`
+	Found      bool                   `protobuf:"varint,1,opt,name=found,proto3" json:"found,omitempty"` // false when the pid is gone or /proc is not visible
+	Pid        uint32                 `protobuf:"varint,2,opt,name=pid,proto3" json:"pid,omitempty"`
+	Comm       string                 `protobuf:"bytes,3,opt,name=comm,proto3" json:"comm,omitempty"`
+	State      string                 `protobuf:"bytes,4,opt,name=state,proto3" json:"state,omitempty"` // the /proc/<pid>/status letter and word, e.g. "S (sleeping)"
+	Ppid       uint32                 `protobuf:"varint,5,opt,name=ppid,proto3" json:"ppid,omitempty"`
+	Uid        string                 `protobuf:"bytes,6,opt,name=uid,proto3" json:"uid,omitempty"`                // real UID
+	Cmdline    string                 `protobuf:"bytes,7,opt,name=cmdline,proto3" json:"cmdline,omitempty"`        // NUL separators rendered as spaces
+	Exe        string                 `protobuf:"bytes,8,opt,name=exe,proto3" json:"exe,omitempty"`                // resolved /proc/<pid>/exe, empty when not readable
+	Cgroup     string                 `protobuf:"bytes,9,opt,name=cgroup,proto3" json:"cgroup,omitempty"`          // unified (v2) cgroup path, the one k8s pods carry
+	Namespaces []*Namespace           `protobuf:"bytes,10,rep,name=namespaces,proto3" json:"namespaces,omitempty"` // what /proc/<pid>/ns links to
+	// The pid this process has in each pid namespace, outermost first: the number
+	// the agent sees, then the one it goes by inside each namespace below - the
+	// number `ps` prints in the container. One entry for a process in the agent's
+	// own namespace, and none on a kernel too old to report them.
+	NsPids        []uint32 `protobuf:"varint,11,rep,packed,name=ns_pids,json=nsPids,proto3" json:"ns_pids,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1583,6 +1589,86 @@ func (x *DescribeProcessResponse) GetCgroup() string {
 		return x.Cgroup
 	}
 	return ""
+}
+
+func (x *DescribeProcessResponse) GetNamespaces() []*Namespace {
+	if x != nil {
+		return x.Namespaces
+	}
+	return nil
+}
+
+func (x *DescribeProcessResponse) GetNsPids() []uint32 {
+	if x != nil {
+		return x.NsPids
+	}
+	return nil
+}
+
+// Namespace is one of the namespaces a process is in - the halves a container
+// is actually built from, so a pid out of a map can be placed in one.
+type Namespace struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Kind  string                 `protobuf:"bytes,1,opt,name=kind,proto3" json:"kind,omitempty"`    // the /proc/<pid>/ns link name: "mnt", "net", "pid", ...
+	Inode uint64                 `protobuf:"varint,2,opt,name=inode,proto3" json:"inode,omitempty"` // the number in "net:[4026531840]", what lsns prints
+	// Pid 1's namespace of the same kind, when there is a comparison to make:
+	// zero for pid 1 itself, and when its /proc entry could not be read. A
+	// different number means the process has a namespace of its own - with
+	// hostPID, pid 1 is the node's init, so that is the mark of a container.
+	Pid1Inode     uint64 `protobuf:"varint,3,opt,name=pid1_inode,json=pid1Inode,proto3" json:"pid1_inode,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Namespace) Reset() {
+	*x = Namespace{}
+	mi := &file_proto_bpfinspector_proto_msgTypes[24]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Namespace) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Namespace) ProtoMessage() {}
+
+func (x *Namespace) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_bpfinspector_proto_msgTypes[24]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Namespace.ProtoReflect.Descriptor instead.
+func (*Namespace) Descriptor() ([]byte, []int) {
+	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{24}
+}
+
+func (x *Namespace) GetKind() string {
+	if x != nil {
+		return x.Kind
+	}
+	return ""
+}
+
+func (x *Namespace) GetInode() uint64 {
+	if x != nil {
+		return x.Inode
+	}
+	return 0
+}
+
+func (x *Namespace) GetPid1Inode() uint64 {
+	if x != nil {
+		return x.Pid1Inode
+	}
+	return 0
 }
 
 var File_proto_bpfinspector_proto protoreflect.FileDescriptor
@@ -1689,7 +1775,7 @@ const file_proto_bpfinspector_proto_rawDesc = "" +
 	"\x11processes_scanned\x18\x02 \x01(\rR\x10processesScanned\x12.\n" +
 	"\x04walk\x18\x03 \x01(\v2\x1a.bpfinspector.v1.WalkStatsR\x04walk\"*\n" +
 	"\x16DescribeProcessRequest\x12\x10\n" +
-	"\x03pid\x18\x01 \x01(\rR\x03pid\"\xd5\x01\n" +
+	"\x03pid\x18\x01 \x01(\rR\x03pid\"\xaa\x02\n" +
 	"\x17DescribeProcessResponse\x12\x14\n" +
 	"\x05found\x18\x01 \x01(\bR\x05found\x12\x10\n" +
 	"\x03pid\x18\x02 \x01(\rR\x03pid\x12\x12\n" +
@@ -1699,7 +1785,17 @@ const file_proto_bpfinspector_proto_rawDesc = "" +
 	"\x03uid\x18\x06 \x01(\tR\x03uid\x12\x18\n" +
 	"\acmdline\x18\a \x01(\tR\acmdline\x12\x10\n" +
 	"\x03exe\x18\b \x01(\tR\x03exe\x12\x16\n" +
-	"\x06cgroup\x18\t \x01(\tR\x06cgroup2\xcb\x05\n" +
+	"\x06cgroup\x18\t \x01(\tR\x06cgroup\x12:\n" +
+	"\n" +
+	"namespaces\x18\n" +
+	" \x03(\v2\x1a.bpfinspector.v1.NamespaceR\n" +
+	"namespaces\x12\x17\n" +
+	"\ans_pids\x18\v \x03(\rR\x06nsPids\"T\n" +
+	"\tNamespace\x12\x12\n" +
+	"\x04kind\x18\x01 \x01(\tR\x04kind\x12\x14\n" +
+	"\x05inode\x18\x02 \x01(\x04R\x05inode\x12\x1d\n" +
+	"\n" +
+	"pid1_inode\x18\x03 \x01(\x04R\tpid1Inode2\xcb\x05\n" +
 	"\fBpfInspector\x12O\n" +
 	"\bListMaps\x12 .bpfinspector.v1.ListMapsRequest\x1a!.bpfinspector.v1.ListMapsResponse\x12L\n" +
 	"\aDumpMap\x12\x1f.bpfinspector.v1.DumpMapRequest\x1a .bpfinspector.v1.DumpMapResponse\x12[\n" +
@@ -1722,7 +1818,7 @@ func file_proto_bpfinspector_proto_rawDescGZIP() []byte {
 	return file_proto_bpfinspector_proto_rawDescData
 }
 
-var file_proto_bpfinspector_proto_msgTypes = make([]protoimpl.MessageInfo, 24)
+var file_proto_bpfinspector_proto_msgTypes = make([]protoimpl.MessageInfo, 25)
 var file_proto_bpfinspector_proto_goTypes = []any{
 	(*MapInfo)(nil),                 // 0: bpfinspector.v1.MapInfo
 	(*ListMapsRequest)(nil),         // 1: bpfinspector.v1.ListMapsRequest
@@ -1748,6 +1844,7 @@ var file_proto_bpfinspector_proto_goTypes = []any{
 	(*ResolveInodeResponse)(nil),    // 21: bpfinspector.v1.ResolveInodeResponse
 	(*DescribeProcessRequest)(nil),  // 22: bpfinspector.v1.DescribeProcessRequest
 	(*DescribeProcessResponse)(nil), // 23: bpfinspector.v1.DescribeProcessResponse
+	(*Namespace)(nil),               // 24: bpfinspector.v1.Namespace
 }
 var file_proto_bpfinspector_proto_depIdxs = []int32{
 	6,  // 0: bpfinspector.v1.MapInfo.pids:type_name -> bpfinspector.v1.ProcessRef
@@ -1759,27 +1856,28 @@ var file_proto_bpfinspector_proto_depIdxs = []int32{
 	19, // 6: bpfinspector.v1.InodeMatch.holders:type_name -> bpfinspector.v1.InodeHolder
 	20, // 7: bpfinspector.v1.ResolveInodeResponse.matches:type_name -> bpfinspector.v1.InodeMatch
 	18, // 8: bpfinspector.v1.ResolveInodeResponse.walk:type_name -> bpfinspector.v1.WalkStats
-	1,  // 9: bpfinspector.v1.BpfInspector.ListMaps:input_type -> bpfinspector.v1.ListMapsRequest
-	4,  // 10: bpfinspector.v1.BpfInspector.DumpMap:input_type -> bpfinspector.v1.DumpMapRequest
-	8,  // 11: bpfinspector.v1.BpfInspector.ListPrograms:input_type -> bpfinspector.v1.ListProgramsRequest
-	10, // 12: bpfinspector.v1.BpfInspector.DumpProgram:input_type -> bpfinspector.v1.DumpProgramRequest
-	13, // 13: bpfinspector.v1.BpfInspector.ListLinks:input_type -> bpfinspector.v1.ListLinksRequest
-	15, // 14: bpfinspector.v1.BpfInspector.TraceLog:input_type -> bpfinspector.v1.TraceLogRequest
-	17, // 15: bpfinspector.v1.BpfInspector.ResolveInode:input_type -> bpfinspector.v1.ResolveInodeRequest
-	22, // 16: bpfinspector.v1.BpfInspector.DescribeProcess:input_type -> bpfinspector.v1.DescribeProcessRequest
-	2,  // 17: bpfinspector.v1.BpfInspector.ListMaps:output_type -> bpfinspector.v1.ListMapsResponse
-	5,  // 18: bpfinspector.v1.BpfInspector.DumpMap:output_type -> bpfinspector.v1.DumpMapResponse
-	9,  // 19: bpfinspector.v1.BpfInspector.ListPrograms:output_type -> bpfinspector.v1.ListProgramsResponse
-	11, // 20: bpfinspector.v1.BpfInspector.DumpProgram:output_type -> bpfinspector.v1.DumpProgramResponse
-	14, // 21: bpfinspector.v1.BpfInspector.ListLinks:output_type -> bpfinspector.v1.ListLinksResponse
-	16, // 22: bpfinspector.v1.BpfInspector.TraceLog:output_type -> bpfinspector.v1.TraceLogEvent
-	21, // 23: bpfinspector.v1.BpfInspector.ResolveInode:output_type -> bpfinspector.v1.ResolveInodeResponse
-	23, // 24: bpfinspector.v1.BpfInspector.DescribeProcess:output_type -> bpfinspector.v1.DescribeProcessResponse
-	17, // [17:25] is the sub-list for method output_type
-	9,  // [9:17] is the sub-list for method input_type
-	9,  // [9:9] is the sub-list for extension type_name
-	9,  // [9:9] is the sub-list for extension extendee
-	0,  // [0:9] is the sub-list for field type_name
+	24, // 9: bpfinspector.v1.DescribeProcessResponse.namespaces:type_name -> bpfinspector.v1.Namespace
+	1,  // 10: bpfinspector.v1.BpfInspector.ListMaps:input_type -> bpfinspector.v1.ListMapsRequest
+	4,  // 11: bpfinspector.v1.BpfInspector.DumpMap:input_type -> bpfinspector.v1.DumpMapRequest
+	8,  // 12: bpfinspector.v1.BpfInspector.ListPrograms:input_type -> bpfinspector.v1.ListProgramsRequest
+	10, // 13: bpfinspector.v1.BpfInspector.DumpProgram:input_type -> bpfinspector.v1.DumpProgramRequest
+	13, // 14: bpfinspector.v1.BpfInspector.ListLinks:input_type -> bpfinspector.v1.ListLinksRequest
+	15, // 15: bpfinspector.v1.BpfInspector.TraceLog:input_type -> bpfinspector.v1.TraceLogRequest
+	17, // 16: bpfinspector.v1.BpfInspector.ResolveInode:input_type -> bpfinspector.v1.ResolveInodeRequest
+	22, // 17: bpfinspector.v1.BpfInspector.DescribeProcess:input_type -> bpfinspector.v1.DescribeProcessRequest
+	2,  // 18: bpfinspector.v1.BpfInspector.ListMaps:output_type -> bpfinspector.v1.ListMapsResponse
+	5,  // 19: bpfinspector.v1.BpfInspector.DumpMap:output_type -> bpfinspector.v1.DumpMapResponse
+	9,  // 20: bpfinspector.v1.BpfInspector.ListPrograms:output_type -> bpfinspector.v1.ListProgramsResponse
+	11, // 21: bpfinspector.v1.BpfInspector.DumpProgram:output_type -> bpfinspector.v1.DumpProgramResponse
+	14, // 22: bpfinspector.v1.BpfInspector.ListLinks:output_type -> bpfinspector.v1.ListLinksResponse
+	16, // 23: bpfinspector.v1.BpfInspector.TraceLog:output_type -> bpfinspector.v1.TraceLogEvent
+	21, // 24: bpfinspector.v1.BpfInspector.ResolveInode:output_type -> bpfinspector.v1.ResolveInodeResponse
+	23, // 25: bpfinspector.v1.BpfInspector.DescribeProcess:output_type -> bpfinspector.v1.DescribeProcessResponse
+	18, // [18:26] is the sub-list for method output_type
+	10, // [10:18] is the sub-list for method input_type
+	10, // [10:10] is the sub-list for extension type_name
+	10, // [10:10] is the sub-list for extension extendee
+	0,  // [0:10] is the sub-list for field type_name
 }
 
 func init() { file_proto_bpfinspector_proto_init() }
@@ -1793,7 +1891,7 @@ func file_proto_bpfinspector_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_bpfinspector_proto_rawDesc), len(file_proto_bpfinspector_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   24,
+			NumMessages:   25,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
