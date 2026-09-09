@@ -580,16 +580,3 @@ func TestReadNamespacesNoComparison(t *testing.T) {
 		t.Errorf("readNamespaces with no readable init =\n%+v\nwant\n%+v", got, want)
 	}
 }
-
-// TestReadCgroupV1Fallback checks a node with no unified hierarchy still yields
-// a path, taken from the first v1 entry.
-func TestReadCgroupV1Fallback(t *testing.T) {
-	dir := t.TempDir()
-	v1 := "11:devices:/system.slice/docker.service\n10:memory:/system.slice/docker.service\n"
-	if err := os.WriteFile(filepath.Join(dir, "cgroup"), []byte(v1), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if got := readCgroup(dir); got != "/system.slice/docker.service" {
-		t.Errorf("readCgroup = %q, want the first v1 path", got)
-	}
-}

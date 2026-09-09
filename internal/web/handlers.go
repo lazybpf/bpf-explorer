@@ -37,13 +37,14 @@ func New(disc discovery.Discoverer, hiddenLoaders map[uint32]bool) (*Handlers, e
 		"mapFlags": mapFlags, "progName": progName, "progLoader": progLoader,
 		"mapLoaders": mapLoaders, "hexASCII": hexASCII, "tabClass": tabClass,
 		"holders": holders, "comma": comma, "registers": registerSheet,
-		"nsHelp": namespaceHelp, "innerPIDs": innerPIDs,
+		"nsHelp": namespaceHelp, "innerPIDs": innerPIDs, "cgroupHelp": cgroupHelp,
+		"nodeLinkTitle": nodeLinkTitle,
 		// Exposed as a func so every page gets it without threading it through
 		// each handler's pageData.
 		"version": version.String,
 	}
 	pages := map[string]*template.Template{}
-	for _, name := range []string{"index", "maps", "mapdump", "programs", "progdump",
+	for _, name := range []string{"index", "node", "maps", "mapdump", "programs", "progdump",
 		"links", "loaders", "loader", "tracelog", "utilpid", "utilinode"} {
 		t, err := template.New(name).Funcs(funcs).ParseFS(templatesFS,
 			"templates/layout.html", "templates/partials.html", "templates/"+name+".html")
@@ -59,6 +60,9 @@ func New(disc discovery.Discoverer, hiddenLoaders map[uint32]bool) (*Handlers, e
 func (h *Handlers) Router() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /{$}", h.index)
+	// The node itself, before the objects on it: what the agent can see of the
+	// kernel, the cgroup layout and the container runtime.
+	mux.HandleFunc("GET /nodes/{node}/node", h.nodeDetails)
 	mux.HandleFunc("GET /nodes/{node}/maps", h.maps)
 	mux.HandleFunc("GET /nodes/{node}/maps/{id}", h.maps)
 	mux.HandleFunc("GET /nodes/{node}/programs", h.programs)
@@ -106,6 +110,9 @@ type pageData struct {
 	Mermaid    template.HTML   // dependency diagram definition
 	GraphLabel string          // heading for a diagram page: a loader, a program or a map
 	Loaders    []loaderSummary // loader roster for the loaders index page
+	// NodeInfo is the node's own configuration - kernel, cgroups, container
+	// runtime - for the node tab. Node above is the name; this is the machine.
+	NodeInfo *pb.DescribeNodeResponse
 	// One field per utility under the utils tab, each set only by its own
 	// handler: the utilities share the tab, not a model.
 	PIDLookup   *pidLookup
@@ -138,7 +145,10 @@ type progDumpView struct {
 }
 
 func (h *Handlers) index(w http.ResponseWriter, _ *http.Request) {
-	data := pageData{Tab: "maps"}
+	// Nothing is selected yet, so the picker lands on the node tab: the first
+	// entry in the bar, and the one that says what the node is before anything
+	// loaded on it is read against that.
+	data := pageData{Tab: "node"}
 	nodes, _ := h.nodes()
 	data.Nodes = nodes
 	h.render(w, "index", data)
@@ -507,6 +517,16 @@ func (h *Handlers) render(w http.ResponseWriter, page string, data pageData) {
 // program's instructions, one diagram. Their tab is the way back up, so it must
 // not be painted as the page you are on.
 var subPages = map[string]bool{"mapdump": true, "progdump": true, "loader": true}
+
+// nodeLinkTitle names where a node button in the picker goes. Every tab but one
+// is a view of something on the node - "maps on node-a" - while the node tab is
+// the node itself, which that wording would turn into "node on node-a".
+func nodeLinkTitle(tab, node string) string {
+	if tab == "node" {
+		return node + " itself: kernel, cgroups, container runtime"
+	}
+	return tab + " on " + node
+}
 
 // tabClass marks one entry in the tab bar. The tab whose page you are on is
 // "active" - inverse video, you are here. The tab a sub-page hangs under is

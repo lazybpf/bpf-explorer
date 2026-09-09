@@ -1,6 +1,9 @@
 {{define "content"}}
 {{template "nodebar" .}}
-<p>Select a node to inspect its eBPF maps and programs.</p>
+<p>
+  Select a node to inspect: what it is - kernel, cgroups, container runtime -
+  and the eBPF objects loaded on it.
+</p>
 {{if not .Nodes}}
 <p class="muted">
   The UI found no agent pods. Check the DaemonSet is running and labelled nodes

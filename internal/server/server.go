@@ -206,6 +206,51 @@ func (s *Server) DescribeProcess(_ context.Context, req *pb.DescribeProcessReque
 	}, nil
 }
 
+// DescribeNode reports the node's kernel, cgroup layout and container stack.
+// Like DescribeProcess it never fails: a fact the agent cannot see comes back
+// empty with the note that says why, since the point of the call is to show what
+// this agent can and cannot see of its node.
+func (s *Server) DescribeNode(_ context.Context, _ *pb.DescribeNodeRequest) (*pb.DescribeNodeResponse, error) {
+	n := s.insp.DescribeNode()
+	components := make([]*pb.Component, 0, len(n.Components))
+	for _, c := range n.Components {
+		components = append(components, &pb.Component{
+			Name:          c.Name,
+			Pid:           c.PID,
+			Exe:           c.Exe,
+			Cmdline:       c.Cmdline,
+			Version:       c.Version,
+			VersionSource: c.VersionSource,
+			Module:        c.Module,
+			GoVersion:     c.GoVersion,
+			Note:          c.Note,
+		})
+	}
+	return &pb.DescribeNodeResponse{
+		Kernel: &pb.Kernel{
+			Release:  n.Kernel.Release,
+			Version:  n.Kernel.Version,
+			Machine:  n.Kernel.Machine,
+			Arch:     n.Kernel.Arch,
+			OsImage:  n.Kernel.OSImage,
+			OsSource: n.Kernel.OSSource,
+		},
+		Cgroups: &pb.Cgroups{
+			Mode:          n.Cgroups.Mode,
+			ModeSource:    n.Cgroups.ModeSource,
+			Driver:        n.Cgroups.Driver,
+			DriverSource:  n.Cgroups.DriverSource,
+			AgentPath:     n.Cgroups.AgentPath,
+			ExamplePath:   n.Cgroups.ExamplePath,
+			ExamplePid:    n.Cgroups.ExamplePID,
+			ExampleComm:   n.Cgroups.ExampleComm,
+			Namespaced:    n.Cgroups.Namespaced,
+			NamespaceNote: n.Cgroups.NamespaceNote,
+		},
+		Components: components,
+	}, nil
+}
+
 func (s *Server) ListLinks(_ context.Context, _ *pb.ListLinksRequest) (*pb.ListLinksResponse, error) {
 	links, err := s.insp.ListLinks()
 	if err != nil {

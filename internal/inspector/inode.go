@@ -541,37 +541,6 @@ func pidOf(procDir string) uint32 {
 	return uint32(pid)
 }
 
-// readMounts maps "major:minor" to a mount point, so a match can say which
-// filesystem it was found on. Read from pid 1, whose mount table is the host's
-// when the agent can see host pids; several mounts may share a device (bind
-// mounts), and the first one named wins.
-func readMounts(procRoot string) map[string]string {
-	mounts := map[string]string{}
-	for _, pid := range []string{"1", "self"} {
-		f, err := os.Open(filepath.Join(procRoot, pid, "mountinfo"))
-		if err != nil {
-			continue
-		}
-		sc := bufio.NewScanner(f)
-		for sc.Scan() {
-			// 36 35 98:0 /mnt1 /mnt2 rw,noatime - ext3 /dev/root rw
-			//       ^dev  ^root ^mount point
-			fields := strings.Fields(sc.Text())
-			if len(fields) < 5 {
-				continue
-			}
-			if _, ok := mounts[fields[2]]; !ok {
-				mounts[fields[2]] = fields[4]
-			}
-		}
-		f.Close()
-		if len(mounts) > 0 {
-			return mounts
-		}
-	}
-	return mounts
-}
-
 // mountNS returns the mount namespace of a process, as the "mnt:[4026531840]"
 // string /proc renders. Empty when it cannot be read.
 func mountNS(procRoot, pid string) string {
@@ -678,7 +647,10 @@ func describeProcess(procRoot string, pid uint32) ProcessDetail {
 	if exe, err := os.Readlink(filepath.Join(procDir, "exe")); err == nil {
 		d.Exe = exe
 	}
-	d.Cgroup = readCgroup(procDir)
+	// Read from the node's own cgroup namespace, so the path is the one the node
+	// knows this process by rather than the one the kernel spells for the agent's
+	// container - see cgroupNS.
+	readCgroupPaths(procRoot, func() { d.Cgroup = readCgroup(procDir) })
 	d.Namespaces = readNamespaces(procRoot, pid)
 	return d
 }
@@ -753,25 +725,4 @@ func nsInode(procDir, kind string) (uint64, bool) {
 		return 0, false
 	}
 	return inode, true
-}
-
-// readCgroup returns the process's unified (cgroup v2) path - the "0::" line,
-// which is the one a k8s pod's slice shows up in. Falls back to the first entry
-// on a v1-only node, where the hierarchy id and controllers come first.
-func readCgroup(procDir string) string {
-	b, err := os.ReadFile(filepath.Join(procDir, "cgroup"))
-	if err != nil {
-		return ""
-	}
-	var first string
-	for _, line := range strings.Split(strings.TrimSpace(string(b)), "\n") {
-		if path, ok := strings.CutPrefix(line, "0::"); ok {
-			return path
-		}
-		// "<id>:<controllers>:<path>"
-		if parts := strings.SplitN(line, ":", 3); len(parts) == 3 && first == "" {
-			first = parts[2]
-		}
-	}
-	return first
 }

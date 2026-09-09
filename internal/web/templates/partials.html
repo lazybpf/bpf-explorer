@@ -6,9 +6,12 @@
          on another node is a different map - so these always point at the
          node's list, and the tooltip says so rather than letting the button
          imply "same page, other node". A utility does carry across: it is a
-         question, not an object, so the same one is asked of the next node. */}}
+         question, not an object, so the same one is asked of the next node.
+
+         With nothing selected yet - the index - the tab is the node tab, so
+         these land on what each node is before anything on it is read. */}}
     {{range $n := .Nodes}}
-      <a class="{{if eq $n $node}}active{{end}}" href="/nodes/{{$n}}/{{$tab}}{{with $util}}/{{.}}{{end}}" title="{{$tab}} on {{$n}}">{{$n}}</a>
+      <a class="{{if eq $n $node}}active{{end}}" href="/nodes/{{$n}}/{{$tab}}{{with $util}}/{{.}}{{end}}" title="{{nodeLinkTitle $tab $n}}">{{$n}}</a>
     {{end}}
   {{else}}
     <span class="muted">no agents discovered</span>
@@ -19,6 +22,9 @@
      the way back to the list, so it must not claim to be the page you are on.
      That marking is what a separate "all maps" back link used to be. */}}
 <p class="tabs">
+  {{/* The node itself first: the kernel, cgroups and runtime everything in the
+       tabs after it has to be read against. */}}
+  <a class="{{tabClass .Tab .Sub "node"}}" href="/nodes/{{.Node}}/node">node</a>
   <a class="{{tabClass .Tab .Sub "maps"}}" href="/nodes/{{.Node}}/maps">maps</a>
   <a class="{{tabClass .Tab .Sub "programs"}}" href="/nodes/{{.Node}}/programs">programs</a>
   <a class="{{tabClass .Tab .Sub "links"}}" href="/nodes/{{.Node}}/links">links</a>

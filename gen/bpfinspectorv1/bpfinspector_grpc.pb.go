@@ -27,6 +27,7 @@ const (
 	BpfInspector_TraceLog_FullMethodName        = "/bpfinspector.v1.BpfInspector/TraceLog"
 	BpfInspector_ResolveInode_FullMethodName    = "/bpfinspector.v1.BpfInspector/ResolveInode"
 	BpfInspector_DescribeProcess_FullMethodName = "/bpfinspector.v1.BpfInspector/DescribeProcess"
+	BpfInspector_DescribeNode_FullMethodName    = "/bpfinspector.v1.BpfInspector/DescribeNode"
 )
 
 // BpfInspectorClient is the client API for BpfInspector service.
@@ -46,6 +47,7 @@ type BpfInspectorClient interface {
 	TraceLog(ctx context.Context, in *TraceLogRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[TraceLogEvent], error)
 	ResolveInode(ctx context.Context, in *ResolveInodeRequest, opts ...grpc.CallOption) (*ResolveInodeResponse, error)
 	DescribeProcess(ctx context.Context, in *DescribeProcessRequest, opts ...grpc.CallOption) (*DescribeProcessResponse, error)
+	DescribeNode(ctx context.Context, in *DescribeNodeRequest, opts ...grpc.CallOption) (*DescribeNodeResponse, error)
 }
 
 type bpfInspectorClient struct {
@@ -145,6 +147,16 @@ func (c *bpfInspectorClient) DescribeProcess(ctx context.Context, in *DescribePr
 	return out, nil
 }
 
+func (c *bpfInspectorClient) DescribeNode(ctx context.Context, in *DescribeNodeRequest, opts ...grpc.CallOption) (*DescribeNodeResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DescribeNodeResponse)
+	err := c.cc.Invoke(ctx, BpfInspector_DescribeNode_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // BpfInspectorServer is the server API for BpfInspector service.
 // All implementations must embed UnimplementedBpfInspectorServer
 // for forward compatibility.
@@ -162,6 +174,7 @@ type BpfInspectorServer interface {
 	TraceLog(*TraceLogRequest, grpc.ServerStreamingServer[TraceLogEvent]) error
 	ResolveInode(context.Context, *ResolveInodeRequest) (*ResolveInodeResponse, error)
 	DescribeProcess(context.Context, *DescribeProcessRequest) (*DescribeProcessResponse, error)
+	DescribeNode(context.Context, *DescribeNodeRequest) (*DescribeNodeResponse, error)
 	mustEmbedUnimplementedBpfInspectorServer()
 }
 
@@ -195,6 +208,9 @@ func (UnimplementedBpfInspectorServer) ResolveInode(context.Context, *ResolveIno
 }
 func (UnimplementedBpfInspectorServer) DescribeProcess(context.Context, *DescribeProcessRequest) (*DescribeProcessResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method DescribeProcess not implemented")
+}
+func (UnimplementedBpfInspectorServer) DescribeNode(context.Context, *DescribeNodeRequest) (*DescribeNodeResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method DescribeNode not implemented")
 }
 func (UnimplementedBpfInspectorServer) mustEmbedUnimplementedBpfInspectorServer() {}
 func (UnimplementedBpfInspectorServer) testEmbeddedByValue()                      {}
@@ -354,6 +370,24 @@ func _BpfInspector_DescribeProcess_Handler(srv interface{}, ctx context.Context,
 	return interceptor(ctx, in, info, handler)
 }
 
+func _BpfInspector_DescribeNode_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DescribeNodeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BpfInspectorServer).DescribeNode(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: BpfInspector_DescribeNode_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BpfInspectorServer).DescribeNode(ctx, req.(*DescribeNodeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // BpfInspector_ServiceDesc is the grpc.ServiceDesc for BpfInspector service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -388,6 +422,10 @@ var BpfInspector_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "DescribeProcess",
 			Handler:    _BpfInspector_DescribeProcess_Handler,
+		},
+		{
+			MethodName: "DescribeNode",
+			Handler:    _BpfInspector_DescribeNode_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

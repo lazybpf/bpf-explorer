@@ -17,6 +17,7 @@ service BpfInspector {
   rpc TraceLog(TraceLogRequest) returns (stream TraceLogEvent);
   rpc ResolveInode(ResolveInodeRequest) returns (ResolveInodeResponse);
   rpc DescribeProcess(DescribeProcessRequest) returns (DescribeProcessResponse);
+  rpc DescribeNode(DescribeNodeRequest) returns (DescribeNodeResponse);
 }
 
 message MapInfo {
@@ -215,6 +216,95 @@ message DescribeProcessResponse {
   // number `ps` prints in the container. One entry for a process in the agent's
   // own namespace, and none on a kernel too old to report them.
   repeated uint32 ns_pids = 11;
+}
+
+// DescribeNode reports the node's own configuration: the kernel, the cgroup
+// hierarchy containers are accounted in, and the processes that create them.
+//
+// It is the context every other answer is read against. A pid or a cgroup id out
+// of a BPF map only becomes a container through these: the cgroup driver decides
+// the shape of the path a container id has to be parsed out of, and the cgroup
+// version decides what bpf_get_current_cgroup_id() even refers to.
+//
+// Everything here is read from /proc and from the runtime binaries themselves.
+// The agent runs nothing and asks no runtime over CRI, so a component's version
+// is what its own binary records - see Component.
+message DescribeNodeRequest {}
+
+message DescribeNodeResponse {
+  Kernel kernel = 1;
+  Cgroups cgroups = 2;
+  // The container-runtime and kubelet processes found on the node, by comm.
+  repeated Component components = 3;
+}
+
+// Kernel is what uname reports, plus the node's OS image. Namespaces do not
+// touch the uname fields - the kernel is the kernel, whoever asks - but the OS
+// image is a file, and the agent's own is its container image rather than the
+// node's, so it is read through pid 1's root and says which file answered.
+message Kernel {
+  string release = 1;   // uname -r, e.g. "6.12.94+deb12-arm64"
+  string version = 2;   // uname -v, the build string
+  string machine = 3;   // uname -m, e.g. "aarch64"
+  // The agent binary's own GOARCH, e.g. "arm64" - the same architecture spelled
+  // the way Go and container images spell it. A mismatch with machine means the
+  // agent is not built for the node it is reading.
+  string arch = 4;
+  string os_image = 5;  // PRETTY_NAME from os-release
+  string os_source = 6; // the file os_image was read from
+}
+
+// Cgroups says which hierarchy the node runs and how the kubelet names paths in
+// it - the two facts container resolution rests on, and the two that go wrong
+// quietly, since a path parsed for the other driver yields a container id that
+// matches nothing rather than an error.
+message Cgroups {
+  string mode = 1;          // "unified" (v2), "legacy" (v1), "hybrid"
+  string mode_source = 2;   // the mount table it was read from
+  string driver = 3;        // "systemd", "cgroupfs", empty when nothing said
+  // What settled the driver - a kubelet flag, its config file, or the shape of
+  // the pod paths - and what disagrees with it, when something does.
+  string driver_source = 4;
+  string agent_path = 5;    // the agent's own unified (v2) cgroup path
+  // One pod container's cgroup path as seen on this node, and the process it was
+  // read from: the string an agent resolving containers actually has to handle.
+  string example_path = 6;
+  uint32 example_pid = 7;
+  string example_comm = 8;
+  // Whether the agent is in a cgroup namespace of its own - which it is in the
+  // DaemonSet, since a container is normally given one.
+  //
+  // It matters because the kernel writes the paths in /proc/<pid>/cgroup
+  // relative to the READER's namespace root: an agent in a pod reads its own
+  // cgroup as "/" and a pod elsewhere on the node as
+  // "/../../../kubepods.slice/...", and neither string exists on the node.
+  // Nothing inside that namespace says where it sits, so the paths above are
+  // instead read from the node's own namespace, which the agent joins for the
+  // length of the call. This flag says that was necessary.
+  bool namespaced = 9;
+  // Why the paths above are still the agent's own view: joining the node's
+  // cgroup namespace needs CAP_SYS_ADMIN. Empty when nothing stood in the way -
+  // either the agent shares the node's namespace, or it joined it.
+  string namespace_note = 10;
+}
+
+// Component is one container-runtime or kubelet process on the node.
+//
+// The version is read out of the binary's own Go build information, through
+// /proc/<pid>/exe - so it is the version of the code that is running, even if
+// the package has been upgraded underneath it, and it needs no CRI socket and
+// no exec. Opening another process's exe needs root, which is why an
+// unprivileged agent lists a component with a note in place of a version.
+message Component {
+  string name = 1;    // comm, e.g. "containerd", "kubelet", "dockerd"
+  uint32 pid = 2;
+  string exe = 3;     // /proc/<pid>/exe, as the process's own mount namespace spells it
+  string cmdline = 4;
+  string version = 5;
+  string version_source = 6; // the -X flag or module version it came from
+  string module = 7;         // main module path, e.g. "github.com/containerd/containerd/v2"
+  string go_version = 8;     // the toolchain that built it
+  string note = 9;           // why there is no version
 }
 
 // Namespace is one of the namespaces a process is in - the halves a container

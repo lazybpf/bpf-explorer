@@ -1,0 +1,168 @@
+{{define "content"}}
+{{template "nodebar" .}}
+
+<h2>node {{.Node}}</h2>
+<p class="muted">
+  What the agent can see of the node itself: the kernel it runs, the cgroup
+  hierarchy its containers are accounted in, and the processes that create them.
+  Every other tab is read against these. A pid or a cgroup id out of a map only
+  becomes a container through them, and a container id parsed the way the other
+  cgroup driver names them resolves to nothing at all - with no error to say so.
+</p>
+
+{{with .NodeInfo}}
+  {{with .Kernel}}
+    <h2>kernel</h2>
+    <table class="kv">
+      <tr><th title="uname -r: what a BPF feature check is really asking about">release</th>
+          <td>{{with .Release}}<code>{{.}}</code>{{else}}<span class="muted">-</span>{{end}}</td></tr>
+      <tr><th title="uname -v: when this kernel was built, and by which distribution">build</th>
+          <td>{{with .Version}}<span class="muted">{{.}}</span>{{else}}<span class="muted">-</span>{{end}}</td></tr>
+      <tr><th title="uname -m, and the architecture the agent binary itself was built for">arch</th>
+          <td>
+            {{with .Machine}}<code>{{.}}</code>{{else}}<span class="muted">-</span>{{end}}
+            {{/* The same architecture under two spellings - aarch64 and arm64 -
+                 is the normal case, and worth showing next to each other so a
+                 genuine mismatch is visible as one. */}}
+            {{with .Arch}}<span class="muted">agent built for {{.}}</span>{{end}}
+          </td></tr>
+      <tr><th title="PRETTY_NAME from os-release">os</th>
+          <td>
+            {{if .OsImage}}
+              {{.OsImage}}
+              {{/* Which file answered is the whole story here: the agent's own
+                   /etc/os-release names the container image it ships in, and is
+                   the node's answer only when the agent runs on the host. */}}
+              <div class="muted">from <code>{{.OsSource}}</code></div>
+            {{else}}
+              <span class="muted">not readable - os-release is on the node's root, which needs root to reach from a container</span>
+            {{end}}
+          </td></tr>
+    </table>
+  {{end}}
+
+  {{with .Cgroups}}
+    <h2>cgroups</h2>
+    <p class="muted">
+      Which hierarchy the node runs, and how the kubelet names paths in it.
+      Unified (v2) is the single tree <code>bpf_get_current_cgroup_id()</code>
+      answers from; on legacy (v1) a container is accounted once per controller,
+      so a cgroup id there names one controller's cgroup rather than the
+      container. The driver decides the shape of the path: systemd suffixes every
+      level <code>.slice</code> or <code>.scope</code> and spells the whole tree
+      into each name, cgroupfs nests plain directories.
+    </p>
+    <table class="kv">
+      <tr><th>version</th>
+          <td>
+            {{if .Mode}}
+              <code>{{.Mode}}</code>
+              {{with cgroupHelp .Mode}}<div class="muted">{{.}}</div>{{end}}
+              <div class="muted">read from <code>{{.ModeSource}}</code></div>
+            {{else}}
+              <span class="muted">no cgroup mounts found in any mount table the agent can read</span>
+            {{end}}
+          </td></tr>
+      <tr><th>driver</th>
+          <td>
+            {{if .Driver}}
+              <code>{{.Driver}}</code>
+              <div class="muted">from {{.DriverSource}}</div>
+            {{else}}
+              <span class="muted">nothing on the node said: no kubelet process to ask, and no pod cgroup path to read it off</span>
+            {{end}}
+          </td></tr>
+      <tr><th title="the cgroup the agent itself is in - its own pod's, in the DaemonSet">agent</th>
+          <td>{{with .AgentPath}}<code>{{.}}</code>{{else}}<span class="muted">-</span>{{end}}</td></tr>
+      <tr><th title="one pod container's cgroup path on this node">a pod</th>
+          <td>
+            {{if .ExamplePath}}
+              <code>{{.ExamplePath}}</code>
+              <div class="muted">
+                as seen from
+                <a href="/nodes/{{$.Node}}/utils/pid?pid={{.ExamplePid}}" title="describe this process">{{.ExampleComm}}({{.ExamplePid}})</a>
+                - the string an agent resolving containers has to parse
+              </div>
+            {{else}}
+              <span class="muted">no <code>kubepods</code> cgroup found: no pods on this node, or the agent cannot see host pids</span>
+            {{end}}
+          </td></tr>
+    </table>
+    {{/* Said under the paths it applies to. Without it a reader who checks
+         these against the node's own cgroupfs has no way to tell which of the
+         two namespaces they were written in. */}}
+    {{if .Namespaced}}
+      {{if .NamespaceNote}}
+        <p class="warn">
+          {{.NamespaceNote}}. The kernel writes
+          <code>/proc/&lt;pid&gt;/cgroup</code> relative to the reader's own
+          cgroup namespace root, so a path that begins <code>/../../</code> is
+          climbing out of the agent's - and one that reads <code>/</code> is the
+          agent's own root, not the node's. Run the agent privileged and it
+          reads these from the node's namespace instead.
+        </p>
+      {{else}}
+        <p class="muted">
+          The agent is in a cgroup namespace of its own, so the kernel would
+          write these paths relative to that: its own cgroup as <code>/</code>,
+          a pod elsewhere on the node as <code>/../../</code> and up. They are
+          read from the node's own namespace instead - what
+          <code>nsenter --cgroup -t 1</code> does - so what is above is what the
+          node calls them.
+        </p>
+      {{end}}
+    {{end}}
+  {{end}}
+
+  <h2>container runtime</h2>
+  <p class="muted">
+    The runtime and kubelet processes on the node, found by <code>comm</code> in
+    <code>/proc</code>. Each version is read out of the binary's own Go build
+    information, through <code>/proc/&lt;pid&gt;/exe</code> - so it is the
+    version of the code that is running even if the package has been upgraded
+    underneath it. The agent runs nothing and opens no CRI socket to get it,
+    which is also why a component whose binary it may not open (that needs root)
+    is listed with a note in place of a version.
+  </p>
+  {{if .Components}}
+    <div class="scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>component</th><th>pid</th><th>version</th>
+            <th title="the main module the binary was built from">module</th>
+            <th>binary</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{range .Components}}
+            <tr>
+              <td>{{.Name}}</td>
+              <td><a href="/nodes/{{$.Node}}/utils/pid?pid={{.Pid}}" title="describe this process">{{.Pid}}</a></td>
+              <td>
+                {{if .Version}}
+                  <code{{with .VersionSource}} title="stamped into the binary: {{.}}"{{end}}>{{.Version}}</code>
+                  {{with .GoVersion}}<div class="muted">built with {{.}}</div>{{end}}
+                {{else}}
+                  <span class="muted">{{with .Note}}{{.}}{{else}}-{{end}}</span>
+                {{end}}
+              </td>
+              <td>{{with .Module}}<code>{{.}}</code>{{else}}<span class="muted">-</span>{{end}}</td>
+              <td>
+                {{with .Exe}}<code>{{.}}</code>{{else}}<span class="muted">not readable</span>{{end}}
+                {{with .Cmdline}}<div class="muted"><code>{{.}}</code></div>{{end}}
+              </td>
+            </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+  {{else}}
+    <p class="warn">
+      No container runtime found on this node. Either nothing is running one, or
+      the agent cannot see host pids - the DaemonSet needs <code>hostPID</code>,
+      without which <code>/proc</code> holds only the agent's own pod.
+    </p>
+  {{end}}
+{{end}}
+{{end}}

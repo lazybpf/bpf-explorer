@@ -1605,6 +1605,457 @@ func (x *DescribeProcessResponse) GetNsPids() []uint32 {
 	return nil
 }
 
+// DescribeNode reports the node's own configuration: the kernel, the cgroup
+// hierarchy containers are accounted in, and the processes that create them.
+//
+// It is the context every other answer is read against. A pid or a cgroup id out
+// of a BPF map only becomes a container through these: the cgroup driver decides
+// the shape of the path a container id has to be parsed out of, and the cgroup
+// version decides what bpf_get_current_cgroup_id() even refers to.
+//
+// Everything here is read from /proc and from the runtime binaries themselves.
+// The agent runs nothing and asks no runtime over CRI, so a component's version
+// is what its own binary records - see Component.
+type DescribeNodeRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DescribeNodeRequest) Reset() {
+	*x = DescribeNodeRequest{}
+	mi := &file_proto_bpfinspector_proto_msgTypes[24]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DescribeNodeRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DescribeNodeRequest) ProtoMessage() {}
+
+func (x *DescribeNodeRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_bpfinspector_proto_msgTypes[24]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DescribeNodeRequest.ProtoReflect.Descriptor instead.
+func (*DescribeNodeRequest) Descriptor() ([]byte, []int) {
+	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{24}
+}
+
+type DescribeNodeResponse struct {
+	state   protoimpl.MessageState `protogen:"open.v1"`
+	Kernel  *Kernel                `protobuf:"bytes,1,opt,name=kernel,proto3" json:"kernel,omitempty"`
+	Cgroups *Cgroups               `protobuf:"bytes,2,opt,name=cgroups,proto3" json:"cgroups,omitempty"`
+	// The container-runtime and kubelet processes found on the node, by comm.
+	Components    []*Component `protobuf:"bytes,3,rep,name=components,proto3" json:"components,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DescribeNodeResponse) Reset() {
+	*x = DescribeNodeResponse{}
+	mi := &file_proto_bpfinspector_proto_msgTypes[25]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DescribeNodeResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DescribeNodeResponse) ProtoMessage() {}
+
+func (x *DescribeNodeResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_bpfinspector_proto_msgTypes[25]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DescribeNodeResponse.ProtoReflect.Descriptor instead.
+func (*DescribeNodeResponse) Descriptor() ([]byte, []int) {
+	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{25}
+}
+
+func (x *DescribeNodeResponse) GetKernel() *Kernel {
+	if x != nil {
+		return x.Kernel
+	}
+	return nil
+}
+
+func (x *DescribeNodeResponse) GetCgroups() *Cgroups {
+	if x != nil {
+		return x.Cgroups
+	}
+	return nil
+}
+
+func (x *DescribeNodeResponse) GetComponents() []*Component {
+	if x != nil {
+		return x.Components
+	}
+	return nil
+}
+
+// Kernel is what uname reports, plus the node's OS image. Namespaces do not
+// touch the uname fields - the kernel is the kernel, whoever asks - but the OS
+// image is a file, and the agent's own is its container image rather than the
+// node's, so it is read through pid 1's root and says which file answered.
+type Kernel struct {
+	state   protoimpl.MessageState `protogen:"open.v1"`
+	Release string                 `protobuf:"bytes,1,opt,name=release,proto3" json:"release,omitempty"` // uname -r, e.g. "6.12.94+deb12-arm64"
+	Version string                 `protobuf:"bytes,2,opt,name=version,proto3" json:"version,omitempty"` // uname -v, the build string
+	Machine string                 `protobuf:"bytes,3,opt,name=machine,proto3" json:"machine,omitempty"` // uname -m, e.g. "aarch64"
+	// The agent binary's own GOARCH, e.g. "arm64" - the same architecture spelled
+	// the way Go and container images spell it. A mismatch with machine means the
+	// agent is not built for the node it is reading.
+	Arch          string `protobuf:"bytes,4,opt,name=arch,proto3" json:"arch,omitempty"`
+	OsImage       string `protobuf:"bytes,5,opt,name=os_image,json=osImage,proto3" json:"os_image,omitempty"`    // PRETTY_NAME from os-release
+	OsSource      string `protobuf:"bytes,6,opt,name=os_source,json=osSource,proto3" json:"os_source,omitempty"` // the file os_image was read from
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Kernel) Reset() {
+	*x = Kernel{}
+	mi := &file_proto_bpfinspector_proto_msgTypes[26]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Kernel) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Kernel) ProtoMessage() {}
+
+func (x *Kernel) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_bpfinspector_proto_msgTypes[26]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Kernel.ProtoReflect.Descriptor instead.
+func (*Kernel) Descriptor() ([]byte, []int) {
+	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{26}
+}
+
+func (x *Kernel) GetRelease() string {
+	if x != nil {
+		return x.Release
+	}
+	return ""
+}
+
+func (x *Kernel) GetVersion() string {
+	if x != nil {
+		return x.Version
+	}
+	return ""
+}
+
+func (x *Kernel) GetMachine() string {
+	if x != nil {
+		return x.Machine
+	}
+	return ""
+}
+
+func (x *Kernel) GetArch() string {
+	if x != nil {
+		return x.Arch
+	}
+	return ""
+}
+
+func (x *Kernel) GetOsImage() string {
+	if x != nil {
+		return x.OsImage
+	}
+	return ""
+}
+
+func (x *Kernel) GetOsSource() string {
+	if x != nil {
+		return x.OsSource
+	}
+	return ""
+}
+
+// Cgroups says which hierarchy the node runs and how the kubelet names paths in
+// it - the two facts container resolution rests on, and the two that go wrong
+// quietly, since a path parsed for the other driver yields a container id that
+// matches nothing rather than an error.
+type Cgroups struct {
+	state      protoimpl.MessageState `protogen:"open.v1"`
+	Mode       string                 `protobuf:"bytes,1,opt,name=mode,proto3" json:"mode,omitempty"`                               // "unified" (v2), "legacy" (v1), "hybrid"
+	ModeSource string                 `protobuf:"bytes,2,opt,name=mode_source,json=modeSource,proto3" json:"mode_source,omitempty"` // the mount table it was read from
+	Driver     string                 `protobuf:"bytes,3,opt,name=driver,proto3" json:"driver,omitempty"`                           // "systemd", "cgroupfs", empty when nothing said
+	// What settled the driver - a kubelet flag, its config file, or the shape of
+	// the pod paths - and what disagrees with it, when something does.
+	DriverSource string `protobuf:"bytes,4,opt,name=driver_source,json=driverSource,proto3" json:"driver_source,omitempty"`
+	AgentPath    string `protobuf:"bytes,5,opt,name=agent_path,json=agentPath,proto3" json:"agent_path,omitempty"` // the agent's own unified (v2) cgroup path
+	// One pod container's cgroup path as seen on this node, and the process it was
+	// read from: the string an agent resolving containers actually has to handle.
+	ExamplePath string `protobuf:"bytes,6,opt,name=example_path,json=examplePath,proto3" json:"example_path,omitempty"`
+	ExamplePid  uint32 `protobuf:"varint,7,opt,name=example_pid,json=examplePid,proto3" json:"example_pid,omitempty"`
+	ExampleComm string `protobuf:"bytes,8,opt,name=example_comm,json=exampleComm,proto3" json:"example_comm,omitempty"`
+	// Whether the agent is in a cgroup namespace of its own - which it is in the
+	// DaemonSet, since a container is normally given one.
+	//
+	// It matters because the kernel writes the paths in /proc/<pid>/cgroup
+	// relative to the READER's namespace root: an agent in a pod reads its own
+	// cgroup as "/" and a pod elsewhere on the node as
+	// "/../../../kubepods.slice/...", and neither string exists on the node.
+	// Nothing inside that namespace says where it sits, so the paths above are
+	// instead read from the node's own namespace, which the agent joins for the
+	// length of the call. This flag says that was necessary.
+	Namespaced bool `protobuf:"varint,9,opt,name=namespaced,proto3" json:"namespaced,omitempty"`
+	// Why the paths above are still the agent's own view: joining the node's
+	// cgroup namespace needs CAP_SYS_ADMIN. Empty when nothing stood in the way -
+	// either the agent shares the node's namespace, or it joined it.
+	NamespaceNote string `protobuf:"bytes,10,opt,name=namespace_note,json=namespaceNote,proto3" json:"namespace_note,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Cgroups) Reset() {
+	*x = Cgroups{}
+	mi := &file_proto_bpfinspector_proto_msgTypes[27]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Cgroups) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Cgroups) ProtoMessage() {}
+
+func (x *Cgroups) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_bpfinspector_proto_msgTypes[27]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Cgroups.ProtoReflect.Descriptor instead.
+func (*Cgroups) Descriptor() ([]byte, []int) {
+	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{27}
+}
+
+func (x *Cgroups) GetMode() string {
+	if x != nil {
+		return x.Mode
+	}
+	return ""
+}
+
+func (x *Cgroups) GetModeSource() string {
+	if x != nil {
+		return x.ModeSource
+	}
+	return ""
+}
+
+func (x *Cgroups) GetDriver() string {
+	if x != nil {
+		return x.Driver
+	}
+	return ""
+}
+
+func (x *Cgroups) GetDriverSource() string {
+	if x != nil {
+		return x.DriverSource
+	}
+	return ""
+}
+
+func (x *Cgroups) GetAgentPath() string {
+	if x != nil {
+		return x.AgentPath
+	}
+	return ""
+}
+
+func (x *Cgroups) GetExamplePath() string {
+	if x != nil {
+		return x.ExamplePath
+	}
+	return ""
+}
+
+func (x *Cgroups) GetExamplePid() uint32 {
+	if x != nil {
+		return x.ExamplePid
+	}
+	return 0
+}
+
+func (x *Cgroups) GetExampleComm() string {
+	if x != nil {
+		return x.ExampleComm
+	}
+	return ""
+}
+
+func (x *Cgroups) GetNamespaced() bool {
+	if x != nil {
+		return x.Namespaced
+	}
+	return false
+}
+
+func (x *Cgroups) GetNamespaceNote() string {
+	if x != nil {
+		return x.NamespaceNote
+	}
+	return ""
+}
+
+// Component is one container-runtime or kubelet process on the node.
+//
+// The version is read out of the binary's own Go build information, through
+// /proc/<pid>/exe - so it is the version of the code that is running, even if
+// the package has been upgraded underneath it, and it needs no CRI socket and
+// no exec. Opening another process's exe needs root, which is why an
+// unprivileged agent lists a component with a note in place of a version.
+type Component struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"` // comm, e.g. "containerd", "kubelet", "dockerd"
+	Pid           uint32                 `protobuf:"varint,2,opt,name=pid,proto3" json:"pid,omitempty"`
+	Exe           string                 `protobuf:"bytes,3,opt,name=exe,proto3" json:"exe,omitempty"` // /proc/<pid>/exe, as the process's own mount namespace spells it
+	Cmdline       string                 `protobuf:"bytes,4,opt,name=cmdline,proto3" json:"cmdline,omitempty"`
+	Version       string                 `protobuf:"bytes,5,opt,name=version,proto3" json:"version,omitempty"`
+	VersionSource string                 `protobuf:"bytes,6,opt,name=version_source,json=versionSource,proto3" json:"version_source,omitempty"` // the -X flag or module version it came from
+	Module        string                 `protobuf:"bytes,7,opt,name=module,proto3" json:"module,omitempty"`                                    // main module path, e.g. "github.com/containerd/containerd/v2"
+	GoVersion     string                 `protobuf:"bytes,8,opt,name=go_version,json=goVersion,proto3" json:"go_version,omitempty"`             // the toolchain that built it
+	Note          string                 `protobuf:"bytes,9,opt,name=note,proto3" json:"note,omitempty"`                                        // why there is no version
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Component) Reset() {
+	*x = Component{}
+	mi := &file_proto_bpfinspector_proto_msgTypes[28]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Component) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Component) ProtoMessage() {}
+
+func (x *Component) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_bpfinspector_proto_msgTypes[28]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Component.ProtoReflect.Descriptor instead.
+func (*Component) Descriptor() ([]byte, []int) {
+	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{28}
+}
+
+func (x *Component) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *Component) GetPid() uint32 {
+	if x != nil {
+		return x.Pid
+	}
+	return 0
+}
+
+func (x *Component) GetExe() string {
+	if x != nil {
+		return x.Exe
+	}
+	return ""
+}
+
+func (x *Component) GetCmdline() string {
+	if x != nil {
+		return x.Cmdline
+	}
+	return ""
+}
+
+func (x *Component) GetVersion() string {
+	if x != nil {
+		return x.Version
+	}
+	return ""
+}
+
+func (x *Component) GetVersionSource() string {
+	if x != nil {
+		return x.VersionSource
+	}
+	return ""
+}
+
+func (x *Component) GetModule() string {
+	if x != nil {
+		return x.Module
+	}
+	return ""
+}
+
+func (x *Component) GetGoVersion() string {
+	if x != nil {
+		return x.GoVersion
+	}
+	return ""
+}
+
+func (x *Component) GetNote() string {
+	if x != nil {
+		return x.Note
+	}
+	return ""
+}
+
 // Namespace is one of the namespaces a process is in - the halves a container
 // is actually built from, so a pid out of a map can be placed in one.
 type Namespace struct {
@@ -1622,7 +2073,7 @@ type Namespace struct {
 
 func (x *Namespace) Reset() {
 	*x = Namespace{}
-	mi := &file_proto_bpfinspector_proto_msgTypes[24]
+	mi := &file_proto_bpfinspector_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1634,7 +2085,7 @@ func (x *Namespace) String() string {
 func (*Namespace) ProtoMessage() {}
 
 func (x *Namespace) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_bpfinspector_proto_msgTypes[24]
+	mi := &file_proto_bpfinspector_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1647,7 +2098,7 @@ func (x *Namespace) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Namespace.ProtoReflect.Descriptor instead.
 func (*Namespace) Descriptor() ([]byte, []int) {
-	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{24}
+	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *Namespace) GetKind() string {
@@ -1790,12 +2241,54 @@ const file_proto_bpfinspector_proto_rawDesc = "" +
 	"namespaces\x18\n" +
 	" \x03(\v2\x1a.bpfinspector.v1.NamespaceR\n" +
 	"namespaces\x12\x17\n" +
-	"\ans_pids\x18\v \x03(\rR\x06nsPids\"T\n" +
+	"\ans_pids\x18\v \x03(\rR\x06nsPids\"\x15\n" +
+	"\x13DescribeNodeRequest\"\xb7\x01\n" +
+	"\x14DescribeNodeResponse\x12/\n" +
+	"\x06kernel\x18\x01 \x01(\v2\x17.bpfinspector.v1.KernelR\x06kernel\x122\n" +
+	"\acgroups\x18\x02 \x01(\v2\x18.bpfinspector.v1.CgroupsR\acgroups\x12:\n" +
+	"\n" +
+	"components\x18\x03 \x03(\v2\x1a.bpfinspector.v1.ComponentR\n" +
+	"components\"\xa2\x01\n" +
+	"\x06Kernel\x12\x18\n" +
+	"\arelease\x18\x01 \x01(\tR\arelease\x12\x18\n" +
+	"\aversion\x18\x02 \x01(\tR\aversion\x12\x18\n" +
+	"\amachine\x18\x03 \x01(\tR\amachine\x12\x12\n" +
+	"\x04arch\x18\x04 \x01(\tR\x04arch\x12\x19\n" +
+	"\bos_image\x18\x05 \x01(\tR\aosImage\x12\x1b\n" +
+	"\tos_source\x18\x06 \x01(\tR\bosSource\"\xc8\x02\n" +
+	"\aCgroups\x12\x12\n" +
+	"\x04mode\x18\x01 \x01(\tR\x04mode\x12\x1f\n" +
+	"\vmode_source\x18\x02 \x01(\tR\n" +
+	"modeSource\x12\x16\n" +
+	"\x06driver\x18\x03 \x01(\tR\x06driver\x12#\n" +
+	"\rdriver_source\x18\x04 \x01(\tR\fdriverSource\x12\x1d\n" +
+	"\n" +
+	"agent_path\x18\x05 \x01(\tR\tagentPath\x12!\n" +
+	"\fexample_path\x18\x06 \x01(\tR\vexamplePath\x12\x1f\n" +
+	"\vexample_pid\x18\a \x01(\rR\n" +
+	"examplePid\x12!\n" +
+	"\fexample_comm\x18\b \x01(\tR\vexampleComm\x12\x1e\n" +
+	"\n" +
+	"namespaced\x18\t \x01(\bR\n" +
+	"namespaced\x12%\n" +
+	"\x0enamespace_note\x18\n" +
+	" \x01(\tR\rnamespaceNote\"\xe9\x01\n" +
+	"\tComponent\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x10\n" +
+	"\x03pid\x18\x02 \x01(\rR\x03pid\x12\x10\n" +
+	"\x03exe\x18\x03 \x01(\tR\x03exe\x12\x18\n" +
+	"\acmdline\x18\x04 \x01(\tR\acmdline\x12\x18\n" +
+	"\aversion\x18\x05 \x01(\tR\aversion\x12%\n" +
+	"\x0eversion_source\x18\x06 \x01(\tR\rversionSource\x12\x16\n" +
+	"\x06module\x18\a \x01(\tR\x06module\x12\x1d\n" +
+	"\n" +
+	"go_version\x18\b \x01(\tR\tgoVersion\x12\x12\n" +
+	"\x04note\x18\t \x01(\tR\x04note\"T\n" +
 	"\tNamespace\x12\x12\n" +
 	"\x04kind\x18\x01 \x01(\tR\x04kind\x12\x14\n" +
 	"\x05inode\x18\x02 \x01(\x04R\x05inode\x12\x1d\n" +
 	"\n" +
-	"pid1_inode\x18\x03 \x01(\x04R\tpid1Inode2\xcb\x05\n" +
+	"pid1_inode\x18\x03 \x01(\x04R\tpid1Inode2\xa8\x06\n" +
 	"\fBpfInspector\x12O\n" +
 	"\bListMaps\x12 .bpfinspector.v1.ListMapsRequest\x1a!.bpfinspector.v1.ListMapsResponse\x12L\n" +
 	"\aDumpMap\x12\x1f.bpfinspector.v1.DumpMapRequest\x1a .bpfinspector.v1.DumpMapResponse\x12[\n" +
@@ -1804,7 +2297,8 @@ const file_proto_bpfinspector_proto_rawDesc = "" +
 	"\tListLinks\x12!.bpfinspector.v1.ListLinksRequest\x1a\".bpfinspector.v1.ListLinksResponse\x12N\n" +
 	"\bTraceLog\x12 .bpfinspector.v1.TraceLogRequest\x1a\x1e.bpfinspector.v1.TraceLogEvent0\x01\x12[\n" +
 	"\fResolveInode\x12$.bpfinspector.v1.ResolveInodeRequest\x1a%.bpfinspector.v1.ResolveInodeResponse\x12d\n" +
-	"\x0fDescribeProcess\x12'.bpfinspector.v1.DescribeProcessRequest\x1a(.bpfinspector.v1.DescribeProcessResponseBCZAgithub.com/lazybpf/bpf-explorer/gen/bpfinspectorv1;bpfinspectorv1b\x06proto3"
+	"\x0fDescribeProcess\x12'.bpfinspector.v1.DescribeProcessRequest\x1a(.bpfinspector.v1.DescribeProcessResponse\x12[\n" +
+	"\fDescribeNode\x12$.bpfinspector.v1.DescribeNodeRequest\x1a%.bpfinspector.v1.DescribeNodeResponseBCZAgithub.com/lazybpf/bpf-explorer/gen/bpfinspectorv1;bpfinspectorv1b\x06proto3"
 
 var (
 	file_proto_bpfinspector_proto_rawDescOnce sync.Once
@@ -1818,7 +2312,7 @@ func file_proto_bpfinspector_proto_rawDescGZIP() []byte {
 	return file_proto_bpfinspector_proto_rawDescData
 }
 
-var file_proto_bpfinspector_proto_msgTypes = make([]protoimpl.MessageInfo, 25)
+var file_proto_bpfinspector_proto_msgTypes = make([]protoimpl.MessageInfo, 30)
 var file_proto_bpfinspector_proto_goTypes = []any{
 	(*MapInfo)(nil),                 // 0: bpfinspector.v1.MapInfo
 	(*ListMapsRequest)(nil),         // 1: bpfinspector.v1.ListMapsRequest
@@ -1844,7 +2338,12 @@ var file_proto_bpfinspector_proto_goTypes = []any{
 	(*ResolveInodeResponse)(nil),    // 21: bpfinspector.v1.ResolveInodeResponse
 	(*DescribeProcessRequest)(nil),  // 22: bpfinspector.v1.DescribeProcessRequest
 	(*DescribeProcessResponse)(nil), // 23: bpfinspector.v1.DescribeProcessResponse
-	(*Namespace)(nil),               // 24: bpfinspector.v1.Namespace
+	(*DescribeNodeRequest)(nil),     // 24: bpfinspector.v1.DescribeNodeRequest
+	(*DescribeNodeResponse)(nil),    // 25: bpfinspector.v1.DescribeNodeResponse
+	(*Kernel)(nil),                  // 26: bpfinspector.v1.Kernel
+	(*Cgroups)(nil),                 // 27: bpfinspector.v1.Cgroups
+	(*Component)(nil),               // 28: bpfinspector.v1.Component
+	(*Namespace)(nil),               // 29: bpfinspector.v1.Namespace
 }
 var file_proto_bpfinspector_proto_depIdxs = []int32{
 	6,  // 0: bpfinspector.v1.MapInfo.pids:type_name -> bpfinspector.v1.ProcessRef
@@ -1856,28 +2355,33 @@ var file_proto_bpfinspector_proto_depIdxs = []int32{
 	19, // 6: bpfinspector.v1.InodeMatch.holders:type_name -> bpfinspector.v1.InodeHolder
 	20, // 7: bpfinspector.v1.ResolveInodeResponse.matches:type_name -> bpfinspector.v1.InodeMatch
 	18, // 8: bpfinspector.v1.ResolveInodeResponse.walk:type_name -> bpfinspector.v1.WalkStats
-	24, // 9: bpfinspector.v1.DescribeProcessResponse.namespaces:type_name -> bpfinspector.v1.Namespace
-	1,  // 10: bpfinspector.v1.BpfInspector.ListMaps:input_type -> bpfinspector.v1.ListMapsRequest
-	4,  // 11: bpfinspector.v1.BpfInspector.DumpMap:input_type -> bpfinspector.v1.DumpMapRequest
-	8,  // 12: bpfinspector.v1.BpfInspector.ListPrograms:input_type -> bpfinspector.v1.ListProgramsRequest
-	10, // 13: bpfinspector.v1.BpfInspector.DumpProgram:input_type -> bpfinspector.v1.DumpProgramRequest
-	13, // 14: bpfinspector.v1.BpfInspector.ListLinks:input_type -> bpfinspector.v1.ListLinksRequest
-	15, // 15: bpfinspector.v1.BpfInspector.TraceLog:input_type -> bpfinspector.v1.TraceLogRequest
-	17, // 16: bpfinspector.v1.BpfInspector.ResolveInode:input_type -> bpfinspector.v1.ResolveInodeRequest
-	22, // 17: bpfinspector.v1.BpfInspector.DescribeProcess:input_type -> bpfinspector.v1.DescribeProcessRequest
-	2,  // 18: bpfinspector.v1.BpfInspector.ListMaps:output_type -> bpfinspector.v1.ListMapsResponse
-	5,  // 19: bpfinspector.v1.BpfInspector.DumpMap:output_type -> bpfinspector.v1.DumpMapResponse
-	9,  // 20: bpfinspector.v1.BpfInspector.ListPrograms:output_type -> bpfinspector.v1.ListProgramsResponse
-	11, // 21: bpfinspector.v1.BpfInspector.DumpProgram:output_type -> bpfinspector.v1.DumpProgramResponse
-	14, // 22: bpfinspector.v1.BpfInspector.ListLinks:output_type -> bpfinspector.v1.ListLinksResponse
-	16, // 23: bpfinspector.v1.BpfInspector.TraceLog:output_type -> bpfinspector.v1.TraceLogEvent
-	21, // 24: bpfinspector.v1.BpfInspector.ResolveInode:output_type -> bpfinspector.v1.ResolveInodeResponse
-	23, // 25: bpfinspector.v1.BpfInspector.DescribeProcess:output_type -> bpfinspector.v1.DescribeProcessResponse
-	18, // [18:26] is the sub-list for method output_type
-	10, // [10:18] is the sub-list for method input_type
-	10, // [10:10] is the sub-list for extension type_name
-	10, // [10:10] is the sub-list for extension extendee
-	0,  // [0:10] is the sub-list for field type_name
+	29, // 9: bpfinspector.v1.DescribeProcessResponse.namespaces:type_name -> bpfinspector.v1.Namespace
+	26, // 10: bpfinspector.v1.DescribeNodeResponse.kernel:type_name -> bpfinspector.v1.Kernel
+	27, // 11: bpfinspector.v1.DescribeNodeResponse.cgroups:type_name -> bpfinspector.v1.Cgroups
+	28, // 12: bpfinspector.v1.DescribeNodeResponse.components:type_name -> bpfinspector.v1.Component
+	1,  // 13: bpfinspector.v1.BpfInspector.ListMaps:input_type -> bpfinspector.v1.ListMapsRequest
+	4,  // 14: bpfinspector.v1.BpfInspector.DumpMap:input_type -> bpfinspector.v1.DumpMapRequest
+	8,  // 15: bpfinspector.v1.BpfInspector.ListPrograms:input_type -> bpfinspector.v1.ListProgramsRequest
+	10, // 16: bpfinspector.v1.BpfInspector.DumpProgram:input_type -> bpfinspector.v1.DumpProgramRequest
+	13, // 17: bpfinspector.v1.BpfInspector.ListLinks:input_type -> bpfinspector.v1.ListLinksRequest
+	15, // 18: bpfinspector.v1.BpfInspector.TraceLog:input_type -> bpfinspector.v1.TraceLogRequest
+	17, // 19: bpfinspector.v1.BpfInspector.ResolveInode:input_type -> bpfinspector.v1.ResolveInodeRequest
+	22, // 20: bpfinspector.v1.BpfInspector.DescribeProcess:input_type -> bpfinspector.v1.DescribeProcessRequest
+	24, // 21: bpfinspector.v1.BpfInspector.DescribeNode:input_type -> bpfinspector.v1.DescribeNodeRequest
+	2,  // 22: bpfinspector.v1.BpfInspector.ListMaps:output_type -> bpfinspector.v1.ListMapsResponse
+	5,  // 23: bpfinspector.v1.BpfInspector.DumpMap:output_type -> bpfinspector.v1.DumpMapResponse
+	9,  // 24: bpfinspector.v1.BpfInspector.ListPrograms:output_type -> bpfinspector.v1.ListProgramsResponse
+	11, // 25: bpfinspector.v1.BpfInspector.DumpProgram:output_type -> bpfinspector.v1.DumpProgramResponse
+	14, // 26: bpfinspector.v1.BpfInspector.ListLinks:output_type -> bpfinspector.v1.ListLinksResponse
+	16, // 27: bpfinspector.v1.BpfInspector.TraceLog:output_type -> bpfinspector.v1.TraceLogEvent
+	21, // 28: bpfinspector.v1.BpfInspector.ResolveInode:output_type -> bpfinspector.v1.ResolveInodeResponse
+	23, // 29: bpfinspector.v1.BpfInspector.DescribeProcess:output_type -> bpfinspector.v1.DescribeProcessResponse
+	25, // 30: bpfinspector.v1.BpfInspector.DescribeNode:output_type -> bpfinspector.v1.DescribeNodeResponse
+	22, // [22:31] is the sub-list for method output_type
+	13, // [13:22] is the sub-list for method input_type
+	13, // [13:13] is the sub-list for extension type_name
+	13, // [13:13] is the sub-list for extension extendee
+	0,  // [0:13] is the sub-list for field type_name
 }
 
 func init() { file_proto_bpfinspector_proto_init() }
@@ -1891,7 +2395,7 @@ func file_proto_bpfinspector_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_bpfinspector_proto_rawDesc), len(file_proto_bpfinspector_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   25,
+			NumMessages:   30,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
