@@ -449,5 +449,18 @@
 <main>
 {{template "content" .}}
 </main>
+<script>
+// A picker that is the whole form - the loader filters - submits itself when it
+// changes, so choosing a group is one gesture rather than two. The button stays
+// in the markup and is only hidden here: without JS it is still the way to
+// submit, and the form is a plain GET either way.
+for (const form of document.querySelectorAll('form[data-autosubmit]')) {
+  const button = form.querySelector('button[type=submit]');
+  if (button) button.hidden = true;
+  for (const select of form.querySelectorAll('select')) {
+    select.addEventListener('change', () => form.submit());
+  }
+}
+</script>
 </body>
 </html>{{end}}

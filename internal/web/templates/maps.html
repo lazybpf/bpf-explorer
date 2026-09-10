@@ -11,7 +11,7 @@
 {{/* GET, so a narrowed list can be linked to and reloaded - the same form the
      links page and the utilities use. Only groups that have maps are offered:
      narrowing to one with none is a question with a known answer. */}}
-<form class="controls" method="get" action="/nodes/{{.Node}}/maps">
+<form class="controls" method="get" action="/nodes/{{.Node}}/maps" data-autosubmit>
   <label>loader
     <select name="loader" title="show only the maps this group's programs reference, plus the ones it holds an open fd to. Under no loader: the maps nothing on the node claims - no holder, and no program with one referencing them. A map two loaders share is listed under each of them, so these counts can add up to more maps than the node has">
       <option value=""{{if not $group}} selected{{end}}>all loaders</option>

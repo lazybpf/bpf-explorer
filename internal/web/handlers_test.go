@@ -660,6 +660,42 @@ func TestLinksLoaderPicker(t *testing.T) {
 	}
 }
 
+// TestLoaderPickersSubmitOnChange covers the one gesture the picker takes:
+// choosing a group is the request, so the form carries the marker the layout's
+// script wires a change listener to. The submit button stays in the markup - the
+// script only hides it - so the filter still works with JS off.
+func TestLoaderPickersSubmitOnChange(t *testing.T) {
+	h, err := New(nil, nil)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	choices := []loaderChoice{{Group: "sg_1000", Label: "agent(1000)", Count: 4}}
+
+	for _, tc := range []struct {
+		page string
+		data pageData
+	}{
+		{"programs", pageData{Node: "node-a", Tab: "programs", ProgLoaders: choices}},
+		{"maps", pageData{Node: "node-a", Tab: "maps", MapLoaders: choices}},
+		{"links", pageData{Node: "node-a", Tab: "links", LinkLoaders: choices}},
+	} {
+		var buf bytes.Buffer
+		if err := h.pages[tc.page].ExecuteTemplate(&buf, "layout", tc.data); err != nil {
+			t.Fatalf("execute %s: %v", tc.page, err)
+		}
+		out := buf.String()
+		for _, want := range []string{
+			`data-autosubmit`,
+			`<button type="submit">filter</button>`,
+			`form[data-autosubmit]`,
+		} {
+			if !strings.Contains(out, want) {
+				t.Errorf("%s page missing %q\n%s", tc.page, want, out)
+			}
+		}
+	}
+}
+
 // TestLinksBadLoaderGroupRejected covers a hand-edited URL: the group is read
 // before anything is fetched for the page, so a malformed one is a 400 rather
 // than a silently unfiltered list of every link on the node.

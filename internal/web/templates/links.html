@@ -11,7 +11,7 @@
 {{/* GET, so a narrowed list can be linked to and reloaded - the same form the
      utilities use. Only groups that have links are offered: narrowing to one
      with none is a question with a known answer. */}}
-<form class="controls" method="get" action="/nodes/{{.Node}}/links">
+<form class="controls" method="get" action="/nodes/{{.Node}}/links" data-autosubmit>
   <label>loader
     <select name="loader" title="show only the links attaching this group's programs">
       <option value=""{{if not $group}} selected{{end}}>all loaders</option>

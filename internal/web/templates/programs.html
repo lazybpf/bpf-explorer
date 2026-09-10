@@ -13,7 +13,7 @@
      are offered: narrowing to one with none is a question with a known answer.
      Unlike the maps counts these do add up to the node's total - a program has
      one loader, so it is in exactly one group. */}}
-<form class="controls" method="get" action="/nodes/{{.Node}}/programs">
+<form class="controls" method="get" action="/nodes/{{.Node}}/programs" data-autosubmit>
   <label>loader
     <select name="loader" title="show only the programs this group loaded: those whose lowest-numbered holder is this process, plus - under no loader - the programs no live process holds an fd to">
       <option value=""{{if not $group}} selected{{end}}>all loaders</option>
