@@ -362,9 +362,8 @@ func TestFilterLinksByLoaderHonoursHidden(t *testing.T) {
 }
 
 // TestFilterMapsByLoader checks the maps page's filter partitions maps the same
-// way the loaders index counts them: by the programs referencing a map, not by
-// who holds an fd to it, with the maps nobody references left to the no-loader
-// group.
+// way the loaders index counts them: by the programs referencing a map, with the
+// maps nobody references or holds left to the no-loader group.
 func TestFilterMapsByLoader(t *testing.T) {
 	progs, maps, _ := sampleGraphData()
 	// A map both loaders' programs reference. Unlike a link, which attaches one
@@ -413,10 +412,92 @@ func TestFilterMapsByLoader(t *testing.T) {
 	}
 }
 
-// TestFilterMapsByLoaderHonoursHidden is the reason the filter goes through
-// loaderGroup rather than the maps' own holder PIDs: with a PID hidden, the
-// loaders index counts a program under its next holder, and the maps page has to
-// agree or a count of N will open a list of something else.
+// TestGroupByLoaderMapsWithAKnownLoader is the tetragon shape: a loader whose
+// tail-call target nobody holds an fd to. Grouping that target under "no loader"
+// is right - nothing on the node says who loaded it - but its maps must not
+// follow it there when the node plainly says whose they are, or one loaderless
+// program drags its loader's whole map set into the residual bucket.
+func TestGroupByLoaderMapsWithAKnownLoader(t *testing.T) {
+	tetragon := []*pb.ProcessRef{{Pid: 10304, Comm: "tetragon"}}
+	progs := []*pb.ProgramInfo{
+		{Id: 475, Name: "event_execve", MapIds: []uint32{87, 213}, Pids: tetragon},
+		{Id: 476, Name: "execve_send", MapIds: []uint32{87, 213, 209}}, // tail-call target: no holder
+	}
+	maps := []*pb.MapInfo{
+		{Id: 82, Name: "policy_filter_map", Pids: tetragon}, // held, referenced by nobody
+		{Id: 87, Name: "execve_map", Pids: tetragon},        // held and referenced
+		{Id: 209, Name: "throttle_heap_map"},                // only the loaderless program's
+		{Id: 213, Name: ".rodata"},                          // unheld, but a held program uses it
+	}
+	groups, _ := groupByLoader(progs, maps, nil, nil)
+
+	tg := findGroup(groups, "sg_10304")
+	if tg == nil {
+		t.Fatalf("missing tetragon group: %+v", groups)
+	}
+	if got := tg.Maps; len(got) != 3 || got[0] != 87 || got[1] != 213 || got[2] != 82 {
+		t.Errorf("tetragon maps = %v, want 87, 213 (referenced) and 82 (held only)", got)
+	}
+
+	un := findGroup(groups, unattachedGroupID)
+	if un == nil || len(un.Progs) != 1 || un.Progs[0].GetId() != 476 {
+		t.Fatalf("no-loader progs = %+v, want just the tail-call target 476", un)
+	}
+	if got := un.Maps; len(got) != 1 || got[0] != 209 {
+		t.Errorf("no-loader maps = %v, want just 209 - the one nothing else claims", got)
+	}
+
+	// And the rows the maps page shows for each, which cannot disagree with it.
+	for _, id := range []string{"sg_10304", unattachedGroupID} {
+		g := findGroup(groups, id)
+		rows, _ := filterMapsByLoader(progs, maps, nil, id)
+		if len(g.Maps) != len(rows) {
+			t.Errorf("%s: loaders index counts %v, filter shows %v", id, g.Maps, mapIDs(rows))
+		}
+	}
+}
+
+// TestGroupByLoaderHeldMapIsNotAnOrphan: a map no program references is not
+// automatically loaderless - a loader holding an fd to one it has not wired up
+// yet is named right there in the maps page's Holders column.
+func TestGroupByLoaderHeldMapIsNotAnOrphan(t *testing.T) {
+	maps := []*pb.MapInfo{
+		{Id: 61, Name: "iter_auxiliary", Pids: []*pb.ProcessRef{{Pid: 8347, Comm: "falco"}}},
+		{Id: 99, Name: "orphan"},
+	}
+	groups, _ := groupByLoader(nil, maps, nil, nil)
+
+	falco := findGroup(groups, "sg_8347")
+	if falco == nil || falco.Label != "loader: falco(8347)" {
+		t.Fatalf("missing/mislabelled falco group: %+v", groups)
+	}
+	if got := falco.Maps; len(got) != 1 || got[0] != 61 {
+		t.Errorf("falco maps = %v, want [61]", got)
+	}
+	if got := findGroup(groups, unattachedGroupID).Maps; len(got) != 1 || got[0] != 99 {
+		t.Errorf("no-loader maps = %v, want just the unheld orphan 99", got)
+	}
+
+	// The label comes from the holder, so a group with no programs in it still
+	// names itself rather than falling back to the URL's bare pid.
+	if _, label := filterMapsByLoader(nil, maps, nil, "sg_8347"); label != "falco(8347)" {
+		t.Errorf("label = %q, want falco(8347)", label)
+	}
+
+	// A hidden holder is hidden here too, the same as it is for a program.
+	groups, _ = groupByLoader(nil, maps, nil, map[uint32]bool{8347: true})
+	if findGroup(groups, "sg_8347") != nil {
+		t.Errorf("hidden pid 8347 still owns maps: %+v", groups)
+	}
+	if got := findGroup(groups, unattachedGroupID).Maps; len(got) != 2 {
+		t.Errorf("no-loader maps = %v, want both once the holder is hidden", got)
+	}
+}
+
+// TestFilterMapsByLoaderHonoursHidden is the reason a referenced map is grouped
+// by its programs' loaders and not by its own holder PIDs: with a PID hidden,
+// the loaders index counts a program under its next holder, and the maps page
+// has to agree or a count of N will open a list of something else.
 func TestFilterMapsByLoaderHonoursHidden(t *testing.T) {
 	progs := []*pb.ProgramInfo{{
 		Id:     7,

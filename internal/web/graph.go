@@ -28,10 +28,11 @@ type loaderGroupData struct {
 
 // groupByLoader partitions objects into per-loader groups. A program's loader is
 // its smallest holder PID that is not in hidden; programs with no visible holder
-// (and maps referenced by nobody) fall into the "no loader" group. Each group
-// includes every map its programs reference, so a map shared across loaders
-// appears on each of their pages. Returns the groups in first-seen order plus a
-// map-id lookup for labels.
+// fall into the "no loader" group. Each group includes every map its programs
+// reference, so a map shared across loaders appears on each of their pages, plus
+// the maps it holds an fd to that no program uses. Only a map nothing points at
+// - no holder, and no referencing program that has one - is a no-loader map.
+// Returns the groups in first-seen order plus a map-id lookup for labels.
 func groupByLoader(progs []*pb.ProgramInfo, maps []*pb.MapInfo, links []*pb.LinkInfo, hidden map[uint32]bool) ([]*loaderGroupData, map[uint32]*pb.MapInfo) {
 	mapByID := map[uint32]*pb.MapInfo{}
 	for _, m := range maps {
@@ -65,26 +66,64 @@ func groupByLoader(progs []*pb.ProgramInfo, maps []*pb.MapInfo, links []*pb.Link
 		progGroup[p.GetId()] = id
 	}
 
-	// Each group gets every map referenced by its own programs.
-	referenced := map[uint32]bool{}
-	for _, g := range groupsInOrder(groups, order) {
-		seen := map[uint32]bool{}
-		for _, p := range g.Progs {
-			for _, mid := range p.GetMapIds() {
-				referenced[mid] = true
-				if !seen[mid] {
-					seen[mid] = true
-					g.Maps = append(g.Maps, mid)
-				}
+	mapsSeen := map[string]map[uint32]bool{}
+	addMap := func(g *loaderGroupData, mid uint32) {
+		seen, ok := mapsSeen[g.ID]
+		if !ok {
+			seen = map[uint32]bool{}
+			mapsSeen[g.ID] = seen
+		}
+		if seen[mid] {
+			return // the same program referencing it twice, or two of them
+		}
+		seen[mid] = true
+		g.Maps = append(g.Maps, mid)
+	}
+
+	// A map's loader is known when a process holds an fd to it, or when a
+	// program referencing it has one. Such a map never joins the no-loader
+	// group, however it got there - a tail-call target nobody holds an fd to
+	// would otherwise drag its loader's whole map set in with it. The maps page
+	// names that loader in its Holders column, so a row reading "tetragon(1234)"
+	// listed under "no loader" is the page contradicting itself.
+	referenced := map[uint32]bool{} // referenced by any program at all
+	known := map[uint32]bool{}      // ...whose loader is visible, or held by one
+	for _, p := range sortedProgs {
+		for _, mid := range p.GetMapIds() {
+			referenced[mid] = true
+			if progGroup[p.GetId()] != unattachedGroupID {
+				known[mid] = true
 			}
 		}
 	}
-	// Maps referenced by nobody land in the no-loader group.
 	for _, m := range sortedMaps {
-		if !referenced[m.GetId()] {
-			getGroup(unattachedGroupID, unattachedLabel).Maps = append(
-				getGroup(unattachedGroupID, unattachedLabel).Maps, m.GetId())
+		if id, _ := holderGroup(m.GetPids(), hidden); id != unattachedGroupID {
+			known[m.GetId()] = true
 		}
+	}
+
+	// Each group gets every map referenced by its own programs.
+	for _, g := range groupsInOrder(groups, order) {
+		for _, p := range g.Progs {
+			for _, mid := range p.GetMapIds() {
+				if g.ID == unattachedGroupID && known[mid] {
+					continue
+				}
+				addMap(g, mid)
+			}
+		}
+	}
+	// And whoever holds an fd to a map gets it too: a loader keeps a map alive
+	// that way with no program using it yet, and that map would otherwise be
+	// filed under "no loader" while its own row names the process holding it.
+	// Only a map nobody holds and nobody references is left to the no-loader
+	// group.
+	for _, m := range sortedMaps {
+		id, label := holderGroup(m.GetPids(), hidden)
+		if id == unattachedGroupID && referenced[m.GetId()] {
+			continue // already under whichever groups reference it
+		}
+		addMap(getGroup(id, label), m.GetId())
 	}
 
 	for _, l := range sortedLinks {
@@ -120,8 +159,15 @@ func groupsInOrder(groups map[string]*loaderGroupData, order []string) []*loader
 // loaderGroup returns the group id and label for a program: its smallest holder
 // PID not in hidden (with comm), or the no-loader group when none is visible.
 func loaderGroup(p *pb.ProgramInfo, hidden map[uint32]bool) (id, label string) {
+	return holderGroup(p.GetPids(), hidden)
+}
+
+// holderGroup is that rule on its own, so a map can be grouped by the processes
+// holding an fd to it the same way a program is - one spelling of "the loader is
+// the lowest-numbered visible holder", not two that could drift apart.
+func holderGroup(pids []*pb.ProcessRef, hidden map[uint32]bool) (id, label string) {
 	var best *pb.ProcessRef
-	for _, r := range p.GetPids() {
+	for _, r := range pids {
 		if hidden[r.GetPid()] {
 			continue
 		}
@@ -207,39 +253,47 @@ func filterLinksByLoader(progs []*pb.ProgramInfo, links []*pb.LinkInfo, hidden m
 }
 
 // filterMapsByLoader keeps the maps belonging to one loader group, partitioned
-// exactly as groupByLoader does it. Unlike a link, a map can be in more than one
-// group - two loaders' programs referencing the same map put it in both - so the
-// counts down the loaders index's maps column can add up to more than the node
-// has maps. Also returns the group's full label when a program in it supplies
-// one, in the short form and for the same reason as filterLinksByLoader.
+// by groupByLoader itself so the count on the loaders index and the rows here
+// can never disagree - the rule has enough cases now that a second copy of it
+// would be a second chance to get one wrong. Rows come back in the order they
+// were listed in rather than the order the group referenced them, and a map id
+// the group references that ListMaps did not return has no row: that, not the
+// partition, is why the picker's count can overshoot them.
+//
+// Unlike a link, a map can be in more than one group - two loaders' programs
+// referencing the same map put it in both - so the counts down the loaders
+// index's maps column can add up to more than the node has maps. Also returns
+// the group's label, in the short form and for the same reason as
+// filterLinksByLoader, or "" when nothing on the node is in the group.
 func filterMapsByLoader(progs []*pb.ProgramInfo, maps []*pb.MapInfo, hidden map[uint32]bool, group string) ([]*pb.MapInfo, string) {
-	inGroup := map[uint32]bool{}    // referenced by this group's programs
-	referenced := map[uint32]bool{} // referenced by any program at all
-	var label string
-	for _, p := range progs {
-		id, l := loaderGroup(p, hidden)
-		if id == group {
-			label = shortLoaderLabel(l)
-		}
-		for _, mid := range p.GetMapIds() {
-			referenced[mid] = true
-			if id == group {
-				inGroup[mid] = true
-			}
-		}
+	groups, _ := groupByLoader(progs, maps, nil, hidden)
+	g := groupByID(groups, group)
+	if g == nil {
+		return nil, ""
+	}
+	in := make(map[uint32]bool, len(g.Maps))
+	for _, mid := range g.Maps {
+		in[mid] = true
 	}
 
 	var out []*pb.MapInfo
 	for _, m := range maps {
-		// A map no program references - pinned, or held only by an fd - belongs
-		// to the no-loader group, the same fallback groupByLoader makes. A map
-		// referenced only by programs whose own loader is unknown is already
-		// there by the ordinary path, since those programs are in that group.
-		if inGroup[m.GetId()] || (group == unattachedGroupID && !referenced[m.GetId()]) {
+		if in[m.GetId()] {
 			out = append(out, m)
 		}
 	}
-	return out, label
+	return out, shortLoaderLabel(g.Label)
+}
+
+// groupByID picks one group out of a partition, or nil when the node has
+// nothing in it - a stale link, or a loader that has since exited.
+func groupByID(groups []*loaderGroupData, id string) *loaderGroupData {
+	for _, g := range groups {
+		if g.ID == id {
+			return g
+		}
+	}
+	return nil
 }
 
 // loaderChoicesFor turns a partition into a page's picker: one entry per group

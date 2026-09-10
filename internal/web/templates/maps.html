@@ -13,7 +13,7 @@
      narrowing to one with none is a question with a known answer. */}}
 <form class="controls" method="get" action="/nodes/{{.Node}}/maps">
   <label>loader
-    <select name="loader" title="show only the maps this group's programs reference, plus - under no loader - the maps no program references at all. A map two loaders share is listed under each of them, so these counts can add up to more maps than the node has">
+    <select name="loader" title="show only the maps this group's programs reference, plus the ones it holds an open fd to. Under no loader: the maps nothing on the node claims - no holder, and no program with one referencing them. A map two loaders share is listed under each of them, so these counts can add up to more maps than the node has">
       <option value=""{{if not $group}} selected{{end}}>all loaders</option>
       {{range .MapLoaders}}
         <option value="{{.Group}}"{{if eq .Group $group}} selected{{end}}>{{.Label}}{{with .Count}} ({{.}}){{end}}</option>
@@ -31,8 +31,9 @@
 <div class="scroll">
 <table>
   {{/* The Holders column stays under a filter, unlike the links page's Loader:
-       a map is grouped by the programs referencing it, not by who holds an fd
-       to it, so these values are not the group's name repeated down the rows. */}}
+       a map is grouped by the programs referencing it as well as by who holds an
+       fd to it, so these values are not the group's name repeated down the rows
+       - a shared map names the other loaders using it too. */}}
   <thead><tr><th title="the kernel's id for this map, what bpftool map show lists it by. The kernel recycles ids, so one names this map only while it exists">ID</th><th>Name</th><th>Type</th><th>Key</th><th>Value</th><th>Max</th><th>Flags</th><th title="processes holding an open fd to this map; when none do, the inferred loader of a program referencing it is shown instead">Holders</th><th></th></tr></thead>
   <tbody>
   {{range .Maps}}

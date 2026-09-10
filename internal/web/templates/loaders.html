@@ -6,7 +6,7 @@
 <table>
   {{/* What a loader is, and what the row under the rule is, belong on the
        column they describe: this page's prose ran longer than its table. */}}
-  <thead><tr><th title="the process that loaded these objects: a program's loader is the lowest-numbered process holding an fd to it. The row below the rule is not a loader - it collects everything no live process holds an fd to">group</th><th>programs</th><th title="the maps this group's programs reference. A map two loaders share is counted under each of them, so this column can add up to more maps than the node has">maps</th><th>links</th><th></th></tr></thead>
+  <thead><tr><th title="the process that loaded these objects: a program's loader is the lowest-numbered process holding an fd to it. The row below the rule is not a loader - it collects everything no live process holds an fd to">group</th><th>programs</th><th title="the maps this group's programs reference, plus the ones it holds an open fd to with nothing using them yet. A map two loaders share is counted under each of them, so this column can add up to more maps than the node has">maps</th><th>links</th><th></th></tr></thead>
   <tbody>
   {{range .Loaders}}
     <tr>
