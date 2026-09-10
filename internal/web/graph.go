@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"html/template"
 	"sort"
+	"strconv"
 	"strings"
 
 	pb "github.com/lazybpf/bpf-explorer/gen/bpfinspectorv1"
@@ -120,8 +121,105 @@ func loaderGroup(p *pb.ProgramInfo, hidden map[uint32]bool) (id, label string) {
 	if best == nil {
 		return unattachedGroupID, unattachedLabel
 	}
-	return fmt.Sprintf("sg_%d", best.GetPid()),
-		fmt.Sprintf("loader: %s(%d)", sanitizeLabel(best.GetComm()), best.GetPid())
+	return loaderGroupID(best.GetPid()),
+		fmt.Sprintf("%s%s(%d)", loaderLabelPrefix, sanitizeLabel(best.GetComm()), best.GetPid())
+}
+
+// loaderLabelPrefix is how a group label names a loader on the loaders index,
+// where it tells a real loader apart from the no-loader row. Where the field is
+// already called "loader" - the links page's picker and its heading - it is
+// dropped rather than saying the word twice.
+const loaderLabelPrefix = "loader: "
+
+// shortLoaderLabel drops that prefix. The no-loader label does not carry one and
+// comes back unchanged.
+func shortLoaderLabel(label string) string {
+	return strings.TrimPrefix(label, loaderLabelPrefix)
+}
+
+// loaderGroupID names a loader by its PID. Three places have to agree on this
+// spelling - the loaders index, the {group} segment of a diagram URL, and the
+// links page's ?loader= filter - so it is written once here.
+func loaderGroupID(pid uint32) string { return fmt.Sprintf("sg_%d", pid) }
+
+// parseLoaderGroup validates a group id arriving from a URL and returns a label
+// to name it by. The label is a fallback: it carries no comm, because a group
+// with nothing left in it has no program to read the loader's name from - which
+// is exactly the case where it gets used (the loader exited between the loaders
+// page being drawn and a count on it being clicked).
+func parseLoaderGroup(group string) (label string, ok bool) {
+	if group == unattachedGroupID {
+		return unattachedLabel, true
+	}
+	rest, found := strings.CutPrefix(group, "sg_")
+	if !found {
+		return "", false
+	}
+	pid, err := strconv.ParseUint(rest, 10, 32)
+	if err != nil {
+		return "", false
+	}
+	return fmt.Sprintf("pid %d", pid), true
+}
+
+// filterLinksByLoader keeps the links belonging to one loader group, partitioned
+// exactly as groupByLoader does it, so the count on the loaders index and the
+// rows here can never disagree. Also returns the group's full label when a
+// program in it supplies one - "" when nothing on the node is in the group. The
+// label is the short form: this page's heading already says "links", and its
+// picker is already labelled "loader".
+func filterLinksByLoader(progs []*pb.ProgramInfo, links []*pb.LinkInfo, hidden map[uint32]bool, group string) ([]*pb.LinkInfo, string) {
+	progGroup := make(map[uint32]string, len(progs))
+	var label string
+	for _, p := range progs {
+		id, l := loaderGroup(p, hidden)
+		progGroup[p.GetId()] = id
+		if id == group {
+			label = shortLoaderLabel(l)
+		}
+	}
+
+	var out []*pb.LinkInfo
+	for _, l := range links {
+		// A link attached to no program, or to one the agent did not list, is
+		// grouped with the no-loader objects - the same fallback groupByLoader
+		// makes, and the reason prog id 0 lands there rather than nowhere.
+		id, ok := progGroup[l.GetProgId()]
+		if !ok {
+			id = unattachedGroupID
+		}
+		if id == group {
+			out = append(out, l)
+		}
+	}
+	return out, label
+}
+
+// loaderChoices lists the loader groups that have links, for the links page's
+// picker - so the filter can be reached on the page itself, not only by arriving
+// from the loaders index. Built from groupByLoader, so the roster, that page's
+// counts and the filtered rows are all one partition; maps play no part in
+// grouping links and are not fetched for it.
+func loaderChoices(progs []*pb.ProgramInfo, links []*pb.LinkInfo, hidden map[uint32]bool) []loaderChoice {
+	groups, _ := groupByLoader(progs, nil, links, hidden)
+	var out []loaderChoice
+	for _, g := range groups {
+		if len(g.Links) == 0 {
+			continue // nothing to narrow to
+		}
+		out = append(out, loaderChoice{Group: g.ID, Label: shortLoaderLabel(g.Label), Links: len(g.Links)})
+	}
+	return out
+}
+
+// hasLoaderChoice reports whether the picker already offers a group.
+func hasLoaderChoice(choices []loaderChoice, group string) bool {
+	for _, c := range choices {
+		if c.Group == group {
+			return true
+		}
+	}
+	return false
 }
 
 // buildGroupMermaid renders the mermaid diagram for a group of programs:

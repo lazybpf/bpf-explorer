@@ -3,6 +3,7 @@ package web
 import (
 	"bytes"
 	"html"
+	"net/http"
 	"net/http/httptest"
 	"regexp"
 	"strings"
@@ -213,6 +214,213 @@ func TestLinksProgLinks(t *testing.T) {
 	// The prog-less link must not fabricate a programs/0 link.
 	if strings.Contains(out, `/nodes/node-a/programs/0`) {
 		t.Errorf("prog-less link should not render a programs/0 link\n%s", out)
+	}
+}
+
+// TestLinksLoaderFilterRender checks the narrowed links page says whose links
+// it is showing and offers the ways back out - the filter arrives from another
+// page, so the tab bar alone cannot undo it.
+func TestLinksLoaderFilterRender(t *testing.T) {
+	h, err := New(nil, nil)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	data := pageData{
+		Node:        "node-a",
+		Tab:         "links",
+		Links:       []*pb.LinkInfo{{Id: 1, Type: "tracing", ProgId: 5}},
+		Programs:    []*pb.ProgramInfo{{Id: 5, Name: "trace_conn"}},
+		LinkFilter:  &linkFilter{Group: "sg_1000", Label: "agent(1000)", Total: 9},
+		LinkLoaders: []loaderChoice{{Group: "sg_1000", Label: "agent(1000)", Links: 1}},
+	}
+
+	var buf bytes.Buffer
+	if err := h.pages["links"].ExecuteTemplate(&buf, "layout", data); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	out := buf.String()
+
+	if !strings.Contains(out, "agent(1000)") {
+		t.Errorf("filtered page does not name the loader\n%s", out)
+	}
+	// How many of how many, in the heading's count: on its own it would look
+	// like the whole node.
+	if !strings.Contains(out, "(1 of 9)") {
+		t.Errorf("expected the filtered count against the node total\n%s", out)
+	}
+	// The loader is named once. It was said three times - heading, picker and a
+	// note under them - before this was compacted.
+	if n := strings.Count(out, "agent(1000)"); n != 2 {
+		t.Errorf("loader named %d times, want twice: the heading and the picker's option\n%s", n, out)
+	}
+	if strings.Contains(out, "loader: agent(1000)") {
+		t.Errorf("the picker's own label already says \"loader\"\n%s", out)
+	}
+	// And the loader column goes with it: under a filter every row carries the
+	// same value. The unfiltered table still has it - TestLinksColumnsExplained.
+	if strings.Contains(out, ">Loader</th>") {
+		t.Errorf("loader column is constant under a filter and should be dropped\n%s", out)
+	}
+	if cols := strings.Count(out, "</th>"); cols != 5 {
+		t.Errorf("filtered table has %d columns, want 5\n%s", cols, out)
+	}
+	// The way back to everything is the picker's first option.
+	if !strings.Contains(out, `<option value=""`) {
+		t.Errorf("expected an all-loaders option to undo the filter\n%s", out)
+	}
+	if !strings.Contains(out, `href="/nodes/node-a/loaders/sg_1000"`) {
+		t.Errorf("expected a link to this group's graph\n%s", out)
+	}
+	// Still the links tab, not a sub-page of it: the page is the list, narrowed.
+	if !strings.Contains(out, `class="active" href="/nodes/node-a/links"`) {
+		t.Errorf("links tab should stay active\n%s", out)
+	}
+}
+
+// TestLinksUnfilteredHasNoFilterNote guards the plain page against the note
+// leaking into it.
+func TestLinksUnfilteredHasNoFilterNote(t *testing.T) {
+	h, err := New(nil, nil)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	data := pageData{Node: "node-a", Tab: "links", Links: []*pb.LinkInfo{{Id: 1}}}
+	var buf bytes.Buffer
+	if err := h.pages["links"].ExecuteTemplate(&buf, "layout", data); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if out := buf.String(); strings.Contains(out, "grouped as the loaders page counts them") {
+		t.Errorf("unfiltered page shows the filter note\n%s", out)
+	}
+}
+
+// TestLinksColumnsExplained pins the links table's headers: the program column
+// is spelled out like every other header in the app rather than abbreviated the
+// way bpftool prints it, and the columns whose content needs explaining carry
+// it, since this table is the only place a link's attach detail appears.
+func TestLinksColumnsExplained(t *testing.T) {
+	h, err := New(nil, nil)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	var buf bytes.Buffer
+	data := pageData{Node: "node-a", Tab: "links", Links: []*pb.LinkInfo{{Id: 1, ProgId: 5}}}
+	if err := h.pages["links"].ExecuteTemplate(&buf, "layout", data); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	out := buf.String()
+
+	if strings.Contains(out, "<th>Prog</th>") {
+		t.Errorf("program column should not be abbreviated\n%s", out)
+	}
+	if !strings.Contains(out, ">Program</th>") {
+		t.Errorf("expected a Program column\n%s", out)
+	}
+	// Every header on this table is documented; th[title] is what marks it.
+	for _, col := range []string{">ID</th>", ">Type</th>", ">Program</th>", ">Loader</th>", ">Attach</th>"} {
+		i := strings.Index(out, col)
+		if i < 0 {
+			t.Errorf("missing column %s\n%s", col, out)
+			continue
+		}
+		if head := out[strings.LastIndex(out[:i], "<th"):i]; !strings.Contains(head, "title=") {
+			t.Errorf("column %s carries no explanation", col)
+		}
+	}
+}
+
+// TestListPagesExplainIDs keeps the id explanation from being something only
+// the links page says: the same recycling caveat applies to every kernel id.
+func TestListPagesExplainIDs(t *testing.T) {
+	h, err := New(nil, nil)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	for _, page := range []string{"maps", "programs", "links"} {
+		var buf bytes.Buffer
+		if err := h.pages[page].ExecuteTemplate(&buf, "layout", pageData{Node: "node-a", Tab: page}); err != nil {
+			t.Fatalf("execute %s: %v", page, err)
+		}
+		if !strings.Contains(buf.String(), "recycles ids") {
+			t.Errorf("%s page does not explain what an id is", page)
+		}
+	}
+}
+
+// TestLinksLoaderPicker checks the links page can narrow itself: the picker is
+// there with no filter applied, marks the selected group when one is, and is
+// absent when the node has no links to narrow.
+func TestLinksLoaderPicker(t *testing.T) {
+	h, err := New(nil, nil)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	choices := []loaderChoice{
+		{Group: "sg_1000", Label: "agent(1000)", Links: 4},
+		{Group: unattachedGroupID, Label: unattachedLabel, Links: 2},
+	}
+
+	render := func(data pageData) string {
+		t.Helper()
+		var buf bytes.Buffer
+		if err := h.pages["links"].ExecuteTemplate(&buf, "layout", data); err != nil {
+			t.Fatalf("execute: %v", err)
+		}
+		return buf.String()
+	}
+
+	// Arrived at the page directly: the picker offers every group with links,
+	// with their counts, and nothing is selected but "all loaders".
+	out := render(pageData{Node: "node-a", Tab: "links", LinkLoaders: choices})
+	for _, want := range []string{
+		`action="/nodes/node-a/links"`,
+		`<select name="loader"`,
+		`<option value="" selected>all loaders</option>`,
+		`<option value="sg_1000">agent(1000) (4)</option>`,
+		`<option value="sg_unattached">` + unattachedLabel + ` (2)</option>`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("picker missing %q\n%s", want, out)
+		}
+	}
+
+	// With a filter on, that group is the selected option.
+	out = render(pageData{
+		Node: "node-a", Tab: "links", LinkLoaders: choices,
+		LinkFilter: &linkFilter{Group: "sg_1000", Label: "agent(1000)", Total: 6},
+	})
+	if !strings.Contains(out, `<option value="sg_1000" selected>`) {
+		t.Errorf("picker does not mark the active group\n%s", out)
+	}
+	if strings.Contains(out, `<option value="" selected>`) {
+		t.Errorf("all-loaders should not be selected under a filter\n%s", out)
+	}
+
+	// Nothing to narrow: no picker at all.
+	if out := render(pageData{Node: "node-a", Tab: "links"}); strings.Contains(out, `<select name="loader"`) {
+		t.Errorf("picker rendered with no loaders to choose\n%s", out)
+	}
+}
+
+// TestLinksBadLoaderGroupRejected covers a hand-edited URL: the group is read
+// before anything is fetched for the page, so a malformed one is a 400 rather
+// than a silently unfiltered list of every link on the node.
+func TestLinksBadLoaderGroupRejected(t *testing.T) {
+	h, err := New(nil, nil)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	router := h.Router()
+
+	for _, group := range []string{"1000", "sg_nope", "sg_"} {
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/nodes/node-a/links?loader="+group, nil)
+		router.ServeHTTP(rec, req)
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("GET ?loader=%s = %d, want %d", group, rec.Code, http.StatusBadRequest)
+		}
 	}
 }
 

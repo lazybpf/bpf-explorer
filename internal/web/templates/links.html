@@ -1,10 +1,48 @@
 {{define "content"}}
 {{template "nodebar" .}}
 
-<h2>links on {{.Node}} <span class="muted">({{len .Links}})</span></h2>
+{{$group := ""}}{{with .LinkFilter}}{{$group = .Group}}{{end}}
+{{/* How many of how many, so the heading's count cannot be mistaken for the
+     whole node. No total when the fetch never got that far. */}}
+{{$count := printf "%d" (len .Links)}}
+{{with .LinkFilter}}{{if .Total}}{{$count = printf "%d of %d" (len $.Links) .Total}}{{end}}{{end}}
+<h2>links on {{.Node}}{{with .LinkFilter}} <span class="muted">/ {{.Label}}</span>{{end}} <span class="muted">({{$count}})</span></h2>
+{{if .LinkLoaders}}
+{{/* GET, so a narrowed list can be linked to and reloaded - the same form the
+     utilities use. Only groups that have links are offered: narrowing to one
+     with none is a question with a known answer. */}}
+<form class="controls" method="get" action="/nodes/{{.Node}}/links">
+  <label>loader
+    <select name="loader" title="show only the links attaching this group's programs">
+      <option value=""{{if not $group}} selected{{end}}>all loaders</option>
+      {{range .LinkLoaders}}
+        <option value="{{.Group}}"{{if eq .Group $group}} selected{{end}}>{{.Label}}{{with .Links}} ({{.}}){{end}}</option>
+      {{end}}
+    </select>
+  </label>
+  <button type="submit">filter</button>
+  {{/* The one place the picker cannot go: this group's diagram, the same links
+       drawn rather than listed. Only with a group selected - there is no
+       diagram of "all loaders" - and the loaders tab above is the way back to
+       the roster, so it is not repeated here. */}}
+  {{with .LinkFilter}}<a href="/nodes/{{$.Node}}/loaders/{{.Group}}" target="_blank" rel="noopener" title="graph: everything this group loaded - its programs, maps and links (new tab)">graph</a>{{end}}
+</form>
+{{end}}
 <div class="scroll">
 <table>
-  <thead><tr><th>ID</th><th>Type</th><th>Prog</th><th title="the process that loaded this link's program: the lowest-numbered process holding an fd to it">Loader</th><th>Attach</th><th></th></tr></thead>
+  {{/* The headers carry the explanation, the way Loader always has: this table
+       is the one place a link's attach detail is shown, and its shape changes
+       with the link type. */}}
+  <thead><tr>
+    <th title="the kernel's id for this link, what bpftool link show lists it by. The kernel recycles ids, so one names this link only while it exists">ID</th>
+    <th title="the kernel's link type (BPF_LINK_TYPE_*), which is what decides the shape of the attach column">Type</th>
+    <th title="the program this link attaches; the id opens its xlated listing">Program</th>
+    {{/* Dropped under a filter: every row would carry the same value, which the
+         heading and the picker have both already said. */}}
+    {{if not .LinkFilter}}<th title="the process that loaded this link's program: the lowest-numbered process holding an fd to it">Loader</th>{{end}}
+    <th title="what the link is attached to, as bpftool link show prints its type-specific line: a tracepoint name, a k(ret)probe's symbol, an LSM hook's target. Empty for the link types the agent does not read this detail from yet">Attach</th>
+    <th></th>
+  </tr></thead>
   <tbody>
   {{range .Links}}
     <tr>
@@ -12,14 +50,14 @@
       <td>
         {{if .ProgId}}{{$name := progName $.Programs .ProgId}}<a href="/nodes/{{$.Node}}/programs/{{.ProgId}}" target="_blank" rel="noopener"{{if $name}} title="{{$name}}"{{end}}>{{.ProgId}}</a>{{else}}<span class="muted">-</span>{{end}}
       </td>
-      <td>{{if .ProgId}}{{with progLoader $.Programs .ProgId}}{{.}}{{else}}<span class="muted">-</span>{{end}}{{else}}<span class="muted">-</span>{{end}}</td>
+      {{if not $.LinkFilter}}<td>{{if .ProgId}}{{with progLoader $.Programs .ProgId}}{{.}}{{else}}<span class="muted">-</span>{{end}}{{else}}<span class="muted">-</span>{{end}}</td>{{end}}
       <td>{{with .Attach}}{{.}}{{else}}<span class="muted">-</span>{{end}}</td>
       <td>
         {{if .ProgId}}<a href="/nodes/{{$.Node}}/loaders/prog/{{.ProgId}}" target="_blank" rel="noopener" title="graph: this link's program, its maps and the links attaching it (new tab)">graph</a>{{end}}
       </td>
     </tr>
   {{else}}
-    <tr><td colspan="6" class="muted">(no links)</td></tr>
+    <tr><td colspan="{{if .LinkFilter}}5{{else}}6{{end}}" class="muted">{{with .LinkFilter}}(no links for {{.Label}}){{else}}(no links){{end}}</td></tr>
   {{end}}
   </tbody>
 </table>

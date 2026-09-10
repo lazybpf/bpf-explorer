@@ -99,17 +99,23 @@ type pageData struct {
 	Tab   string
 	// Util names the utility within the utils tab the way Tab names the tab:
 	// "pid", "inode". Empty on every page outside that section.
-	Util       string
-	Err        string
-	Maps       []*pb.MapInfo
-	Programs   []*pb.ProgramInfo
-	Links      []*pb.LinkInfo
-	MapsByID   map[uint32]*pb.MapInfo // id -> map, for program map-ref tooltips
-	Dump       *dumpView
-	ProgDump   *progDumpView
-	Mermaid    template.HTML   // dependency diagram definition
-	GraphLabel string          // heading for a diagram page: a loader, a program or a map
-	Loaders    []loaderSummary // loader roster for the loaders index page
+	Util     string
+	Err      string
+	Maps     []*pb.MapInfo
+	Programs []*pb.ProgramInfo
+	Links    []*pb.LinkInfo
+	// LinkFilter narrows Links to one loader group. Nil when the links page is
+	// showing every link on the node; LinkLoaders is what it can be narrowed
+	// to, and is filled in either way - the picker is how the filter is reached
+	// without coming from the loaders page.
+	LinkFilter  *linkFilter
+	LinkLoaders []loaderChoice
+	MapsByID    map[uint32]*pb.MapInfo // id -> map, for program map-ref tooltips
+	Dump        *dumpView
+	ProgDump    *progDumpView
+	Mermaid     template.HTML   // dependency diagram definition
+	GraphLabel  string          // heading for a diagram page: a loader, a program or a map
+	Loaders     []loaderSummary // loader roster for the loaders index page
 	// NodeInfo is the node's own configuration - kernel, cgroups, container
 	// runtime - for the node tab. Node above is the name; this is the machine.
 	NodeInfo *pb.DescribeNodeResponse
@@ -126,6 +132,23 @@ type loaderSummary struct {
 	Label string
 	Progs int
 	Maps  int
+	Links int
+}
+
+// linkFilter narrows the links page to a single loader group - the partition the
+// loaders index counts - so a links count there can be clicked through to the
+// rows behind it.
+type linkFilter struct {
+	Group string // group id: "sg_1234" or "sg_unattached"
+	Label string // how the loaders index names the group: "loader: systemd(1)"
+	Total int    // links on the node before filtering, for the "all links" way out
+}
+
+// loaderChoice is one entry in the links page's loader picker: a group that has
+// links, and how many of them.
+type loaderChoice struct {
+	Group string
+	Label string
 	Links int
 }
 
@@ -283,11 +306,33 @@ func (h *Handlers) programs(w http.ResponseWriter, r *http.Request) {
 	h.render(w, page, data)
 }
 
-// links lists the BPF links on a node, like `bpftool link show`.
+// links lists the BPF links on a node, like `bpftool link show`. ?loader=<group>
+// narrows the list to one loader, which is how a links count on the loaders
+// index gets clicked through; the value is that page's group id, so the group,
+// its diagram URL and this filter all spell a loader the same way.
 func (h *Handlers) links(w http.ResponseWriter, r *http.Request) {
+	// A malformed group is rejected before any work is done for the page: unlike
+	// a map or program id, reading it needs nothing from the node.
+	group := strings.TrimSpace(r.URL.Query().Get("loader"))
+	var groupLabel string
+	if group != "" {
+		var ok bool
+		if groupLabel, ok = parseLoaderGroup(group); !ok {
+			http.Error(w, "bad loader group", http.StatusBadRequest)
+			return
+		}
+	}
+
 	node := r.PathValue("node")
 	data := pageData{Node: node, Tab: "links"}
 	data.Nodes, _ = h.nodes()
+	if group != "" {
+		// Set before anything is fetched, so that a page that ends in an error
+		// still says which loader was asked for: the heading is the only trace
+		// left of the click that got here. The label and the total are filled
+		// in below, once there is something to fill them in from.
+		data.LinkFilter = &linkFilter{Group: group, Label: groupLabel}
+	}
 
 	conn, err := h.dial(node)
 	if err != nil {
@@ -309,10 +354,46 @@ func (h *Handlers) links(w http.ResponseWriter, r *http.Request) {
 	}
 	data.Links = list.GetLinks()
 
-	// Best-effort program names so each link's prog can be labelled in a tooltip.
-	if progs, perr := client.ListPrograms(ctx, &pb.ListProgramsRequest{}); perr == nil {
-		data.Programs = progs.GetPrograms()
+	// Program names label each link's prog in a tooltip - best-effort, except
+	// under a loader filter: the programs are what the links are grouped by, so
+	// without them the only honest page is the error, not every link on the node
+	// listed under one loader's name.
+	progs, perr := client.ListPrograms(ctx, &pb.ListProgramsRequest{})
+	if perr != nil && group != "" {
+		data.Err = perr.Error()
+		data.Links = nil
+		h.render(w, "links", data)
+		return
 	}
+	data.Programs = progs.GetPrograms()
+
+	// Built from the unfiltered list, so the picker offers the same groups
+	// whichever one is currently selected. Only when the programs were actually
+	// read: without them every link groups as having no loader, and offering
+	// that as a choice states something about the node that is really just the
+	// failed fetch above. (Under a filter perr has already returned.)
+	var choices []loaderChoice
+	if perr == nil {
+		choices = loaderChoices(data.Programs, data.Links, h.hiddenLoaders)
+	}
+
+	if f := data.LinkFilter; f != nil {
+		filtered, label := filterLinksByLoader(data.Programs, data.Links, h.hiddenLoaders, group)
+		if label != "" {
+			// The group's own spelling, with the loader's comm; the fallback
+			// stands when nothing on the node is in this group any more.
+			f.Label = label
+		}
+		f.Total = len(data.Links)
+		data.Links = filtered
+		if !hasLoaderChoice(choices, group) {
+			// A group with no links is not worth offering, but the one being
+			// shown has to be in the list or the picker cannot say what is
+			// selected - a stale link, or a loader that has since exited.
+			choices = append(choices, loaderChoice{Group: group, Label: f.Label})
+		}
+	}
+	data.LinkLoaders = choices
 	h.render(w, "links", data)
 }
 
@@ -569,6 +650,12 @@ func pageTitle(page string, data pageData) string {
 		what = "graph"
 		if data.GraphLabel != "" {
 			what = data.GraphLabel + " graph"
+		}
+	// Narrowed to one loader, the links page is about that loader, and a
+	// bookmark or a history entry has to say which.
+	case "links":
+		if f := data.LinkFilter; f != nil {
+			what = f.Label + " links"
 		}
 	// A utility page is named by what was asked of it, so several of these tabs
 	// can be told apart; by the utility itself when nothing has been asked yet.

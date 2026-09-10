@@ -217,6 +217,13 @@
     color: var(--fg-hi);
     white-space: nowrap;
   }
+  /* A documented column, marked the way code[title] is: help that nothing
+     points at is help nobody finds. */
+  th[title] {
+    text-decoration: underline dotted var(--warn);
+    text-underline-offset: .25em;
+    cursor: help;
+  }
   tbody tr:hover {
     background: rgba(85, 255, 85, .07);
     box-shadow: inset 2px 0 0 var(--fg-hi);
@@ -280,7 +287,7 @@
     text-transform: uppercase;
     color: var(--fg-dim);
   }
-  button, input {
+  button, input, select {
     font: 400 .9rem/1.5 var(--font-mono);
     letter-spacing: .08em;
     color: var(--fg);
@@ -295,11 +302,27 @@
     background: var(--fg);
     color: var(--bg);
   }
-  button:focus-visible, input:focus-visible {
+  button:focus-visible, input:focus-visible, select:focus-visible {
     outline: 1px solid var(--accent);
     outline-offset: 1px;
   }
   input::placeholder { color: var(--fg-dim); opacity: 1; }
+  /* The native select is a different box from the button beside it - its own
+     metrics and its own chrome, so the two never line up - and it is drawn from
+     scratch instead: the shared font, padding and border, with the arrow as two
+     gradients rather than a glyph the display face may not carry. */
+  select {
+    appearance: none;
+    cursor: pointer;
+    padding-right: 1.4rem;
+    background-image:
+      linear-gradient(45deg, transparent 50%, var(--fg-dim) 50%),
+      linear-gradient(135deg, var(--fg-dim) 50%, transparent 50%);
+    background-position: right .8rem center, right .5rem center;
+    background-size: .3rem .3rem;
+    background-repeat: no-repeat;
+  }
+  select:hover { border-color: var(--accent); }
 
   pre.tracelog {
     height: 60vh;
