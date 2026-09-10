@@ -1,7 +1,7 @@
 {{define "content"}}
 {{template "nodebar" .}}
 
-<h2>loaders on {{.Node}} <span class="muted">({{len .Loaders}})</span></h2>
+<h2>loaders on <span class="name">{{.Node}}</span> <span class="muted">({{len .Loaders}})</span></h2>
 <div class="scroll">
 <table>
   {{/* What a loader is, and what the row under the rule is, belong on the

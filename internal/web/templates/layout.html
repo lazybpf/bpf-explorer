@@ -113,6 +113,14 @@
     text-transform: uppercase;
     color: var(--fg-hi);
   }
+  /* A name the page was handed rather than one it owns - a node's hostname, a
+     program's or a map's name - inside a heading that is otherwise uppercase
+     chrome. It keeps its own case for the reason table.regs th does: this is
+     the string the reader matches against their own inventory or against the
+     list they opened the page from, and shouting it back makes them translate
+     it first. Only the case is dropped; the heading's tracking still applies,
+     so the name sits in the line rather than beside it. */
+  h2 .name { text-transform: none; }
   h2::before { content: "\25A0"; color: var(--fg-dim); }
   h2::after {
     content: "";

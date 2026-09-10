@@ -887,7 +887,7 @@ func TestProgramsXlatedDump(t *testing.T) {
 	if strings.Contains(out, "if r1 > r2") {
 		t.Errorf("jump condition reached the page as raw markup\n%s", out)
 	}
-	if strings.Contains(out, "programs on node-a") {
+	if strings.Contains(out, `programs on <span class="name">node-a</span>`) {
 		t.Errorf("xlated page should not repeat the programs list\n%s", out)
 	}
 	// The way back up is the tab bar, marked as the section this page sits under.
@@ -937,7 +937,7 @@ func TestMapsDumpOwnPage(t *testing.T) {
 		t.Errorf("expected the map's contents\n%s", out)
 	}
 	// The list stays in the tab this dump was opened from; repeating it is noise.
-	if strings.Contains(out, "maps on node-a") {
+	if strings.Contains(out, `maps on <span class="name">node-a</span>`) {
 		t.Errorf("dump page should not repeat the maps list\n%s", out)
 	}
 	// The way back up is the tab bar, marked as the section this page sits under.

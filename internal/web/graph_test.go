@@ -877,7 +877,7 @@ func TestLoadersIndexResidualRow(t *testing.T) {
 		t.Errorf("residual row has no graph link\n%s", out)
 	}
 	// One loader, so the heading counts one - the residual group is not a loader.
-	if !strings.Contains(out, "loaders on node-a") || !strings.Contains(out, ">(1)<") {
+	if !strings.Contains(out, `loaders on <span class="name">node-a</span>`) || !strings.Contains(out, ">(1)<") {
 		t.Errorf("heading should count the 1 loader, not the residual group\n%s", out)
 	}
 

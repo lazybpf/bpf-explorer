@@ -6,7 +6,7 @@
      whole node. No total when the fetch never got that far. */}}
 {{$count := printf "%d" (len .Links)}}
 {{with .LinkFilter}}{{if .Total}}{{$count = printf "%d of %d" (len $.Links) .Total}}{{end}}{{end}}
-<h2>links on {{.Node}}{{with .LinkFilter}} <span class="muted">/ {{.Label}}</span>{{end}} <span class="muted">({{$count}})</span></h2>
+<h2>links on <span class="name">{{.Node}}</span>{{with .LinkFilter}} <span class="muted">/ {{.Label}}</span>{{end}} <span class="muted">({{$count}})</span></h2>
 {{if .LinkLoaders}}
 {{/* GET, so a narrowed list can be linked to and reloaded - the same form the
      utilities use. Only groups that have links are offered: narrowing to one

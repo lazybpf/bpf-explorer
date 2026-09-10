@@ -6,7 +6,7 @@
 {{/* ASCII arrow, not &rarr;: the display face has no glyph for it, so the
      browser substitutes another font for that one character and it lands
      misaligned in a row of monospace. */}}
-<h2>inode -&gt; path on {{.Node}}</h2>
+<h2>inode -&gt; path on <span class="name">{{.Node}}</span></h2>
 <p class="muted">
   Find the path behind an inode number. The kernel has no inode-to-path call, so
   both buttons search <code>/proc</code> and the filesystem as the agent sees

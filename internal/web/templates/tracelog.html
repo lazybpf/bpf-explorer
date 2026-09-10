@@ -1,7 +1,7 @@
 {{define "content"}}
 {{template "nodebar" .}}
 
-<h2>trace log on {{.Node}}</h2>
+<h2>trace log on <span class="name">{{.Node}}</span></h2>
 <p class="muted">
   This is the kernel's tracing pipe (tracefs <code>trace_pipe</code>), where
   <code>bpf_trace_printk()</code> output lands - the same stream

@@ -6,7 +6,7 @@
 {{/* ASCII arrow, not &rarr;: the display face has no glyph for it, so the
      browser substitutes another font for that one character and it lands
      misaligned in a row of monospace. */}}
-<h2>pid -&gt; process on {{.Node}}</h2>
+<h2>pid -&gt; process on <span class="name">{{.Node}}</span></h2>
 <p class="muted">
   Describe a process by its pid - the number a map dump hands you most often,
   since maps key on pid and tgid as often as on inode. The lookup reads

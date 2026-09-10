@@ -6,7 +6,7 @@
      whole node. No total when the fetch never got that far. */}}
 {{$count := printf "%d" (len .Programs)}}
 {{with .ProgFilter}}{{if .Total}}{{$count = printf "%d of %d" (len $.Programs) .Total}}{{end}}{{end}}
-<h2>programs on {{.Node}}{{with .ProgFilter}} <span class="muted">/ {{.Label}}</span>{{end}} <span class="muted">({{$count}})</span></h2>
+<h2>programs on <span class="name">{{.Node}}</span>{{with .ProgFilter}} <span class="muted">/ {{.Label}}</span>{{end}} <span class="muted">({{$count}})</span></h2>
 {{if .ProgLoaders}}
 {{/* GET, so a narrowed list can be linked to and reloaded - the same form the
      maps and links pages and the utilities use. Only groups that have programs

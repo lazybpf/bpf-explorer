@@ -6,7 +6,7 @@
      whole node. No total when the fetch never got that far. */}}
 {{$count := printf "%d" (len .Maps)}}
 {{with .MapFilter}}{{if .Total}}{{$count = printf "%d of %d" (len $.Maps) .Total}}{{end}}{{end}}
-<h2>maps on {{.Node}}{{with .MapFilter}} <span class="muted">/ {{.Label}}</span>{{end}} <span class="muted">({{$count}})</span></h2>
+<h2>maps on <span class="name">{{.Node}}</span>{{with .MapFilter}} <span class="muted">/ {{.Label}}</span>{{end}} <span class="muted">({{$count}})</span></h2>
 {{if .MapLoaders}}
 {{/* GET, so a narrowed list can be linked to and reloaded - the same form the
      links page and the utilities use. Only groups that have maps are offered:

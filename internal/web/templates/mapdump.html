@@ -5,7 +5,7 @@
      this dump was opened from - and no back link either, since the tab bar above
      marks the maps tab as the way up. */}}
 {{with .Dump}}
-  <h2>map {{.ID}} — {{.Name}} contents
+  <h2>map {{.ID}} — <span class="name">{{.Name}}</span> contents
     {{if .Truncated}}<span class="badge">truncated</span>{{end}}
     <span class="muted">({{len .Entries}} shown)</span>
   </h2>
