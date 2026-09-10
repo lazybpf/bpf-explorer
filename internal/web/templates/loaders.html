@@ -6,21 +6,22 @@
   eBPF objects are grouped here by the process that loaded them: a program's
   loader is the lowest-numbered process holding an fd to it. Open a group's
   graph to see its programs, the maps they reference, and the links attaching
-  them, or its links count for those links as a table.
+  them, or its maps and links counts for those objects as a table.
 </p>
 
 <div class="scroll">
 <table>
   <!-- "group", not "loader": the last row holds everything with no loader at
        all, which is a group but not a loader. -->
-  <thead><tr><th>group</th><th>programs</th><th>maps</th><th>links</th><th></th></tr></thead>
+  <thead><tr><th>group</th><th>programs</th><th title="the maps this group's programs reference. A map two loaders share is counted under each of them, so this column can add up to more maps than the node has">maps</th><th>links</th><th></th></tr></thead>
   <tbody>
   {{range .Loaders}}
     <tr>
       <td>{{.Label}}</td>
-      <td>{{.Progs}}</td><td>{{.Maps}}</td>
-      {{/* The one count that is a way in so far: the links tab can narrow itself
-           to this group. A zero is left inert - there is nothing to open. */}}
+      <td>{{.Progs}}</td>
+      {{/* The counts whose tab can narrow itself to this group are the way into
+           it. A zero is left inert - there is nothing to open. */}}
+      <td>{{if .Maps}}<a href="/nodes/{{$.Node}}/maps?loader={{.ID}}" title="the {{.Maps}} maps this group's programs reference, listed with their types, sizes and holders">{{.Maps}}</a>{{else}}<span class="muted">0</span>{{end}}</td>
       <td>{{if .Links}}<a href="/nodes/{{$.Node}}/links?loader={{.ID}}" title="the {{.Links}} links attaching this group's programs, listed with their types and attach points">{{.Links}}</a>{{else}}<span class="muted">0</span>{{end}}</td>
       <td>
         <a href="/nodes/{{$.Node}}/loaders/{{.ID}}" target="_blank" rel="noopener" title="graph: everything this group loaded - its programs, maps and links (new tab)">graph</a>

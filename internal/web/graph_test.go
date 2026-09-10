@@ -210,10 +210,10 @@ func TestLoadersIndexRender(t *testing.T) {
 	}
 }
 
-// TestLoadersIndexLinksCount checks a non-zero links count is the way into the
-// links tab for that group, and that a zero stays inert - there is nothing
-// behind it to open.
-func TestLoadersIndexLinksCount(t *testing.T) {
+// TestLoadersIndexCounts checks a non-zero maps or links count is the way into
+// that tab for the group, and that a zero stays inert - there is nothing behind
+// it to open.
+func TestLoadersIndexCounts(t *testing.T) {
 	h, err := New(nil, nil)
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -222,7 +222,7 @@ func TestLoadersIndexLinksCount(t *testing.T) {
 		Node: "node-a", Tab: "loaders",
 		Loaders: []loaderSummary{
 			{ID: "sg_1000", Label: "loader: agent(1000)", Progs: 2, Maps: 3, Links: 4},
-			{ID: "sg_2000", Label: "loader: profiler(2000)", Progs: 1, Maps: 1},
+			{ID: "sg_2000", Label: "loader: profiler(2000)", Progs: 1},
 		},
 	}
 	var buf strings.Builder
@@ -231,16 +231,22 @@ func TestLoadersIndexLinksCount(t *testing.T) {
 	}
 	out := buf.String()
 
-	if !strings.Contains(out, `href="/nodes/node-a/links?loader=sg_1000"`) {
-		t.Errorf("links count is not a link to the filtered links page\n%s", out)
+	for _, tab := range []string{"maps", "links"} {
+		if !strings.Contains(out, `href="/nodes/node-a/`+tab+`?loader=sg_1000"`) {
+			t.Errorf("%s count is not a link to the filtered %s page\n%s", tab, tab, out)
+		}
+		// Same tab: the filtered list is that page, not an object opened beside
+		// the roster, and the page itself carries the way back.
+		if strings.Contains(out, `href="/nodes/node-a/`+tab+`?loader=sg_1000" target="_blank"`) {
+			t.Errorf("%s count should not open a new tab\n%s", tab, out)
+		}
+		if strings.Contains(out, `href="/nodes/node-a/`+tab+`?loader=sg_2000"`) {
+			t.Errorf("a zero %s count should not be a link\n%s", tab, out)
+		}
 	}
-	// Same tab: the filtered list is the links page, not an object opened
-	// beside the roster, and the page itself carries the way back.
-	if strings.Contains(out, `href="/nodes/node-a/links?loader=sg_1000" target="_blank"`) {
-		t.Errorf("links count should not open a new tab\n%s", out)
-	}
-	if strings.Contains(out, `href="/nodes/node-a/links?loader=sg_2000"`) {
-		t.Errorf("a zero links count should not be a link\n%s", out)
+	// The programs count is not a way in yet: that page has no loader filter.
+	if strings.Contains(out, `href="/nodes/node-a/programs?loader=`) {
+		t.Errorf("programs count links to a filter the programs page does not have\n%s", out)
 	}
 }
 
@@ -346,6 +352,92 @@ func TestFilterLinksByLoaderHonoursHidden(t *testing.T) {
 	}
 }
 
+// TestFilterMapsByLoader checks the maps page's filter partitions maps the same
+// way the loaders index counts them: by the programs referencing a map, not by
+// who holds an fd to it, with the maps nobody references left to the no-loader
+// group.
+func TestFilterMapsByLoader(t *testing.T) {
+	progs, maps, _ := sampleGraphData()
+	// A map both loaders' programs reference. Unlike a link, which attaches one
+	// program and so sits in one group, this map is in both.
+	progs[0].MapIds = []uint32{12, 42}
+	progs[1].MapIds = []uint32{13, 42}
+	maps = append(maps, &pb.MapInfo{Id: 42, Name: "shared", Type: "Hash"})
+
+	// The short label, for the same reason as the links filter: the page's
+	// picker is already called "loader".
+	got, label := filterMapsByLoader(progs, maps, nil, "sg_1000")
+	if label != "agent(1000)" {
+		t.Errorf("label = %q, want the short form", label)
+	}
+	if ids := mapIDs(got); len(ids) != 2 || ids[0] != 12 || ids[1] != 42 {
+		t.Errorf("sg_1000 maps = %v, want 12 (its own) and 42 (shared)", ids)
+	}
+	got, _ = filterMapsByLoader(progs, maps, nil, "sg_2000")
+	if ids := mapIDs(got); len(ids) != 2 || ids[0] != 13 || ids[1] != 42 {
+		t.Errorf("sg_2000 maps = %v, want 13 (its own) and 42 (shared)", ids)
+	}
+
+	// Prog 9 has no loader and references nothing, so what makes the no-loader
+	// group here is the orphan map - and it must not be listed anywhere else.
+	got, label = filterMapsByLoader(progs, maps, nil, unattachedGroupID)
+	if label != unattachedLabel {
+		t.Errorf("label = %q, want %q", label, unattachedLabel)
+	}
+	if ids := mapIDs(got); len(ids) != 1 || ids[0] != 99 {
+		t.Errorf("no-loader maps = %v, want just the orphan 99", ids)
+	}
+
+	// A group with nothing in it is empty, not everything.
+	if got, _ := filterMapsByLoader(progs, maps, nil, "sg_9999"); len(got) != 0 {
+		t.Errorf("sg_9999 maps = %+v, want none", got)
+	}
+
+	// And the counts it must match.
+	groups, _ := groupByLoader(progs, maps, nil, nil)
+	for _, id := range []string{"sg_1000", "sg_2000", unattachedGroupID} {
+		g := findGroup(groups, id)
+		rows, _ := filterMapsByLoader(progs, maps, nil, id)
+		if g == nil || len(g.Maps) != len(rows) {
+			t.Errorf("%s: loaders index counts %+v, filter shows %v", id, g, mapIDs(rows))
+		}
+	}
+}
+
+// TestFilterMapsByLoaderHonoursHidden is the reason the filter goes through
+// loaderGroup rather than the maps' own holder PIDs: with a PID hidden, the
+// loaders index counts a program under its next holder, and the maps page has to
+// agree or a count of N will open a list of something else.
+func TestFilterMapsByLoaderHonoursHidden(t *testing.T) {
+	progs := []*pb.ProgramInfo{{
+		Id:     7,
+		MapIds: []uint32{12},
+		Pids:   []*pb.ProcessRef{{Pid: 1, Comm: "systemd"}, {Pid: 1000, Comm: "agent"}},
+	}}
+	maps := []*pb.MapInfo{{Id: 12, Name: "m_a"}}
+	hidden := map[uint32]bool{1: true}
+
+	if got, _ := filterMapsByLoader(progs, maps, hidden, "sg_1"); len(got) != 0 {
+		t.Errorf("hidden pid 1 still owns maps: %+v", got)
+	}
+	got, label := filterMapsByLoader(progs, maps, hidden, "sg_1000")
+	if len(got) != 1 || label != "agent(1000)" {
+		t.Errorf("maps = %v, label = %q, want map 12 under agent(1000)", mapIDs(got), label)
+	}
+	// A map its program owns is not also an orphan.
+	if got, _ := filterMapsByLoader(progs, maps, hidden, unattachedGroupID); len(got) != 0 {
+		t.Errorf("no-loader maps = %v, want none", mapIDs(got))
+	}
+}
+
+func mapIDs(maps []*pb.MapInfo) []uint32 {
+	var ids []uint32
+	for _, m := range maps {
+		ids = append(ids, m.GetId())
+	}
+	return ids
+}
+
 func TestParseLoaderGroup(t *testing.T) {
 	for _, tc := range []struct {
 		group string
@@ -367,9 +459,9 @@ func TestParseLoaderGroup(t *testing.T) {
 	}
 }
 
-// TestLoaderChoices checks the links page's picker offers exactly the groups
+// TestLinkLoaderChoices checks the links page's picker offers exactly the groups
 // that have links, counted as the loaders index counts them.
-func TestLoaderChoices(t *testing.T) {
+func TestLinkLoaderChoices(t *testing.T) {
 	progs, _, _ := sampleGraphData()
 	links := []*pb.LinkInfo{
 		{Id: 3, ProgId: 7}, // agent(1000)
@@ -377,10 +469,10 @@ func TestLoaderChoices(t *testing.T) {
 		{Id: 5},            // no program: the no-loader group
 	}
 
-	got := loaderChoices(progs, links, nil)
+	got := linkLoaderChoices(progs, links, nil)
 	want := []loaderChoice{
-		{Group: "sg_1000", Label: "agent(1000)", Links: 2},
-		{Group: unattachedGroupID, Label: unattachedLabel, Links: 1},
+		{Group: "sg_1000", Label: "agent(1000)", Count: 2},
+		{Group: unattachedGroupID, Label: unattachedLabel, Count: 1},
 	}
 	if len(got) != len(want) {
 		t.Fatalf("choices = %+v, want %+v", got, want)
@@ -398,24 +490,79 @@ func TestLoaderChoices(t *testing.T) {
 	}
 
 	// And with no links at all there is nothing to narrow.
-	if got := loaderChoices(progs, nil, nil); len(got) != 0 {
+	if got := linkLoaderChoices(progs, nil, nil); len(got) != 0 {
 		t.Errorf("choices with no links = %+v, want none", got)
 	}
 }
 
 // TestLoaderChoicesMatchIndexCounts pins the picker to the loaders index: both
 // go through groupByLoader, so a count offered here is the count shown there.
-func TestLoaderChoicesMatchIndexCounts(t *testing.T) {
+func TestLinkLoaderChoicesMatchIndexCounts(t *testing.T) {
 	progs, maps, links := sampleGraphData()
 	groups, _ := groupByLoader(progs, maps, links, nil)
-	for _, c := range loaderChoices(progs, links, nil) {
+	for _, c := range linkLoaderChoices(progs, links, nil) {
 		g := findGroup(groups, c.Group)
 		if g == nil {
 			t.Errorf("picker offers %q, which the loaders index does not group", c.Group)
 			continue
 		}
-		if len(g.Links) != c.Links {
-			t.Errorf("%s: picker says %d links, index says %d", c.Group, c.Links, len(g.Links))
+		if len(g.Links) != c.Count {
+			t.Errorf("%s: picker says %d links, index says %d", c.Group, c.Count, len(g.Links))
+		}
+		if shortLoaderLabel(g.Label) != c.Label {
+			t.Errorf("%s: picker label %q, index label %q", c.Group, c.Label, g.Label)
+		}
+	}
+}
+
+// TestMapLoaderChoices checks the maps page's picker offers exactly the groups
+// that have maps, counted as the loaders index counts them.
+func TestMapLoaderChoices(t *testing.T) {
+	progs, maps, _ := sampleGraphData()
+
+	got := mapLoaderChoices(progs, maps, nil)
+	want := []loaderChoice{
+		{Group: "sg_1000", Label: "agent(1000)", Count: 1},
+		{Group: "sg_2000", Label: "profiler(2000)", Count: 1},
+		// Prog 9 loaded no maps; the orphan is what puts this group in the list.
+		{Group: unattachedGroupID, Label: unattachedLabel, Count: 1},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("choices = %+v, want %+v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("choice %d = %+v, want %+v", i, got[i], want[i])
+		}
+	}
+
+	// A loader whose programs reference no map is not offered: narrowing the
+	// maps page to it is a question with a known answer.
+	progs, maps, _ = sampleGraphData()
+	progs[0].MapIds = nil
+	if hasLoaderChoice(mapLoaderChoices(progs, maps, nil), "sg_1000") {
+		t.Errorf("a group with no maps should not be offered")
+	}
+
+	// And with nothing on the node there is nothing to narrow.
+	if got := mapLoaderChoices(nil, nil, nil); len(got) != 0 {
+		t.Errorf("choices with no objects = %+v, want none", got)
+	}
+}
+
+// TestMapLoaderChoicesMatchIndexCounts pins that picker to the loaders index the
+// way TestLinkLoaderChoicesMatchIndexCounts pins the links one.
+func TestMapLoaderChoicesMatchIndexCounts(t *testing.T) {
+	progs, maps, links := sampleGraphData()
+	groups, _ := groupByLoader(progs, maps, links, nil)
+	for _, c := range mapLoaderChoices(progs, maps, nil) {
+		g := findGroup(groups, c.Group)
+		if g == nil {
+			t.Errorf("picker offers %q, which the loaders index does not group", c.Group)
+			continue
+		}
+		if len(g.Maps) != c.Count {
+			t.Errorf("%s: picker says %d maps, index says %d", c.Group, c.Count, len(g.Maps))
 		}
 		if shortLoaderLabel(g.Label) != c.Label {
 			t.Errorf("%s: picker label %q, index label %q", c.Group, c.Label, g.Label)

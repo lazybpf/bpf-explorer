@@ -1,9 +1,38 @@
 {{define "content"}}
 {{template "nodebar" .}}
 
-<h2>maps on {{.Node}} <span class="muted">({{len .Maps}})</span></h2>
+{{$group := ""}}{{with .MapFilter}}{{$group = .Group}}{{end}}
+{{/* How many of how many, so the heading's count cannot be mistaken for the
+     whole node. No total when the fetch never got that far. */}}
+{{$count := printf "%d" (len .Maps)}}
+{{with .MapFilter}}{{if .Total}}{{$count = printf "%d of %d" (len $.Maps) .Total}}{{end}}{{end}}
+<h2>maps on {{.Node}}{{with .MapFilter}} <span class="muted">/ {{.Label}}</span>{{end}} <span class="muted">({{$count}})</span></h2>
+{{if .MapLoaders}}
+{{/* GET, so a narrowed list can be linked to and reloaded - the same form the
+     links page and the utilities use. Only groups that have maps are offered:
+     narrowing to one with none is a question with a known answer. */}}
+<form class="controls" method="get" action="/nodes/{{.Node}}/maps">
+  <label>loader
+    <select name="loader" title="show only the maps this group's programs reference, plus - under no loader - the maps no program references at all. A map two loaders share is listed under each of them, so these counts can add up to more maps than the node has">
+      <option value=""{{if not $group}} selected{{end}}>all loaders</option>
+      {{range .MapLoaders}}
+        <option value="{{.Group}}"{{if eq .Group $group}} selected{{end}}>{{.Label}}{{with .Count}} ({{.}}){{end}}</option>
+      {{end}}
+    </select>
+  </label>
+  <button type="submit">filter</button>
+  {{/* The one place the picker cannot go: this group's diagram, the same maps
+       drawn with the programs referencing them rather than listed. Only with a
+       group selected - there is no diagram of "all loaders" - and the loaders
+       tab above is the way back to the roster, so it is not repeated here. */}}
+  {{with .MapFilter}}<a href="/nodes/{{$.Node}}/loaders/{{.Group}}" target="_blank" rel="noopener" title="graph: everything this group loaded - its programs, maps and links (new tab)">graph</a>{{end}}
+</form>
+{{end}}
 <div class="scroll">
 <table>
+  {{/* The Holders column stays under a filter, unlike the links page's Loader:
+       a map is grouped by the programs referencing it, not by who holds an fd
+       to it, so these values are not the group's name repeated down the rows. */}}
   <thead><tr><th title="the kernel's id for this map, what bpftool map show lists it by. The kernel recycles ids, so one names this map only while it exists">ID</th><th>Name</th><th>Type</th><th>Key</th><th>Value</th><th>Max</th><th>Flags</th><th title="processes holding an open fd to this map; when none do, the inferred loader of a program referencing it is shown instead">Holders</th><th></th></tr></thead>
   <tbody>
   {{range .Maps}}
@@ -31,7 +60,7 @@
       </td>
     </tr>
   {{else}}
-    <tr><td colspan="9" class="muted">(no maps)</td></tr>
+    <tr><td colspan="9" class="muted">{{with .MapFilter}}(no maps for {{.Label}}){{else}}(no maps){{end}}</td></tr>
   {{end}}
   </tbody>
 </table>

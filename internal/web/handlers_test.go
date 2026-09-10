@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	pb "github.com/lazybpf/bpf-explorer/gen/bpfinspectorv1"
+	"github.com/lazybpf/bpf-explorer/internal/discovery"
 )
 
 // TestPageTitle covers the browser tab titles: with a tab per object, each has
@@ -54,6 +55,18 @@ func TestPageTitle(t *testing.T) {
 			"unknown graph", "loader",
 			pageData{Node: "node-a", Err: "unknown loader group: sg_9"},
 			"graph - node-a - bpf-explorer",
+		},
+		{
+			// Narrowed to a loader, a list page is about that loader: two tabs
+			// on the same node's maps are otherwise the same title twice.
+			"maps for a loader", "maps",
+			pageData{Node: "node-a", MapFilter: &loaderFilter{Group: "sg_1000", Label: "agent(1000)"}},
+			"agent(1000) maps - node-a - bpf-explorer",
+		},
+		{
+			"links for a loader", "links",
+			pageData{Node: "node-a", LinkFilter: &loaderFilter{Group: "sg_1000", Label: "agent(1000)"}},
+			"agent(1000) links - node-a - bpf-explorer",
 		},
 	}
 	for _, tc := range tests {
@@ -231,8 +244,8 @@ func TestLinksLoaderFilterRender(t *testing.T) {
 		Tab:         "links",
 		Links:       []*pb.LinkInfo{{Id: 1, Type: "tracing", ProgId: 5}},
 		Programs:    []*pb.ProgramInfo{{Id: 5, Name: "trace_conn"}},
-		LinkFilter:  &linkFilter{Group: "sg_1000", Label: "agent(1000)", Total: 9},
-		LinkLoaders: []loaderChoice{{Group: "sg_1000", Label: "agent(1000)", Links: 1}},
+		LinkFilter:  &loaderFilter{Group: "sg_1000", Label: "agent(1000)", Total: 9},
+		LinkLoaders: []loaderChoice{{Group: "sg_1000", Label: "agent(1000)", Count: 1}},
 	}
 
 	var buf bytes.Buffer
@@ -275,6 +288,124 @@ func TestLinksLoaderFilterRender(t *testing.T) {
 	// Still the links tab, not a sub-page of it: the page is the list, narrowed.
 	if !strings.Contains(out, `class="active" href="/nodes/node-a/links"`) {
 		t.Errorf("links tab should stay active\n%s", out)
+	}
+}
+
+// TestMapsLoaderFilterRender checks the narrowed maps page says whose maps it is
+// showing and offers the ways back out - the filter arrives from another page,
+// so the tab bar alone cannot undo it.
+func TestMapsLoaderFilterRender(t *testing.T) {
+	h, err := New(nil, nil)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	data := pageData{
+		Node:       "node-a",
+		Tab:        "maps",
+		Maps:       []*pb.MapInfo{{Id: 12, Name: "m_a", Type: "Hash", Pids: []*pb.ProcessRef{{Pid: 4242, Comm: "holder"}}}},
+		MapFilter:  &loaderFilter{Group: "sg_1000", Label: "agent(1000)", Total: 9},
+		MapLoaders: []loaderChoice{{Group: "sg_1000", Label: "agent(1000)", Count: 1}},
+	}
+
+	var buf bytes.Buffer
+	if err := h.pages["maps"].ExecuteTemplate(&buf, "layout", data); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	out := buf.String()
+
+	// How many of how many, in the heading's count: on its own it would look
+	// like the whole node.
+	if !strings.Contains(out, "(1 of 9)") {
+		t.Errorf("expected the filtered count against the node total\n%s", out)
+	}
+	// Named once by the heading and once by the picker's option, as on the
+	// links page.
+	if n := strings.Count(out, "agent(1000)"); n != 2 {
+		t.Errorf("loader named %d times, want twice: the heading and the picker's option\n%s", n, out)
+	}
+	if strings.Contains(out, "loader: agent(1000)") {
+		t.Errorf("the picker's own label already says \"loader\"\n%s", out)
+	}
+	// Unlike the links page's Loader column, Holders stays: a map is grouped by
+	// the programs referencing it, not by who holds an fd, so the column is not
+	// the group's name repeated down the rows.
+	if !strings.Contains(out, ">Holders</th>") || !strings.Contains(out, "holder(4242)") {
+		t.Errorf("filtered maps page dropped the holders column\n%s", out)
+	}
+	if cols := strings.Count(out, "</th>"); cols != 9 {
+		t.Errorf("filtered table has %d columns, want the unfiltered 9\n%s", cols, out)
+	}
+	// The way back to everything is the picker's first option.
+	if !strings.Contains(out, `<option value=""`) {
+		t.Errorf("expected an all-loaders option to undo the filter\n%s", out)
+	}
+	if !strings.Contains(out, `href="/nodes/node-a/loaders/sg_1000"`) {
+		t.Errorf("expected a link to this group's graph\n%s", out)
+	}
+	// Still the maps tab, not a sub-page of it: the page is the list, narrowed.
+	if !strings.Contains(out, `class="active" href="/nodes/node-a/maps"`) {
+		t.Errorf("maps tab should stay active\n%s", out)
+	}
+}
+
+// TestMapsLoaderPicker checks the maps page can narrow itself: the picker is
+// there with no filter applied, marks the selected group when one is, and is
+// absent when the node has no maps to narrow.
+func TestMapsLoaderPicker(t *testing.T) {
+	h, err := New(nil, nil)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	choices := []loaderChoice{
+		{Group: "sg_1000", Label: "agent(1000)", Count: 4},
+		{Group: unattachedGroupID, Label: unattachedLabel, Count: 2},
+	}
+
+	render := func(data pageData) string {
+		t.Helper()
+		var buf bytes.Buffer
+		if err := h.pages["maps"].ExecuteTemplate(&buf, "layout", data); err != nil {
+			t.Fatalf("execute: %v", err)
+		}
+		return buf.String()
+	}
+
+	// Arrived at the page directly: the picker offers every group with maps,
+	// with their counts, and nothing is selected but "all loaders".
+	out := render(pageData{Node: "node-a", Tab: "maps", MapLoaders: choices})
+	for _, want := range []string{
+		`action="/nodes/node-a/maps"`,
+		`<select name="loader"`,
+		`<option value="" selected>all loaders</option>`,
+		`<option value="sg_1000">agent(1000) (4)</option>`,
+		`<option value="sg_unattached">` + unattachedLabel + ` (2)</option>`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("picker missing %q\n%s", want, out)
+		}
+	}
+	// A map two loaders share is listed under each, so the counts here can add
+	// up to more than the node has maps - the picker has to say so.
+	if !strings.Contains(out, "more maps than the node has") {
+		t.Errorf("picker does not explain the overlapping counts\n%s", out)
+	}
+
+	// With a filter on, that group is the selected option.
+	out = render(pageData{
+		Node: "node-a", Tab: "maps", MapLoaders: choices,
+		MapFilter: &loaderFilter{Group: "sg_1000", Label: "agent(1000)", Total: 6},
+	})
+	if !strings.Contains(out, `<option value="sg_1000" selected>`) {
+		t.Errorf("picker does not mark the active group\n%s", out)
+	}
+	if strings.Contains(out, `<option value="" selected>`) {
+		t.Errorf("all-loaders should not be selected under a filter\n%s", out)
+	}
+
+	// Nothing to narrow: no picker at all.
+	if out := render(pageData{Node: "node-a", Tab: "maps"}); strings.Contains(out, `<select name="loader"`) {
+		t.Errorf("picker rendered with no loaders to choose\n%s", out)
 	}
 }
 
@@ -358,8 +489,8 @@ func TestLinksLoaderPicker(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 	choices := []loaderChoice{
-		{Group: "sg_1000", Label: "agent(1000)", Links: 4},
-		{Group: unattachedGroupID, Label: unattachedLabel, Links: 2},
+		{Group: "sg_1000", Label: "agent(1000)", Count: 4},
+		{Group: unattachedGroupID, Label: unattachedLabel, Count: 2},
 	}
 
 	render := func(data pageData) string {
@@ -389,7 +520,7 @@ func TestLinksLoaderPicker(t *testing.T) {
 	// With a filter on, that group is the selected option.
 	out = render(pageData{
 		Node: "node-a", Tab: "links", LinkLoaders: choices,
-		LinkFilter: &linkFilter{Group: "sg_1000", Label: "agent(1000)", Total: 6},
+		LinkFilter: &loaderFilter{Group: "sg_1000", Label: "agent(1000)", Total: 6},
 	})
 	if !strings.Contains(out, `<option value="sg_1000" selected>`) {
 		t.Errorf("picker does not mark the active group\n%s", out)
@@ -421,6 +552,45 @@ func TestLinksBadLoaderGroupRejected(t *testing.T) {
 		if rec.Code != http.StatusBadRequest {
 			t.Errorf("GET ?loader=%s = %d, want %d", group, rec.Code, http.StatusBadRequest)
 		}
+	}
+}
+
+// TestMapsBadLoaderGroupRejected covers a hand-edited URL, as on the links page:
+// the group is read before anything is fetched, so a malformed one is a 400
+// rather than a silently unfiltered list of every map on the node.
+func TestMapsBadLoaderGroupRejected(t *testing.T) {
+	h, err := New(nil, nil)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	router := h.Router()
+
+	for _, group := range []string{"1000", "sg_nope", "sg_"} {
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/nodes/node-a/maps?loader="+group, nil)
+		router.ServeHTTP(rec, req)
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("GET ?loader=%s = %d, want %d", group, rec.Code, http.StatusBadRequest)
+		}
+	}
+
+	// A dump is one map, so the filter means nothing there and is not read: a
+	// stray group must not turn a map's contents into a 400. Reaching that far
+	// needs a discoverer; the node is not one it knows, so the page renders the
+	// "unknown node" error without dialling anything.
+	disc, derr := discovery.ParseStatic("other=127.0.0.1:1")
+	if derr != nil {
+		t.Fatalf("ParseStatic: %v", derr)
+	}
+	dh, err := New(disc, nil)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/nodes/node-a/maps/12?loader=sg_nope", nil)
+	dh.Router().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Errorf("dump page with a stray loader group = %d, want %d", rec.Code, http.StatusOK)
 	}
 }
 

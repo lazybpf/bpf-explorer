@@ -127,7 +127,7 @@ func loaderGroup(p *pb.ProgramInfo, hidden map[uint32]bool) (id, label string) {
 
 // loaderLabelPrefix is how a group label names a loader on the loaders index,
 // where it tells a real loader apart from the no-loader row. Where the field is
-// already called "loader" - the links page's picker and its heading - it is
+// already called "loader" - a filtered page's picker and its heading - it is
 // dropped rather than saying the word twice.
 const loaderLabelPrefix = "loader: "
 
@@ -137,9 +137,9 @@ func shortLoaderLabel(label string) string {
 	return strings.TrimPrefix(label, loaderLabelPrefix)
 }
 
-// loaderGroupID names a loader by its PID. Three places have to agree on this
+// loaderGroupID names a loader by its PID. Several places have to agree on this
 // spelling - the loaders index, the {group} segment of a diagram URL, and the
-// links page's ?loader= filter - so it is written once here.
+// ?loader= filter on the links and maps pages - so it is written once here.
 func loaderGroupID(pid uint32) string { return fmt.Sprintf("sg_%d", pid) }
 
 // parseLoaderGroup validates a group id arriving from a URL and returns a label
@@ -195,21 +195,72 @@ func filterLinksByLoader(progs []*pb.ProgramInfo, links []*pb.LinkInfo, hidden m
 	return out, label
 }
 
-// loaderChoices lists the loader groups that have links, for the links page's
-// picker - so the filter can be reached on the page itself, not only by arriving
-// from the loaders index. Built from groupByLoader, so the roster, that page's
-// counts and the filtered rows are all one partition; maps play no part in
-// grouping links and are not fetched for it.
-func loaderChoices(progs []*pb.ProgramInfo, links []*pb.LinkInfo, hidden map[uint32]bool) []loaderChoice {
-	groups, _ := groupByLoader(progs, nil, links, hidden)
+// filterMapsByLoader keeps the maps belonging to one loader group, partitioned
+// exactly as groupByLoader does it. Unlike a link, a map can be in more than one
+// group - two loaders' programs referencing the same map put it in both - so the
+// counts down the loaders index's maps column can add up to more than the node
+// has maps. Also returns the group's full label when a program in it supplies
+// one, in the short form and for the same reason as filterLinksByLoader.
+func filterMapsByLoader(progs []*pb.ProgramInfo, maps []*pb.MapInfo, hidden map[uint32]bool, group string) ([]*pb.MapInfo, string) {
+	inGroup := map[uint32]bool{}    // referenced by this group's programs
+	referenced := map[uint32]bool{} // referenced by any program at all
+	var label string
+	for _, p := range progs {
+		id, l := loaderGroup(p, hidden)
+		if id == group {
+			label = shortLoaderLabel(l)
+		}
+		for _, mid := range p.GetMapIds() {
+			referenced[mid] = true
+			if id == group {
+				inGroup[mid] = true
+			}
+		}
+	}
+
+	var out []*pb.MapInfo
+	for _, m := range maps {
+		// A map no program references - pinned, or held only by an fd - belongs
+		// to the no-loader group, the same fallback groupByLoader makes. A map
+		// referenced only by programs whose own loader is unknown is already
+		// there by the ordinary path, since those programs are in that group.
+		if inGroup[m.GetId()] || (group == unattachedGroupID && !referenced[m.GetId()]) {
+			out = append(out, m)
+		}
+	}
+	return out, label
+}
+
+// loaderChoicesFor turns a partition into a page's picker: one entry per group
+// that has something to narrow to, counted by count. Both pickers go through
+// groupByLoader, so the groups they offer, the loaders index's counts and the
+// filtered rows are all one partition.
+func loaderChoicesFor(groups []*loaderGroupData, count func(*loaderGroupData) int) []loaderChoice {
 	var out []loaderChoice
 	for _, g := range groups {
-		if len(g.Links) == 0 {
+		n := count(g)
+		if n == 0 {
 			continue // nothing to narrow to
 		}
-		out = append(out, loaderChoice{Group: g.ID, Label: shortLoaderLabel(g.Label), Links: len(g.Links)})
+		out = append(out, loaderChoice{Group: g.ID, Label: shortLoaderLabel(g.Label), Count: n})
 	}
 	return out
+}
+
+// linkLoaderChoices lists the loader groups that have links, for the links
+// page's picker - so the filter can be reached on the page itself, not only by
+// arriving from the loaders index. Maps play no part in grouping links and are
+// not fetched for it.
+func linkLoaderChoices(progs []*pb.ProgramInfo, links []*pb.LinkInfo, hidden map[uint32]bool) []loaderChoice {
+	groups, _ := groupByLoader(progs, nil, links, hidden)
+	return loaderChoicesFor(groups, func(g *loaderGroupData) int { return len(g.Links) })
+}
+
+// mapLoaderChoices is the same for the maps page. Links play no part in grouping
+// maps and are not fetched for it.
+func mapLoaderChoices(progs []*pb.ProgramInfo, maps []*pb.MapInfo, hidden map[uint32]bool) []loaderChoice {
+	groups, _ := groupByLoader(progs, maps, nil, hidden)
+	return loaderChoicesFor(groups, func(g *loaderGroupData) int { return len(g.Maps) })
 }
 
 // hasLoaderChoice reports whether the picker already offers a group.

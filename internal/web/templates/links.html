@@ -16,7 +16,7 @@
     <select name="loader" title="show only the links attaching this group's programs">
       <option value=""{{if not $group}} selected{{end}}>all loaders</option>
       {{range .LinkLoaders}}
-        <option value="{{.Group}}"{{if eq .Group $group}} selected{{end}}>{{.Label}}{{with .Links}} ({{.}}){{end}}</option>
+        <option value="{{.Group}}"{{if eq .Group $group}} selected{{end}}>{{.Label}}{{with .Count}} ({{.}}){{end}}</option>
       {{end}}
     </select>
   </label>
