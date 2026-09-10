@@ -24,6 +24,15 @@
   mermaid.initialize({
     startOnLoad: true,
     securityLevel: 'loose',
+    // mermaid defaults to 500 edges and 50000 characters per diagram, which a
+    // real loader blows past: falco loads a program per syscall and points them
+    // all at the same few maps, so one group is ~900 edges. Both are 'secure'
+    // configs that a %%{init}%% directive inside the diagram cannot raise -
+    // they have to be set here. Over the edge limit mermaid throws during parse
+    // and paints its generic "Syntax error in text" bomb, which says nothing
+    // about the real cause.
+    maxEdges: 5000,
+    maxTextSize: 500000,
     theme: 'base',
     themeVariables: {
       darkMode: true,
