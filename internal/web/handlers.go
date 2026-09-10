@@ -118,6 +118,10 @@ type pageData struct {
 	Mermaid     template.HTML   // dependency diagram definition
 	GraphLabel  string          // heading for a diagram page: a loader, a program or a map
 	Loaders     []loaderSummary // loader roster for the loaders index page
+	// NoLoader is that page's residual group - everything no live process
+	// holds an fd to - kept out of Loaders so the roster, and the count in the
+	// heading over it, are processes only.
+	NoLoader *loaderSummary
 	// NodeInfo is the node's own configuration - kernel, cgroups, container
 	// runtime - for the node tab. Node above is the name; this is the machine.
 	NodeInfo *pb.DescribeNodeResponse
@@ -135,6 +139,25 @@ type loaderSummary struct {
 	Progs int
 	Maps  int
 	Links int
+}
+
+// loaderRoster turns a partition into the loaders index's two parts: a row per
+// loader, and the no-loader group on its own. They are kept apart because the
+// page presents them apart - the residual group is set below a rule, and the
+// count in the heading is a count of loaders, which that group is not.
+func loaderRoster(groups []*loaderGroupData) (loaders []loaderSummary, noLoader *loaderSummary) {
+	for _, g := range groups {
+		row := loaderSummary{
+			ID: g.ID, Label: g.Label,
+			Progs: len(g.Progs), Maps: len(g.Maps), Links: len(g.Links),
+		}
+		if g.ID == unattachedGroupID {
+			noLoader = &row
+			continue
+		}
+		loaders = append(loaders, row)
+	}
+	return loaders, noLoader
 }
 
 // loaderFilter narrows a list page to a single loader group - the partition the
@@ -473,12 +496,7 @@ func (h *Handlers) loadersIndex(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	groups, _ := groupByLoader(progs, maps, links, h.hiddenLoaders)
-	for _, g := range groups {
-		data.Loaders = append(data.Loaders, loaderSummary{
-			ID: g.ID, Label: g.Label,
-			Progs: len(g.Progs), Maps: len(g.Maps), Links: len(g.Links),
-		})
-	}
+	data.Loaders, data.NoLoader = loaderRoster(groups)
 	h.render(w, "loaders", data)
 }
 

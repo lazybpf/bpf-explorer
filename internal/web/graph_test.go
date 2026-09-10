@@ -208,6 +208,15 @@ func TestLoadersIndexRender(t *testing.T) {
 	if strings.Contains(out, `>loader: agent(1000)</a>`) {
 		t.Errorf("group label should not be a link\n%s", out)
 	}
+	// What a loader is is explained on the column, not in prose above the
+	// table - the page carries none, the way the other list pages do not.
+	if !strings.Contains(out, "lowest-numbered process holding an fd") {
+		t.Errorf("group column does not explain what a loader is\n%s", out)
+	}
+	// (the tab bar is a <p> too, so this looks for the prose idiom itself)
+	if strings.Contains(out, `<p class="muted">`) {
+		t.Errorf("loaders index should have no prose above its table\n%s", out)
+	}
 }
 
 // TestLoadersIndexCounts checks a non-zero maps or links count is the way into
@@ -585,5 +594,125 @@ func TestShortLoaderLabel(t *testing.T) {
 	// The no-loader group carries no prefix and must survive untouched.
 	if got := shortLoaderLabel(unattachedLabel); got != unattachedLabel {
 		t.Errorf("short label = %q, want %q unchanged", got, unattachedLabel)
+	}
+}
+
+// TestGroupByLoaderPutsNoLoaderLast checks the residual group sorts last however
+// early it is created. Groups are otherwise in first-seen order over programs
+// sorted by id, so a holderless program with the lowest id used to put the
+// no-loader group at the top of the roster, between real loaders.
+func TestGroupByLoaderPutsNoLoaderLast(t *testing.T) {
+	progs := []*pb.ProgramInfo{
+		{Id: 1, Name: "p_orphan"}, // no holder: the no-loader group, created first
+		{Id: 2, Name: "p_a", Pids: []*pb.ProcessRef{{Pid: 1000, Comm: "agent"}}},
+		{Id: 3, Name: "p_b", Pids: []*pb.ProcessRef{{Pid: 2000, Comm: "profiler"}}},
+	}
+	groups, _ := groupByLoader(progs, nil, nil, nil)
+
+	var ids []string
+	for _, g := range groups {
+		ids = append(ids, g.ID)
+	}
+	want := []string{"sg_1000", "sg_2000", unattachedGroupID}
+	if len(ids) != len(want) {
+		t.Fatalf("group order = %v, want %v", ids, want)
+	}
+	for i := range want {
+		if ids[i] != want[i] {
+			t.Fatalf("group order = %v, want %v", ids, want)
+		}
+	}
+
+	// The pickers are built from the same partition, so they end with it too.
+	choices := linkLoaderChoices(progs, []*pb.LinkInfo{{Id: 3, ProgId: 1}, {Id: 4, ProgId: 2}}, nil)
+	if len(choices) == 0 || choices[len(choices)-1].Group != unattachedGroupID {
+		t.Errorf("picker = %+v, want the no-loader group last", choices)
+	}
+}
+
+// TestLoaderRosterSplitsNoLoader checks the loaders index gets the residual
+// group apart from the loaders: the roster above the rule is processes only, so
+// the count in the heading over it counts loaders and nothing else.
+func TestLoaderRosterSplitsNoLoader(t *testing.T) {
+	progs, maps, links := sampleGraphData()
+	groups, _ := groupByLoader(progs, maps, links, nil)
+	loaders, noLoader := loaderRoster(groups)
+
+	if len(loaders) != 2 || loaders[0].ID != "sg_1000" || loaders[1].ID != "sg_2000" {
+		t.Errorf("roster = %+v, want the two loaders only", loaders)
+	}
+	if noLoader == nil {
+		t.Fatal("no-loader group missing from the roster")
+	}
+	if noLoader.ID != unattachedGroupID || noLoader.Label != unattachedLabel {
+		t.Errorf("no-loader row = %+v, want %q/%q", noLoader, unattachedGroupID, unattachedLabel)
+	}
+	// Prog 9 has no holder, and map 99 is referenced by nobody.
+	if noLoader.Progs != 1 || noLoader.Maps != 1 {
+		t.Errorf("no-loader row = %+v, want 1 program and 1 map", noLoader)
+	}
+
+	// A node where everything has a loader has no residual row at all.
+	progs[2].Pids = []*pb.ProcessRef{{Pid: 1000, Comm: "agent"}}
+	maps = maps[:2]
+	groups, _ = groupByLoader(progs, maps, links, nil)
+	if _, noLoader := loaderRoster(groups); noLoader != nil {
+		t.Errorf("no-loader row = %+v, want none when every object has a loader", noLoader)
+	}
+}
+
+// TestLoadersIndexResidualRow checks the no-loader group is rendered as the
+// residual row - marked for the rule that sets it below the loaders, and out of
+// the heading's count - while staying a live row: its counts still open the
+// filtered page behind them.
+func TestLoadersIndexResidualRow(t *testing.T) {
+	h, err := New(nil, nil)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	data := pageData{
+		Node: "node-a", Tab: "loaders",
+		Loaders:  []loaderSummary{{ID: "sg_1000", Label: "loader: agent(1000)", Progs: 2, Maps: 3, Links: 1}},
+		NoLoader: &loaderSummary{ID: unattachedGroupID, Label: unattachedLabel, Progs: 1, Maps: 2},
+	}
+	var buf strings.Builder
+	if err := h.pages["loaders"].ExecuteTemplate(&buf, "layout", data); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	out := buf.String()
+
+	if !strings.Contains(out, `<tr class="residual">`) {
+		t.Errorf("no-loader group is not marked as the residual row\n%s", out)
+	}
+	if !strings.Contains(out, `href="/nodes/node-a/maps?loader=`+unattachedGroupID+`"`) {
+		t.Errorf("residual row's maps count is not a link to the filtered page\n%s", out)
+	}
+	if !strings.Contains(out, `href="/nodes/node-a/loaders/`+unattachedGroupID+`"`) {
+		t.Errorf("residual row has no graph link\n%s", out)
+	}
+	// One loader, so the heading counts one - the residual group is not a loader.
+	if !strings.Contains(out, "loaders on node-a") || !strings.Contains(out, ">(1)<") {
+		t.Errorf("heading should count the 1 loader, not the residual group\n%s", out)
+	}
+
+	// With nothing but the residual group the roster is empty, and the empty
+	// state must not claim the node has no eBPF objects - it has some.
+	data.Loaders = nil
+	buf.Reset()
+	if err := h.pages["loaders"].ExecuteTemplate(&buf, "layout", data); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if out := buf.String(); strings.Contains(out, "(no eBPF objects)") {
+		t.Errorf("empty roster with a residual group should not say the node is empty\n%s", out)
+	}
+
+	// And an empty node says exactly that.
+	data.NoLoader = nil
+	buf.Reset()
+	if err := h.pages["loaders"].ExecuteTemplate(&buf, "layout", data); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if out := buf.String(); !strings.Contains(out, "(no eBPF objects)") {
+		t.Errorf("empty node should say so\n%s", out)
 	}
 }

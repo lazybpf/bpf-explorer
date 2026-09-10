@@ -98,10 +98,21 @@ func groupByLoader(progs []*pb.ProgramInfo, maps []*pb.MapInfo, links []*pb.Link
 	return groupsInOrder(groups, order), mapByID
 }
 
+// groupsInOrder returns the groups in first-seen order, except that the
+// no-loader group always comes last however early it was created - a program
+// with no visible holder can be the lowest-numbered one on the node. It is a
+// group but not a loader, so every roster built from this - the loaders index,
+// both pickers - can present it as the residual bucket it is rather than as
+// another process in the list.
 func groupsInOrder(groups map[string]*loaderGroupData, order []string) []*loaderGroupData {
 	out := make([]*loaderGroupData, 0, len(order))
 	for _, id := range order {
-		out = append(out, groups[id])
+		if id != unattachedGroupID {
+			out = append(out, groups[id])
+		}
+	}
+	if g, ok := groups[unattachedGroupID]; ok {
+		out = append(out, g)
 	}
 	return out
 }

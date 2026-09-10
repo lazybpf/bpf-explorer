@@ -228,6 +228,17 @@
     background: rgba(85, 255, 85, .07);
     box-shadow: inset 2px 0 0 var(--fg-hi);
   }
+  /* A row that is in the table but is not one of the things the table lists -
+     the loaders index's no-loader group, which is a group but not a process.
+     Set below the same double rule that separates sections of a page, on the
+     inset ground the page uses for what is read rather than acted on, so the
+     rows above it read as a roster of processes and this one reads as what was
+     left over. Its cells stay live: the counts still open their filtered page. */
+  tbody tr.residual > td {
+    border-top: 3px double var(--border-hi);
+    background: var(--bg-inset);
+  }
+  tbody tr.residual:hover > td { background: none; }
   /* One record read down instead of across: field names in the left column,
      values in the right. Not wrapped in .scroll - there is no third column to
      push anything sideways. */
