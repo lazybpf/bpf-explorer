@@ -20,7 +20,7 @@ const (
 // group is rendered on its own page/URL to keep a single diagram readable.
 type loaderGroupData struct {
 	ID    string // mermaid-safe id, e.g. "sg_1234" or "sg_unattached"
-	Label string // e.g. "loader: systemd(1)"
+	Label string // e.g. "systemd(1)", or the no-loader group's own words
 	Progs []*pb.ProgramInfo
 	Maps  []uint32 // referenced map ids (deduped, ordered); labels via mapByID
 	Links []*pb.LinkInfo
@@ -179,19 +179,7 @@ func holderGroup(pids []*pb.ProcessRef, hidden map[uint32]bool) (id, label strin
 		return unattachedGroupID, unattachedLabel
 	}
 	return loaderGroupID(best.GetPid()),
-		fmt.Sprintf("%s%s(%d)", loaderLabelPrefix, sanitizeLabel(best.GetComm()), best.GetPid())
-}
-
-// loaderLabelPrefix is how a group label names a loader on the loaders index,
-// where it tells a real loader apart from the no-loader row. Where the field is
-// already called "loader" - a filtered page's picker and its heading - it is
-// dropped rather than saying the word twice.
-const loaderLabelPrefix = "loader: "
-
-// shortLoaderLabel drops that prefix. The no-loader label does not carry one and
-// comes back unchanged.
-func shortLoaderLabel(label string) string {
-	return strings.TrimPrefix(label, loaderLabelPrefix)
+		fmt.Sprintf("%s(%d)", sanitizeLabel(best.GetComm()), best.GetPid())
 }
 
 // loaderGroupID names a loader by its PID. Several places have to agree on this
@@ -226,8 +214,8 @@ func parseLoaderGroup(group string) (label string, ok bool) {
 // other two filters are derived from - so there is nothing here that could
 // drift from it. Rows come back in the order they were listed in.
 //
-// Also returns the group's label, in the short form and for the same reason as
-// filterLinksByLoader, or "" when nothing on the node is in the group.
+// Also returns the group's label, or "" when nothing on the node is in the
+// group.
 func filterProgramsByLoader(progs []*pb.ProgramInfo, hidden map[uint32]bool, group string) ([]*pb.ProgramInfo, string) {
 	var out []*pb.ProgramInfo
 	var label string
@@ -236,7 +224,7 @@ func filterProgramsByLoader(progs []*pb.ProgramInfo, hidden map[uint32]bool, gro
 		if id != group {
 			continue
 		}
-		label = shortLoaderLabel(l)
+		label = l
 		out = append(out, p)
 	}
 	return out, label
@@ -244,10 +232,8 @@ func filterProgramsByLoader(progs []*pb.ProgramInfo, hidden map[uint32]bool, gro
 
 // filterLinksByLoader keeps the links belonging to one loader group, partitioned
 // exactly as groupByLoader does it, so the count on the loaders index and the
-// rows here can never disagree. Also returns the group's full label when a
-// program in it supplies one - "" when nothing on the node is in the group. The
-// label is the short form: this page's heading already says "links", and its
-// picker is already labelled "loader".
+// rows here can never disagree. Also returns the group's label when a program
+// in it supplies one - "" when nothing on the node is in the group.
 func filterLinksByLoader(progs []*pb.ProgramInfo, links []*pb.LinkInfo, hidden map[uint32]bool, group string) ([]*pb.LinkInfo, string) {
 	progGroup := make(map[uint32]string, len(progs))
 	var label string
@@ -255,7 +241,7 @@ func filterLinksByLoader(progs []*pb.ProgramInfo, links []*pb.LinkInfo, hidden m
 		id, l := loaderGroup(p, hidden)
 		progGroup[p.GetId()] = id
 		if id == group {
-			label = shortLoaderLabel(l)
+			label = l
 		}
 	}
 
@@ -286,8 +272,7 @@ func filterLinksByLoader(progs []*pb.ProgramInfo, links []*pb.LinkInfo, hidden m
 // Unlike a link, a map can be in more than one group - two loaders' programs
 // referencing the same map put it in both - so the counts down the loaders
 // index's maps column can add up to more than the node has maps. Also returns
-// the group's label, in the short form and for the same reason as
-// filterLinksByLoader, or "" when nothing on the node is in the group.
+// the group's label, or "" when nothing on the node is in the group.
 func filterMapsByLoader(progs []*pb.ProgramInfo, maps []*pb.MapInfo, hidden map[uint32]bool, group string) ([]*pb.MapInfo, string) {
 	groups, _ := groupByLoader(progs, maps, nil, hidden)
 	g := groupByID(groups, group)
@@ -305,7 +290,7 @@ func filterMapsByLoader(progs []*pb.ProgramInfo, maps []*pb.MapInfo, hidden map[
 			out = append(out, m)
 		}
 	}
-	return out, shortLoaderLabel(g.Label)
+	return out, g.Label
 }
 
 // groupByID picks one group out of a partition, or nil when the node has
@@ -330,7 +315,7 @@ func loaderChoicesFor(groups []*loaderGroupData, count func(*loaderGroupData) in
 		if n == 0 {
 			continue // nothing to narrow to
 		}
-		out = append(out, loaderChoice{Group: g.ID, Label: shortLoaderLabel(g.Label), Count: n})
+		out = append(out, loaderChoice{Group: g.ID, Label: g.Label, Count: n})
 	}
 	return out
 }
@@ -492,15 +477,16 @@ func (g graphHeading) Text() string {
 	return strings.Join(parts, " ")
 }
 
-// loaderGroupHeading splits a group label into the word and the comm the node
-// reported. The residual group's label is not a name at all - nothing in it
-// came from the node - so it stays whole and reads as the chrome it is.
+// loaderGroupHeading names a diagram page after its group. A label is bare -
+// the loaders index has a column header to say what these are, this page does
+// not - so the word is put back here, in front of the comm the node reported.
+// The residual group's label is not a name at all - nothing in it came from the
+// node - so it stays whole and reads as the chrome it is.
 func loaderGroupHeading(label string) graphHeading {
-	name := strings.TrimPrefix(label, loaderLabelPrefix)
-	if name == label {
+	if label == unattachedLabel {
 		return graphHeading{Prefix: label}
 	}
-	return graphHeading{Prefix: strings.TrimSpace(loaderLabelPrefix), Name: name}
+	return graphHeading{Prefix: "loader:", Name: label}
 }
 
 func progHeading(p *pb.ProgramInfo) graphHeading {

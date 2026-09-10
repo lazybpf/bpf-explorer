@@ -49,7 +49,7 @@ func TestPageTitle(t *testing.T) {
 		},
 		{
 			"loader graph", "loader",
-			pageData{Node: "node-a", GraphHeading: loaderGroupHeading("loader: agent(1000)")},
+			pageData{Node: "node-a", GraphHeading: loaderGroupHeading("agent(1000)")},
 			"loader: agent(1000) graph - node-a - bpf-explorer",
 		},
 		{

@@ -176,7 +176,7 @@ func loaderRoster(groups []*loaderGroupData) (loaders []loaderSummary, noLoader 
 // behind it. The programs, maps and links pages each take one.
 type loaderFilter struct {
 	Group string // group id: "sg_1234" or "sg_unattached"
-	Label string // how the loaders index names the group, without its "loader: " prefix
+	Label string // how the loaders index names the group: "agent(1000)"
 	Total int    // rows on the node before filtering, for the "all loaders" way out
 }
 

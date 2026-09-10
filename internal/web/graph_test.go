@@ -36,7 +36,7 @@ func TestGroupByLoader(t *testing.T) {
 	groups, _ := groupByLoader(progs, maps, links, nil)
 
 	agent := findGroup(groups, "sg_1000")
-	if agent == nil || agent.Label != "loader: agent(1000)" {
+	if agent == nil || agent.Label != "agent(1000)" {
 		t.Fatalf("missing/mislabelled agent group: %+v", agent)
 	}
 	if len(agent.Progs) != 1 || agent.Progs[0].GetId() != 7 {
@@ -186,7 +186,7 @@ func TestLoadersIndexRender(t *testing.T) {
 	}
 	data := pageData{
 		Node: "node-a", Tab: "loaders",
-		Loaders: []loaderSummary{{ID: "sg_1000", Label: "loader: agent(1000)", Progs: 2, Maps: 3, Links: 1}},
+		Loaders: []loaderSummary{{ID: "sg_1000", Label: "agent(1000)", Progs: 2, Maps: 3, Links: 1}},
 	}
 	var buf strings.Builder
 	if err := h.pages["loaders"].ExecuteTemplate(&buf, "layout", data); err != nil {
@@ -205,8 +205,14 @@ func TestLoadersIndexRender(t *testing.T) {
 		}
 	}
 	// The label itself is plain text: navigation belongs in the action column.
-	if strings.Contains(out, `>loader: agent(1000)</a>`) {
+	if strings.Contains(out, `>agent(1000)</a>`) {
 		t.Errorf("group label should not be a link\n%s", out)
+	}
+	// And it is the process reference alone: the column header names these
+	// groups, so a row saying "loader:" would say it a second time. The word is
+	// put back on the diagram page, whose heading has no column to lean on.
+	if !strings.Contains(out, "<td>agent(1000)</td>") {
+		t.Errorf("group cell is not the bare process reference\n%s", out)
 	}
 	// What a loader is is explained on the column, not in prose above the
 	// table - the page carries none, the way the other list pages do not.
@@ -229,10 +235,10 @@ func TestLoadersIndexCounts(t *testing.T) {
 	data := pageData{
 		Node: "node-a", Tab: "loaders",
 		Loaders: []loaderSummary{
-			{ID: "sg_1000", Label: "loader: agent(1000)", Progs: 2, Maps: 3, Links: 4},
+			{ID: "sg_1000", Label: "agent(1000)", Progs: 2, Maps: 3, Links: 4},
 			// Nothing in any column: the row the inert case is read off, so
 			// each count is checked against a zero of its own kind.
-			{ID: "sg_2000", Label: "loader: profiler(2000)"},
+			{ID: "sg_2000", Label: "profiler(2000)"},
 		},
 	}
 	var buf strings.Builder
@@ -265,7 +271,7 @@ func TestLoaderGraphRender(t *testing.T) {
 	groups, mapByID := groupByLoader(progs, maps, links, nil)
 	data := pageData{
 		Node: "node-a", Tab: "loaders",
-		GraphHeading: loaderGroupHeading("loader: agent(1000)"),
+		GraphHeading: loaderGroupHeading("agent(1000)"),
 		Mermaid:      buildGroupMermaid(findGroup(groups, "sg_1000"), mapByID, "node-a"),
 	}
 	var buf strings.Builder
@@ -295,7 +301,7 @@ func TestGraphHeadingSplit(t *testing.T) {
 		text string
 	}{
 		{
-			"loader", loaderGroupHeading(loaderLabelPrefix + "agent(1000)"),
+			"loader", loaderGroupHeading("agent(1000)"),
 			graphHeading{Prefix: "loader:", Name: "agent(1000)"},
 			"loader: agent(1000)",
 		},
@@ -569,7 +575,7 @@ func TestGroupByLoaderHeldMapIsNotAnOrphan(t *testing.T) {
 	groups, _ := groupByLoader(nil, maps, nil, nil)
 
 	falco := findGroup(groups, "sg_8347")
-	if falco == nil || falco.Label != "loader: falco(8347)" {
+	if falco == nil || falco.Label != "falco(8347)" {
 		t.Fatalf("missing/mislabelled falco group: %+v", groups)
 	}
 	if got := falco.Maps; len(got) != 1 || got[0] != 61 {
@@ -700,7 +706,7 @@ func TestLinkLoaderChoicesMatchIndexCounts(t *testing.T) {
 		if len(g.Links) != c.Count {
 			t.Errorf("%s: picker says %d links, index says %d", c.Group, c.Count, len(g.Links))
 		}
-		if shortLoaderLabel(g.Label) != c.Label {
+		if g.Label != c.Label {
 			t.Errorf("%s: picker label %q, index label %q", c.Group, c.Label, g.Label)
 		}
 	}
@@ -755,7 +761,7 @@ func TestMapLoaderChoicesMatchIndexCounts(t *testing.T) {
 		if len(g.Maps) != c.Count {
 			t.Errorf("%s: picker says %d maps, index says %d", c.Group, c.Count, len(g.Maps))
 		}
-		if shortLoaderLabel(g.Label) != c.Label {
+		if g.Label != c.Label {
 			t.Errorf("%s: picker label %q, index label %q", c.Group, c.Label, g.Label)
 		}
 	}
@@ -804,7 +810,7 @@ func TestProgramLoaderChoices(t *testing.T) {
 		if len(g.Progs) != c.Count {
 			t.Errorf("%s: picker says %d programs, index says %d", c.Group, c.Count, len(g.Progs))
 		}
-		if shortLoaderLabel(g.Label) != c.Label {
+		if g.Label != c.Label {
 			t.Errorf("%s: picker label %q, index label %q", c.Group, c.Label, g.Label)
 		}
 	}
@@ -812,24 +818,6 @@ func TestProgramLoaderChoices(t *testing.T) {
 	// With nothing on the node there is nothing to narrow.
 	if got := programLoaderChoices(nil, nil); len(got) != 0 {
 		t.Errorf("choices with no programs = %+v, want none", got)
-	}
-}
-
-// TestShortLoaderLabel checks the two spellings stay in step: the loaders index
-// keeps the prefix that tells a loader from the no-loader row, and everything
-// under a field already called "loader" drops it.
-func TestShortLoaderLabel(t *testing.T) {
-	progs, _, _ := sampleGraphData()
-	_, label := loaderGroup(progs[0], nil)
-	if label != "loader: agent(1000)" {
-		t.Errorf("index label = %q, want the prefixed form", label)
-	}
-	if got := shortLoaderLabel(label); got != "agent(1000)" {
-		t.Errorf("short label = %q, want the prefix dropped", got)
-	}
-	// The no-loader group carries no prefix and must survive untouched.
-	if got := shortLoaderLabel(unattachedLabel); got != unattachedLabel {
-		t.Errorf("short label = %q, want %q unchanged", got, unattachedLabel)
 	}
 }
 
@@ -908,7 +896,7 @@ func TestLoadersIndexResidualRow(t *testing.T) {
 	}
 	data := pageData{
 		Node: "node-a", Tab: "loaders",
-		Loaders:  []loaderSummary{{ID: "sg_1000", Label: "loader: agent(1000)", Progs: 2, Maps: 3, Links: 1}},
+		Loaders:  []loaderSummary{{ID: "sg_1000", Label: "agent(1000)", Progs: 2, Maps: 3, Links: 1}},
 		NoLoader: &loaderSummary{ID: unattachedGroupID, Label: unattachedLabel, Progs: 1, Maps: 2},
 	}
 	var buf strings.Builder

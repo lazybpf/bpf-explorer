@@ -24,7 +24,7 @@ func TestProcessRefFormatIsConsistent(t *testing.T) {
 	if len(groups) != 1 {
 		t.Fatalf("groupByLoader returned %d groups, want 1", len(groups))
 	}
-	if got, want := groups[0].Label, "loader: agent(1000)"; got != want {
+	if got, want := groups[0].Label, "agent(1000)"; got != want {
 		t.Errorf("group label = %q, want %q", got, want)
 	}
 
