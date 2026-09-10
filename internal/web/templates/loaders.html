@@ -6,16 +6,16 @@
 <table>
   {{/* What a loader is, and what the row under the rule is, belong on the
        column they describe: this page's prose ran longer than its table. */}}
-  <thead><tr><th title="the process that loaded these objects: a program's loader is the lowest-numbered process holding an fd to it. The row below the rule is not a loader - it collects everything no live process holds an fd to">group</th><th title="the programs this group loaded: those whose lowest-numbered holder is this process. A program has one loader, so unlike the maps column this one adds up to the programs on the node">programs</th><th title="the maps this group's programs reference, plus the ones it holds an open fd to with nothing using them yet. A map two loaders share is counted under each of them, so this column can add up to more maps than the node has">maps</th><th>links</th><th></th></tr></thead>
+  <thead><tr><th title="the process that loaded these objects: a program's loader is the lowest-numbered process holding an fd to it. The row below the rule is not a loader - it collects everything no live process holds an fd to">group</th><th>links</th><th title="the programs this group loaded: those whose lowest-numbered holder is this process. A program has one loader, so unlike the maps column this one adds up to the programs on the node">programs</th><th title="the maps this group's programs reference, plus the ones it holds an open fd to with nothing using them yet. A map two loaders share is counted under each of them, so this column can add up to more maps than the node has">maps</th><th></th></tr></thead>
   <tbody>
   {{range .Loaders}}
     <tr>
       <td>{{.Label}}</td>
       {{/* Every count is the way into its own tab, narrowed to this group. A
            zero is left inert - there is nothing to open. */}}
+      <td>{{if .Links}}<a href="/nodes/{{$.Node}}/links?loader={{.ID}}" title="the {{.Links}} links attaching this group's programs, listed with their types and attach points">{{.Links}}</a>{{else}}<span class="muted">0</span>{{end}}</td>
       <td>{{if .Progs}}<a href="/nodes/{{$.Node}}/programs?loader={{.ID}}" title="the {{.Progs}} programs this group loaded, listed with their types, maps and holders">{{.Progs}}</a>{{else}}<span class="muted">0</span>{{end}}</td>
       <td>{{if .Maps}}<a href="/nodes/{{$.Node}}/maps?loader={{.ID}}" title="the {{.Maps}} maps this group's programs reference, listed with their types, sizes and holders">{{.Maps}}</a>{{else}}<span class="muted">0</span>{{end}}</td>
-      <td>{{if .Links}}<a href="/nodes/{{$.Node}}/links?loader={{.ID}}" title="the {{.Links}} links attaching this group's programs, listed with their types and attach points">{{.Links}}</a>{{else}}<span class="muted">0</span>{{end}}</td>
       <td>
         <a href="/nodes/{{$.Node}}/loaders/{{.ID}}" target="_blank" rel="noopener" title="graph: everything this group loaded - its programs, maps and links (new tab)">graph</a>
       </td>
@@ -29,9 +29,9 @@
   {{with .NoLoader}}
     <tr class="residual">
       <td class="muted" title="no live process holds an fd to these objects: they are pinned to bpffs, or held open only by the link attaching them. Nothing here says which process loaded them - that process has closed its fd or exited">{{.Label}}</td>
+      <td>{{if .Links}}<a href="/nodes/{{$.Node}}/links?loader={{.ID}}" title="the {{.Links}} links in this group, listed with their types and attach points">{{.Links}}</a>{{else}}<span class="muted">0</span>{{end}}</td>
       <td>{{if .Progs}}<a href="/nodes/{{$.Node}}/programs?loader={{.ID}}" title="the {{.Progs}} programs in this group, listed with their types, maps and holders">{{.Progs}}</a>{{else}}<span class="muted">0</span>{{end}}</td>
       <td>{{if .Maps}}<a href="/nodes/{{$.Node}}/maps?loader={{.ID}}" title="the {{.Maps}} maps in this group, listed with their types, sizes and holders">{{.Maps}}</a>{{else}}<span class="muted">0</span>{{end}}</td>
-      <td>{{if .Links}}<a href="/nodes/{{$.Node}}/links?loader={{.ID}}" title="the {{.Links}} links in this group, listed with their types and attach points">{{.Links}}</a>{{else}}<span class="muted">0</span>{{end}}</td>
       <td>
         <a href="/nodes/{{$.Node}}/loaders/{{.ID}}" target="_blank" rel="noopener" title="graph: the programs, maps and links in this group (new tab)">graph</a>
       </td>
