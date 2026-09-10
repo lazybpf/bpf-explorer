@@ -469,11 +469,65 @@ func mapGroupData(id uint32, progs []*pb.ProgramInfo, links []*pb.LinkInfo) *loa
 	return g
 }
 
-func mapLabel(id uint32, m *pb.MapInfo) string {
-	if m == nil || m.GetName() == "" {
-		return fmt.Sprintf("map %d", id)
+// graphHeading is a diagram page's heading with the name kept apart from the
+// words around it. The h2 is uppercase chrome, and a name the node handed us -
+// a loader's comm, a program's or a map's name - has to survive that as it was
+// written, since it is what the reader matches against the list they came from.
+// Prefix is what this page is called, Suffix the kernel's word for the kind.
+type graphHeading struct {
+	Prefix string // "loader:", "prog 5:", "map 12:"
+	Name   string // "agent(1000)", "trace_conn", "m_a"
+	Suffix string // "(kprobe)", "(Hash)"
+}
+
+// Text puts the parts back into one string, for somewhere that takes no markup:
+// the <title>, where the case distinction cannot be drawn anyway.
+func (g graphHeading) Text() string {
+	parts := make([]string, 0, 3)
+	for _, p := range []string{g.Prefix, g.Name, g.Suffix} {
+		if p != "" {
+			parts = append(parts, p)
+		}
 	}
-	return fmt.Sprintf("map %d: %s (%s)", id, sanitizeLabel(m.GetName()), sanitizeLabel(m.GetType()))
+	return strings.Join(parts, " ")
+}
+
+// loaderGroupHeading splits a group label into the word and the comm the node
+// reported. The residual group's label is not a name at all - nothing in it
+// came from the node - so it stays whole and reads as the chrome it is.
+func loaderGroupHeading(label string) graphHeading {
+	name := strings.TrimPrefix(label, loaderLabelPrefix)
+	if name == label {
+		return graphHeading{Prefix: label}
+	}
+	return graphHeading{Prefix: strings.TrimSpace(loaderLabelPrefix), Name: name}
+}
+
+func progHeading(p *pb.ProgramInfo) graphHeading {
+	return graphHeading{
+		Prefix: fmt.Sprintf("prog %d:", p.GetId()),
+		Name:   sanitizeLabel(p.GetName()),
+		Suffix: fmt.Sprintf("(%s)", sanitizeLabel(p.GetType())),
+	}
+}
+
+// mapHeading is the same split for a map. A map with no name is all prefix:
+// there is nothing to keep the case of.
+func mapHeading(id uint32, m *pb.MapInfo) graphHeading {
+	if m == nil || m.GetName() == "" {
+		return graphHeading{Prefix: fmt.Sprintf("map %d", id)}
+	}
+	return graphHeading{
+		Prefix: fmt.Sprintf("map %d:", id),
+		Name:   sanitizeLabel(m.GetName()),
+		Suffix: fmt.Sprintf("(%s)", sanitizeLabel(m.GetType())),
+	}
+}
+
+// mapLabel is that heading as one string, for a mermaid node label - the
+// diagram draws its own text and has no chrome to keep a name out of.
+func mapLabel(id uint32, m *pb.MapInfo) string {
+	return mapHeading(id, m).Text()
 }
 
 // sanitizeLabel strips characters that would break a quoted mermaid label or

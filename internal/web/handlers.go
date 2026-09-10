@@ -123,9 +123,11 @@ type pageData struct {
 	MapsByID    map[uint32]*pb.MapInfo // id -> map, for program map-ref tooltips
 	Dump        *dumpView
 	ProgDump    *progDumpView
-	Mermaid     template.HTML   // dependency diagram definition
-	GraphLabel  string          // heading for a diagram page: a loader, a program or a map
-	Loaders     []loaderSummary // loader roster for the loaders index page
+	Mermaid     template.HTML // dependency diagram definition
+	// GraphHeading names a diagram page's subject - a loader, a program or a
+	// map - with the name it was handed kept apart from the words around it.
+	GraphHeading graphHeading
+	Loaders      []loaderSummary // loader roster for the loaders index page
 	// NoLoader is that page's residual group - everything no live process
 	// holds an fd to - kept out of Loaders so the roster, and the count in the
 	// heading over it, are processes only.
@@ -592,7 +594,7 @@ func (h *Handlers) loaderGraph(w http.ResponseWriter, r *http.Request) {
 	want := r.PathValue("group")
 	for _, g := range groups {
 		if g.ID == want {
-			data.GraphLabel = g.Label
+			data.GraphHeading = loaderGroupHeading(g.Label)
 			data.Mermaid = buildGroupMermaid(g, mapByID, node)
 			h.render(w, "loader", data)
 			return
@@ -633,7 +635,7 @@ func (h *Handlers) programGraph(w http.ResponseWriter, r *http.Request) {
 		mapByID[m.GetId()] = m
 	}
 	// Same shape as the diagram's own node label, and as the map page's heading.
-	data.GraphLabel = fmt.Sprintf("prog %d: %s (%s)", prog.GetId(), prog.GetName(), prog.GetType())
+	data.GraphHeading = progHeading(prog)
 	data.Mermaid = buildGroupMermaid(programGroupData(prog, links), mapByID, node)
 	h.render(w, "loader", data)
 }
@@ -667,7 +669,7 @@ func (h *Handlers) mapGraph(w http.ResponseWriter, r *http.Request) {
 		h.render(w, "loader", data)
 		return
 	}
-	data.GraphLabel = mapLabel(m.GetId(), m)
+	data.GraphHeading = mapHeading(m.GetId(), m)
 	data.Mermaid = buildGroupMermaid(mapGroupData(uint32(id), progs, links), mapByID, node)
 	h.render(w, "loader", data)
 }
@@ -810,10 +812,10 @@ func pageTitle(page string, data pageData) string {
 			what = objectTitle("prog", d.ID, d.Name) + " xlated"
 		}
 	case "loader":
-		// GraphLabel already names the subject: a loader, a program or a map.
+		// The heading already names the subject: a loader, a program or a map.
 		what = "graph"
-		if data.GraphLabel != "" {
-			what = data.GraphLabel + " graph"
+		if h := data.GraphHeading.Text(); h != "" {
+			what = h + " graph"
 		}
 	// Narrowed to one loader, a list page is about that loader, and a bookmark
 	// or a history entry has to say which.

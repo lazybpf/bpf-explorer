@@ -265,8 +265,8 @@ func TestLoaderGraphRender(t *testing.T) {
 	groups, mapByID := groupByLoader(progs, maps, links, nil)
 	data := pageData{
 		Node: "node-a", Tab: "loaders",
-		GraphLabel: "loader: agent(1000)",
-		Mermaid:    buildGroupMermaid(findGroup(groups, "sg_1000"), mapByID, "node-a"),
+		GraphHeading: loaderGroupHeading("loader: agent(1000)"),
+		Mermaid:      buildGroupMermaid(findGroup(groups, "sg_1000"), mapByID, "node-a"),
 	}
 	var buf strings.Builder
 	if err := h.pages["loader"].ExecuteTemplate(&buf, "layout", data); err != nil {
@@ -279,6 +279,58 @@ func TestLoaderGraphRender(t *testing.T) {
 	}
 	if !strings.Contains(out, "mermaid.initialize") {
 		t.Errorf("expected mermaid renderer script\n%s", out)
+	}
+}
+
+// TestGraphHeadingSplit: a diagram heading keeps the name the node handed us
+// apart from the words the page puts around it, so the uppercase h2 can leave
+// that name in the case the list it was opened from spells it. Text() puts the
+// parts back for the <title>, which takes no markup and so cannot draw the
+// distinction anyway.
+func TestGraphHeadingSplit(t *testing.T) {
+	tests := []struct {
+		name string
+		got  graphHeading
+		want graphHeading
+		text string
+	}{
+		{
+			"loader", loaderGroupHeading(loaderLabelPrefix + "agent(1000)"),
+			graphHeading{Prefix: "loader:", Name: "agent(1000)"},
+			"loader: agent(1000)",
+		},
+		{
+			// The residual group is not a loader, and nothing in its label came
+			// from the node - so none of it is a name to keep the case of.
+			"residual", loaderGroupHeading(unattachedLabel),
+			graphHeading{Prefix: unattachedLabel},
+			unattachedLabel,
+		},
+		{
+			"prog", progHeading(&pb.ProgramInfo{Id: 7, Name: "p_a", Type: "XDP"}),
+			graphHeading{Prefix: "prog 7:", Name: "p_a", Suffix: "(XDP)"},
+			"prog 7: p_a (XDP)",
+		},
+		{
+			"map", mapHeading(12, &pb.MapInfo{Id: 12, Name: "m_a", Type: "Hash"}),
+			graphHeading{Prefix: "map 12:", Name: "m_a", Suffix: "(Hash)"},
+			"map 12: m_a (Hash)",
+		},
+		{
+			"unnamed map", mapHeading(12, nil),
+			graphHeading{Prefix: "map 12"},
+			"map 12",
+		},
+	}
+	for _, tc := range tests {
+		if tc.got != tc.want {
+			t.Errorf("%s heading = %+v, want %+v", tc.name, tc.got, tc.want)
+		}
+		// mapLabel is this heading as one string, and the mermaid node labels
+		// are built from it: the split must not change what the diagram says.
+		if got := tc.got.Text(); got != tc.text {
+			t.Errorf("%s Text() = %q, want %q", tc.name, got, tc.text)
+		}
 	}
 }
 

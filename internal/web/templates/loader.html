@@ -2,7 +2,10 @@
 {{template "nodebar" .}}
 
 {{/* No back link: the tab bar above marks the loaders tab as the way up. */}}
-<h2>{{.GraphLabel}}</h2>
+{{/* The name sits in its own span so the uppercase h2 leaves it alone; the
+     words around it are the page's own and are chrome like any heading. */}}
+{{$h := .GraphHeading}}
+<h2>{{$h.Prefix}}{{with $h.Name}} <span class="name">{{.}}</span>{{end}}{{with $h.Suffix}} {{.}}{{end}}</h2>
 <p class="muted">
   links attach programs; programs reference maps.
   Shapes: [ programs ] &nbsp; ( maps ) &nbsp; &lt; links &gt;.
