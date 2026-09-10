@@ -3,6 +3,7 @@ package web
 import (
 	"context"
 	"net/http"
+	"net/url"
 	"time"
 
 	pb "github.com/lazybpf/bpf-explorer/gen/bpfinspectorv1"
@@ -22,12 +23,16 @@ func cgroupHelp(mode string) string { return cgroupModeHelp[mode] }
 
 // nodeDetails shows the node's own configuration: the kernel, the cgroup layout
 // its containers are accounted in, and the processes that create them. It is the
-// context the other tabs are read against - a pid or a cgroup id out of a map
+// context the object tabs are read against - a pid or a cgroup id out of a map
 // only becomes a container through these - and it is the first place to look
 // when resolution comes out wrong on one node and right on another.
+//
+// It sits under utils with the lookups, which are the same kind of thing: a
+// question about the node rather than a list of what is loaded on it. It is the
+// one of them that answers without being asked a number first.
 func (h *Handlers) nodeDetails(w http.ResponseWriter, r *http.Request) {
 	node := r.PathValue("node")
-	data := pageData{Node: node, Tab: "node"}
+	data := pageData{Node: node, Tab: "utils", Util: "node"}
 	data.Nodes, _ = h.nodes()
 
 	conn, err := h.dial(node)
@@ -52,4 +57,11 @@ func (h *Handlers) nodeDetails(w http.ResponseWriter, r *http.Request) {
 	}
 	data.NodeInfo = info
 	h.render(w, "node", data)
+}
+
+// nodeMoved forwards the page's old top-level path. It was a tab of its own
+// until it moved in beside the lookups, and that URL is in bookmarks, in
+// history and in whatever anyone pasted it into.
+func (h *Handlers) nodeMoved(w http.ResponseWriter, r *http.Request) {
+	http.Redirect(w, r, "/nodes/"+url.PathEscape(r.PathValue("node"))+"/utils/node", http.StatusFound)
 }

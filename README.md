@@ -81,8 +81,8 @@ helpers are highlighted:
 ![bpf-explorer xlated tab showing the translated eBPF bytecode of the lima_ticker program](README/bpf-explorer-program-xlated.png)
 
 These are two views. There are more: maps and their contents, program details,
-links, the trace log for each node, and the `utils` lookups. Each one has its
-own tab. Run the tool to see them.
+links, the trace log for each node, and the `utils` tab. Run the tool to see
+them.
 
 ## Quick start
 
@@ -126,39 +126,6 @@ a wrap toggle.
 > Reading `trace_pipe` drains the node's single global trace buffer, so anything
 > else tailing that pipe will not see the lines the page consumes. The agent
 > keeps one reader shared by all viewers, open only while someone is streaming.
-
-## Utils: inode and pid lookup
-
-Maps are full of raw numbers. The `utils` tab turns two of them back into
-something you can read, per node:
-
-- **inode -> path.** Programs often store an inode number instead of a path, and
-  the kernel has no call to turn one back. So the page offers two searches.
-  **look up** is the fast one: it checks the files that processes have open right
-  now, and answers in milliseconds. **walk filesystem** is the slow one: it
-  searches the disk, so it can also find a file nothing has open, plus every hard
-  link to it. Directories count as answers too, which is how a
-  `bpf_get_current_cgroup_id()` value resolves to a cgroup path (walk under
-  `/sys/fs/cgroup`). Every hit names the device it was found on and the processes
-  holding it.
-- **pid -> process.** comm, state, ppid, uid, command line, exe and the cgroup
-  path - which on a Kubernetes node tells you the pod. The pid row also carries
-  the number the process goes by inside its own pid namespace, which is what
-  `ps` prints for it in the container. Then the namespaces it is in, by the same
-  inode numbers `lsns` prints: two pids sharing a number are in one container,
-  and a namespace pid 1 is not in is marked as the process's own.
-
-Both read `/proc` on the node, so they see every process on the host and the
-host's filesystem.
-
-> [!IMPORTANT]
-> A `look up` miss only means that no process holds the file at this moment. It
-> does not mean the file is gone - that is the question the walk answers.
->
-> An inode number is unique only inside one filesystem, so the same number can
-> belong to different files on different disks. That is why every hit names its
-> device, and why you can narrow a search to one `major:minor` device or one
-> directory.
 
 ## Cleanup
 

@@ -9,6 +9,8 @@ import (
 	"html/template"
 	"log"
 	"net/http"
+	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -60,9 +62,6 @@ func New(disc discovery.Discoverer, hiddenLoaders map[uint32]bool) (*Handlers, e
 func (h *Handlers) Router() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /{$}", h.index)
-	// The node itself, before the objects on it: what the agent can see of the
-	// kernel, the cgroup layout and the container runtime.
-	mux.HandleFunc("GET /nodes/{node}/node", h.nodeDetails)
 	mux.HandleFunc("GET /nodes/{node}/maps", h.maps)
 	mux.HandleFunc("GET /nodes/{node}/maps/{id}", h.maps)
 	mux.HandleFunc("GET /nodes/{node}/programs", h.programs)
@@ -79,10 +78,16 @@ func (h *Handlers) Router() http.Handler {
 	mux.HandleFunc("GET /nodes/{node}/tracelog/stream", h.tracelogStream)
 	// One route per utility, under a tab that is a section rather than a page.
 	// The bare path redirects, so a link from before the split still lands on
-	// the lookup it named.
+	// the lookup it named. The node itself is the first of them: what the agent
+	// can see of the kernel, the cgroup layout and the container runtime, which
+	// is a question about the node rather than a list of what is loaded on it.
 	mux.HandleFunc("GET /nodes/{node}/utils", h.utils)
+	mux.HandleFunc("GET /nodes/{node}/utils/node", h.nodeDetails)
 	mux.HandleFunc("GET /nodes/{node}/utils/pid", h.utilPID)
 	mux.HandleFunc("GET /nodes/{node}/utils/inode", h.utilInode)
+	// That page had a tab of its own until it moved in beside the lookups, and
+	// its old path is still in bookmarks and history.
+	mux.HandleFunc("GET /nodes/{node}/node", h.nodeMoved)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { w.Write([]byte("ok")) })
 	return mux
 }
@@ -98,7 +103,7 @@ type pageData struct {
 	Node  string
 	Tab   string
 	// Util names the utility within the utils tab the way Tab names the tab:
-	// "pid", "inode". Empty on every page outside that section.
+	// "node", "pid", "inode". Empty on every page outside that section.
 	Util     string
 	Err      string
 	Maps     []*pb.MapInfo
@@ -126,7 +131,8 @@ type pageData struct {
 	// heading over it, are processes only.
 	NoLoader *loaderSummary
 	// NodeInfo is the node's own configuration - kernel, cgroups, container
-	// runtime - for the node tab. Node above is the name; this is the machine.
+	// runtime - for the node page under utils. Node above is the name; this is
+	// the machine.
 	NodeInfo *pb.DescribeNodeResponse
 	// One field per utility under the utils tab, each set only by its own
 	// handler: the utilities share the tab, not a model.
@@ -195,13 +201,29 @@ type progDumpView struct {
 	Note      string
 }
 
-func (h *Handlers) index(w http.ResponseWriter, _ *http.Request) {
-	// Nothing is selected yet, so the picker lands on the node tab: the first
-	// entry in the bar, and the one that says what the node is before anything
-	// loaded on it is read against that.
-	data := pageData{Tab: "node"}
-	nodes, _ := h.nodes()
-	data.Nodes = nodes
+// defaultTab is where a node opens when nothing has said which of its tabs to
+// show: the most of a node one view can give - everything loaded on it, grouped
+// by the process that put it there. What the node itself is waits under utils,
+// where it is looked up rather than landed on.
+const defaultTab = "loaders"
+
+// index opens the first node rather than asking which. Most clusters the tool
+// is pointed at have one node, and a page whose only content is a row of
+// buttons that the next page carries anyway is a click asking to be skipped.
+// The picker is in that next page's header, so nothing is lost by not stopping
+// here. With no node to open there is something to say, and only then.
+func (h *Handlers) index(w http.ResponseWriter, r *http.Request) {
+	nodes, err := h.nodes()
+	if len(nodes) > 0 {
+		http.Redirect(w, r, "/nodes/"+url.PathEscape(nodes[0])+"/"+defaultTab, http.StatusFound)
+		return
+	}
+	data := pageData{Tab: defaultTab, Nodes: nodes}
+	// Nothing found and nothing asked are different answers, and the page's
+	// advice - check the DaemonSet - fits only the first.
+	if err != nil {
+		data.Err = err.Error()
+	}
 	h.render(w, "index", data)
 }
 
@@ -687,7 +709,12 @@ func findProg(progs []*pb.ProgramInfo, id uint32) *pb.ProgramInfo {
 	return nil
 }
 
-// nodes returns the sorted node names of discovered agents.
+// nodes returns the sorted node names of discovered agents. The sort is this
+// function's: the Kubernetes discoverer returns one endpoint per agent pod in
+// whatever order the API listed the pods, which is by pod name - a generated
+// suffix - and so is neither node order nor stable between calls. The picker
+// would reshuffle on every page load, and "the first node" the index opens
+// would be a different one each time.
 func (h *Handlers) nodes() ([]string, error) {
 	eps, err := h.disc.Endpoints()
 	if err != nil {
@@ -697,6 +724,7 @@ func (h *Handlers) nodes() ([]string, error) {
 	for _, e := range eps {
 		names = append(names, e.Node)
 	}
+	sort.Strings(names)
 	return names, nil
 }
 
@@ -734,11 +762,12 @@ func (h *Handlers) render(w http.ResponseWriter, page string, data pageData) {
 // not be painted as the page you are on.
 var subPages = map[string]bool{"mapdump": true, "progdump": true, "loader": true}
 
-// nodeLinkTitle names where a node button in the picker goes. Every tab but one
-// is a view of something on the node - "maps on node-a" - while the node tab is
-// the node itself, which that wording would turn into "node on node-a".
-func nodeLinkTitle(tab, node string) string {
-	if tab == "node" {
+// nodeLinkTitle names where a node button in the picker goes. Every tab is a
+// view of something on the node - "maps on node-a" - except the node page under
+// utils, which is the node itself; that wording would turn it into "utils on
+// node-a" and lose what the button actually opens.
+func nodeLinkTitle(tab, util, node string) string {
+	if tab == "utils" && util == "node" {
 		return node + " itself: kernel, cgroups, container runtime"
 	}
 	return tab + " on " + node

@@ -2,6 +2,7 @@ package web
 
 import (
 	"bytes"
+	"errors"
 	"html"
 	"net/http"
 	"net/http/httptest"
@@ -1151,4 +1152,119 @@ func listingText(t *testing.T, page string) string {
 	text := strings.ReplaceAll(inner[:end], "</div>", "\n")
 	text = tagPattern.ReplaceAllString(text, "")
 	return html.UnescapeString(strings.TrimSuffix(text, "\n"))
+}
+
+// fakeDisc answers with a fixed set of endpoints, in the order it was given
+// them: the Kubernetes discoverer returns pods in API order, so node names do
+// not arrive sorted, and a discoverer can fail outright.
+type fakeDisc struct {
+	eps []discovery.Endpoint
+	err error
+}
+
+func (f fakeDisc) Endpoints() ([]discovery.Endpoint, error) { return f.eps, f.err }
+
+// TestIndexOpensTheFirstNode: the index has nothing to show that the next page
+// does not carry in its header, so it opens a node instead of asking for one -
+// the first by name, whatever order the discoverer listed them in.
+func TestIndexOpensTheFirstNode(t *testing.T) {
+	disc := fakeDisc{eps: []discovery.Endpoint{
+		{Node: "node-c", Addr: "127.0.0.1:3"},
+		{Node: "node-a", Addr: "127.0.0.1:1"},
+		{Node: "node-b", Addr: "127.0.0.1:2"},
+	}}
+	h, err := New(disc, nil)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	rec := httptest.NewRecorder()
+	h.Router().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
+	if rec.Code != http.StatusFound {
+		t.Errorf("GET / = %d, want %d", rec.Code, http.StatusFound)
+	}
+	if got := rec.Header().Get("Location"); got != "/nodes/node-a/loaders" {
+		t.Errorf("GET / opened %q, want %q", got, "/nodes/node-a/loaders")
+	}
+
+	// The same sort orders the picker, which would otherwise reshuffle between
+	// page loads.
+	rec = httptest.NewRecorder()
+	h.render(rec, "maps", pageData{Node: "node-a", Tab: "maps", Nodes: mustNodes(t, h)})
+	out := rec.Body.String()
+	if i, j := strings.Index(out, ">node-a<"), strings.Index(out, ">node-c<"); i > j {
+		t.Errorf("expected the picker in name order\n%s", out)
+	}
+}
+
+// TestIndexWithNoAgents: with nothing to open the index is the page that says
+// so, and says what to check.
+func TestIndexWithNoAgents(t *testing.T) {
+	h, err := New(fakeDisc{}, nil)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	rec := httptest.NewRecorder()
+	h.Router().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("GET / = %d, want %d", rec.Code, http.StatusOK)
+	}
+	out := rec.Body.String()
+	for _, want := range []string{"no agents discovered", "found no agent pods", "--agents=node=host:port"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("expected the empty index to say %q\n%s", want, out)
+		}
+	}
+}
+
+// TestIndexDiscoveryError: nothing found and nothing asked are different
+// answers. A discoverer that failed cannot say the cluster has no agents, so
+// the page reports the failure instead of advice about the DaemonSet.
+func TestIndexDiscoveryError(t *testing.T) {
+	h, err := New(fakeDisc{err: errors.New("list pods: forbidden")}, nil)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	rec := httptest.NewRecorder()
+	h.Router().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
+
+	out := rec.Body.String()
+	if !strings.Contains(out, "list pods: forbidden") {
+		t.Errorf("expected the discovery error on the page\n%s", out)
+	}
+	if strings.Contains(out, "found no agent pods") {
+		t.Errorf("a failed lookup is not an empty cluster\n%s", out)
+	}
+}
+
+// TestTabBarLeadsWithTheLandingTab keeps the bar and the index in step: a node
+// opens on defaultTab, so that is the tab the bar starts with. An active tab
+// in the middle of the row reads as one you clicked into from the left of it.
+func TestTabBarLeadsWithTheLandingTab(t *testing.T) {
+	h, err := New(fakeDisc{}, nil)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	rec := httptest.NewRecorder()
+	h.render(rec, "maps", pageData{Node: "node-a", Tab: "maps"})
+
+	out := rec.Body.String()
+	bar := out[strings.Index(out, `<p class="tabs">`):]
+	first := regexp.MustCompile(`href="([^"]+)"`).FindStringSubmatch(bar)
+	if first == nil {
+		t.Fatalf("no tabs in the bar\n%s", out)
+	}
+	if want := "/nodes/node-a/" + defaultTab; first[1] != want {
+		t.Errorf("the bar starts with %q, want %q - the tab a node opens on\n%s", first[1], want, out)
+	}
+}
+
+func mustNodes(t *testing.T, h *Handlers) []string {
+	t.Helper()
+	names, err := h.nodes()
+	if err != nil {
+		t.Fatalf("nodes: %v", err)
+	}
+	return names
 }

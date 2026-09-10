@@ -8,10 +8,11 @@
          imply "same page, other node". A utility does carry across: it is a
          question, not an object, so the same one is asked of the next node.
 
-         With nothing selected yet - the index - the tab is the node tab, so
-         these land on what each node is before anything on it is read. */}}
+         With nothing selected yet - the index - the tab is the loaders tab, so
+         these land on everything loaded on a node, grouped by what put it
+         there. */}}
     {{range $n := .Nodes}}
-      <a class="{{if eq $n $node}}active{{end}}" href="/nodes/{{$n}}/{{$tab}}{{with $util}}/{{.}}{{end}}" title="{{nodeLinkTitle $tab $n}}">{{$n}}</a>
+      <a class="{{if eq $n $node}}active{{end}}" href="/nodes/{{$n}}/{{$tab}}{{with $util}}/{{.}}{{end}}" title="{{nodeLinkTitle $tab $util $n}}">{{$n}}</a>
     {{end}}
   {{else}}
     <span class="muted">no agents discovered</span>
@@ -22,13 +23,13 @@
      the way back to the list, so it must not claim to be the page you are on.
      That marking is what a separate "all maps" back link used to be. */}}
 <p class="tabs">
-  {{/* The node itself first: the kernel, cgroups and runtime everything in the
-       tabs after it has to be read against. */}}
-  <a class="{{tabClass .Tab .Sub "node"}}" href="/nodes/{{.Node}}/node">node</a>
+  {{/* loaders leads because it is where a node opens: the tab you are already
+       on should be the one the bar starts with, and it is the whole node in one
+       view - the three lists after it are that view taken apart by object. */}}
+  <a class="{{tabClass .Tab .Sub "loaders"}}" href="/nodes/{{.Node}}/loaders">loaders</a>
   <a class="{{tabClass .Tab .Sub "maps"}}" href="/nodes/{{.Node}}/maps">maps</a>
   <a class="{{tabClass .Tab .Sub "programs"}}" href="/nodes/{{.Node}}/programs">programs</a>
   <a class="{{tabClass .Tab .Sub "links"}}" href="/nodes/{{.Node}}/links">links</a>
-  <a class="{{tabClass .Tab .Sub "loaders"}}" href="/nodes/{{.Node}}/loaders">loaders</a>
   <a class="{{tabClass .Tab .Sub "tracelog"}}" href="/nodes/{{.Node}}/tracelog">tracelog</a>
   <a class="{{tabClass .Tab .Sub "utils"}}" href="/nodes/{{.Node}}/utils">utils</a>
 </p>
@@ -41,11 +42,17 @@
      its own and this row is how you get between them. A utility added later is
      one more entry here.
 
+     The node itself leads: it is the only one that answers without being asked
+     a number, which is why it has no arrow in its name and why the section's
+     bare URL lands on it. The lookups after it turn one number into one thing.
+
      ASCII arrows, not &rarr;: the display face has no glyph for it, so the
      browser substitutes another font for that one character and it lands
      misaligned in a row of monospace. */}}
 {{define "utilnav"}}
 <p class="tabs subtabs">
+  <a class="{{tabClass .Util false "node"}}" href="/nodes/{{.Node}}/utils/node"
+     title="what the node itself is: kernel, cgroups, container runtime">node</a>
   <a class="{{tabClass .Util false "pid"}}" href="/nodes/{{.Node}}/utils/pid"
      title="describe a process by its pid">pid -&gt; process</a>
   <a class="{{tabClass .Util false "inode"}}" href="/nodes/{{.Node}}/utils/inode"

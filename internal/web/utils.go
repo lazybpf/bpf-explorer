@@ -17,10 +17,23 @@ import (
 // says which lookup was meant rather than being dropped on the way.
 func (h *Handlers) utils(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
-	// pid is the section's default, and a link carrying both numbers was a pid
-	// lookup keeping an inode in a hidden field.
-	util := "pid"
-	if strings.TrimSpace(q.Get("pid")) == "" && strings.TrimSpace(q.Get("inode")) != "" {
+	// The node page is the default: it is the one utility that answers without
+	// being asked a number first, so a bare click lands on something to read
+	// rather than on an empty form.
+	util := "node"
+	switch {
+	// A number names the lookup outright. The old page carried the pid as the
+	// lookup and the inode in a hidden field, so a filled-in pid wins over an
+	// inode that came along with it.
+	case strings.TrimSpace(q.Get("pid")) != "":
+		util = "pid"
+	case strings.TrimSpace(q.Get("inode")) != "":
+		util = "inode"
+	// A form submitted empty carries its field without a number, which still
+	// says which lookup was meant.
+	case q.Has("pid"):
+		util = "pid"
+	case q.Has("inode"):
 		util = "inode"
 	}
 	target := "/nodes/" + url.PathEscape(r.PathValue("node")) + "/utils/" + util

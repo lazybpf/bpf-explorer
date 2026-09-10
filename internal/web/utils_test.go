@@ -19,7 +19,12 @@ func TestUtilsRedirects(t *testing.T) {
 	router := h.Router()
 
 	tests := []struct{ name, from, want string }{
-		{"bare path", "/nodes/node-a/utils", "/nodes/node-a/utils/pid"},
+		// Nothing asked: the node page, the one utility that answers without a
+		// number.
+		{"bare path", "/nodes/node-a/utils", "/nodes/node-a/utils/node"},
+		// A form submitted empty still names the lookup it belongs to.
+		{"empty pid form", "/nodes/node-a/utils?pid=", "/nodes/node-a/utils/pid?pid="},
+		{"empty inode form", "/nodes/node-a/utils?inode=", "/nodes/node-a/utils/inode?inode="},
 		{"old pid link", "/nodes/node-a/utils?pid=1234", "/nodes/node-a/utils/pid?pid=1234"},
 		{"old inode link", "/nodes/node-a/utils?inode=42&dev=8%3a2", "/nodes/node-a/utils/inode?inode=42&dev=8%3a2"},
 		{"old walk", "/nodes/node-a/utils?inode=42&root=%2Fsrv&walk=1", "/nodes/node-a/utils/inode?inode=42&root=%2Fsrv&walk=1"},
@@ -77,10 +82,12 @@ func TestUtilNav(t *testing.T) {
 		t.Errorf("the pid lookup has its own page now\n%s", inode)
 	}
 
-	// pid leads: it is the number a map dump hands you most often, and it is
-	// where the bare /utils path lands.
-	if i, j := strings.Index(pid, "/utils/pid"), strings.Index(pid, "/utils/inode"); i > j {
-		t.Errorf("the pid utility should come first in the menu\n%s", pid)
+	// The node leads - it is where the bare /utils path lands, and the only
+	// entry that answers without being asked a number - then pid, the number a
+	// map dump hands you most often.
+	i, j, k := strings.Index(pid, "/utils/node"), strings.Index(pid, "/utils/pid"), strings.Index(pid, "/utils/inode")
+	if i > j || j > k {
+		t.Errorf("the menu should read node, pid, inode\n%s", pid)
 	}
 }
 

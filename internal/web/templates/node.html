@@ -1,13 +1,16 @@
 {{define "content"}}
 {{template "nodebar" .}}
+{{template "utilnav" .}}
 
 <h2>node {{.Node}}</h2>
 <p class="muted">
   What the agent can see of the node itself: the kernel it runs, the cgroup
   hierarchy its containers are accounted in, and the processes that create them.
-  Every other tab is read against these. A pid or a cgroup id out of a map only
-  becomes a container through them, and a container id parsed the way the other
-  cgroup driver names them resolves to nothing at all - with no error to say so.
+  The other tabs list what is loaded on the node; this says what the node is,
+  and every object on them is read against it. A pid or a cgroup id out of a map
+  only becomes a container through these, and a container id parsed the way the
+  other cgroup driver names them resolves to nothing at all - with no error to
+  say so.
 </p>
 
 {{with .NodeInfo}}

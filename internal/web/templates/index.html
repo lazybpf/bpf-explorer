@@ -1,10 +1,9 @@
 {{define "content"}}
 {{template "nodebar" .}}
-<p>
-  Select a node to inspect: what it is - kernel, cgroups, container runtime -
-  and the eBPF objects loaded on it.
-</p>
-{{if not .Nodes}}
+{{/* This page renders only when there is no node to open: with one, the index
+     goes straight to it rather than asking. So there is nothing to select here
+     - only why there is nothing, and not when the error above already said. */}}
+{{if not .Err}}
 <p class="muted">
   The UI found no agent pods. Check the DaemonSet is running and labelled nodes
   exist, or run the UI with <code>--agents=node=host:port</code>.

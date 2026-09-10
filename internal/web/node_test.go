@@ -1,6 +1,7 @@
 package web
 
 import (
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -42,7 +43,7 @@ func fullNode() *pb.DescribeNodeResponse {
 // resolution turns on, said with the evidence behind each, and a runtime named
 // with the version its own binary records.
 func TestNodePage(t *testing.T) {
-	out := renderUtil(t, "node", pageData{Node: "node-a", Tab: "node", NodeInfo: fullNode()})
+	out := renderUtil(t, "node", pageData{Node: "node-a", Tab: "utils", Util: "node", NodeInfo: fullNode()})
 
 	for _, want := range []string{
 		"6.12.94&#43;deb12-arm64",
@@ -91,14 +92,14 @@ func TestNodePage(t *testing.T) {
 // where what is shown is the agent's own view and has to say so.
 func TestNodePageCgroupNamespace(t *testing.T) {
 	// An agent on the node resolved nothing, and must not say it did.
-	plain := renderUtil(t, "node", pageData{Node: "node-a", Tab: "node", NodeInfo: fullNode()})
+	plain := renderUtil(t, "node", pageData{Node: "node-a", Tab: "utils", Util: "node", NodeInfo: fullNode()})
 	if strings.Contains(plain, "cgroup namespace of its own") {
 		t.Errorf("page claimed a namespace it never had to cross\n%s", plain)
 	}
 
 	joined := fullNode()
 	joined.Cgroups.Namespaced = true
-	out := renderUtil(t, "node", pageData{Node: "node-a", Tab: "node", NodeInfo: joined})
+	out := renderUtil(t, "node", pageData{Node: "node-a", Tab: "utils", Util: "node", NodeInfo: joined})
 	for _, want := range []string{"cgroup namespace of its own", "read from the node's own namespace"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("expected the page to contain %q\n%s", want, out)
@@ -113,7 +114,7 @@ func TestNodePageCgroupNamespace(t *testing.T) {
 	stuck := fullNode()
 	stuck.Cgroups.Namespaced = true
 	stuck.Cgroups.NamespaceNote = "the node's cgroup namespace could not be entered (operation not permitted)"
-	out = renderUtil(t, "node", pageData{Node: "node-a", Tab: "node", NodeInfo: stuck})
+	out = renderUtil(t, "node", pageData{Node: "node-a", Tab: "utils", Util: "node", NodeInfo: stuck})
 	if !strings.Contains(out, "could not be entered") || !strings.Contains(out, `class="warn"`) {
 		t.Errorf("expected a warning that the paths are the agent's own\n%s", out)
 	}
@@ -123,7 +124,7 @@ func TestNodePageCgroupNamespace(t *testing.T) {
 // place, rather than leaving a blank that reads as a fact.
 func TestNodePageUnseen(t *testing.T) {
 	out := renderUtil(t, "node", pageData{
-		Node: "node-a", Tab: "node",
+		Node: "node-a", Tab: "utils", Util: "node",
 		NodeInfo: &pb.DescribeNodeResponse{Kernel: &pb.Kernel{Release: "6.1.0"}, Cgroups: &pb.Cgroups{}},
 	})
 
@@ -145,54 +146,71 @@ func TestNodePageUnseen(t *testing.T) {
 // TestNodePageError checks a node whose agent could not be reached renders the
 // error and nothing that claims to describe the node.
 func TestNodePageError(t *testing.T) {
-	out := renderUtil(t, "node", pageData{Node: "node-a", Tab: "node", Err: "no agent for node node-a"})
+	out := renderUtil(t, "node", pageData{Node: "node-a", Tab: "utils", Util: "node", Err: "no agent for node node-a"})
 	if !strings.Contains(out, "no agent for node node-a") {
 		t.Errorf("expected the dial error on the page\n%s", out)
 	}
-	if strings.Contains(out, "container runtime") {
+	// The heading, not the words: the menu entry above names the runtime as one
+	// of the things this page is for, and says nothing about the node.
+	if strings.Contains(out, "<h2>container runtime</h2>") {
 		t.Errorf("expected no node facts without an answer to base them on\n%s", out)
 	}
 }
 
-// TestNodeTabIsActive keeps the node tab marked as the page you are on - it is
-// the first entry in the bar, so an unmarked one would read as the maps tab
-// being the default.
-func TestNodeTabIsActive(t *testing.T) {
-	out := renderUtil(t, "node", pageData{Node: "node-a", Tab: "node", NodeInfo: fullNode()})
-	if !strings.Contains(out, `<a class="active" href="/nodes/node-a/node">node</a>`) {
-		t.Errorf("expected the node tab to be marked active\n%s", out)
+// TestNodePageMarksItsPlace keeps both rows honest now that the page sits under
+// utils: the tab bar says which section you are in, the menu under it which
+// utility you are on.
+func TestNodePageMarksItsPlace(t *testing.T) {
+	out := renderUtil(t, "node", pageData{Node: "node-a", Tab: "utils", Util: "node", NodeInfo: fullNode()})
+	if !strings.Contains(out, `<a class="active" href="/nodes/node-a/utils">`) {
+		t.Errorf("expected the utils tab to be marked active\n%s", out)
+	}
+	if !strings.Contains(out, `<a class="active" href="/nodes/node-a/utils/node"`) {
+		t.Errorf("expected the node entry in the utils menu to be marked active\n%s", out)
 	}
 }
 
-// TestNodePickerLandsOnTheNodeTab covers the index, where nothing is selected:
-// each node button opens that node's own page, named as the node itself rather
-// than as a view of something on it.
-func TestNodePickerLandsOnTheNodeTab(t *testing.T) {
+// TestNodePageMovedUnderUtils covers the path the page had when it was a tab of
+// its own. It is in bookmarks and in history, so it forwards rather than 404s.
+func TestNodePageMovedUnderUtils(t *testing.T) {
 	h, err := New(nil, nil)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
 	rec := httptest.NewRecorder()
-	h.render(rec, "index", pageData{Tab: "node", Nodes: []string{"node-a", "node-b"}})
+	h.Router().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/nodes/node-a/node", nil))
 
-	out := rec.Body.String()
-	if !strings.Contains(out, `href="/nodes/node-a/node" title="node-a itself: kernel, cgroups, container runtime"`) {
-		t.Errorf("expected the picker to open node-a's own page\n%s", out)
+	if rec.Code != http.StatusFound {
+		t.Errorf("GET /nodes/node-a/node = %d, want %d", rec.Code, http.StatusFound)
+	}
+	if got := rec.Header().Get("Location"); got != "/nodes/node-a/utils/node" {
+		t.Errorf("redirected to %q, want %q", got, "/nodes/node-a/utils/node")
+	}
+}
+
+// TestNodePickerKeepsTheNodePage: the node page is a question about the node,
+// so switching node asks it of the next one - and the button says it opens the
+// node itself rather than the section it is filed under.
+func TestNodePickerKeepsTheNodePage(t *testing.T) {
+	out := renderUtil(t, "node", pageData{
+		Node: "node-a", Nodes: []string{"node-a", "node-b"}, Tab: "utils", Util: "node",
+		NodeInfo: fullNode()})
+	if !strings.Contains(out, `href="/nodes/node-b/utils/node" title="node-b itself: kernel, cgroups, container runtime"`) {
+		t.Errorf("expected the picker to open node-b's own page\n%s", out)
 	}
 }
 
 func TestNodeLinkTitle(t *testing.T) {
 	tests := []struct {
-		tab  string
-		want string
+		tab, util, want string
 	}{
-		{"node", "node-a itself: kernel, cgroups, container runtime"},
-		{"maps", "maps on node-a"},
-		{"utils", "utils on node-a"},
+		{"utils", "node", "node-a itself: kernel, cgroups, container runtime"},
+		{"maps", "", "maps on node-a"},
+		{"utils", "pid", "utils on node-a"},
 	}
 	for _, tc := range tests {
-		if got := nodeLinkTitle(tc.tab, "node-a"); got != tc.want {
-			t.Errorf("nodeLinkTitle(%q, node-a) = %q, want %q", tc.tab, got, tc.want)
+		if got := nodeLinkTitle(tc.tab, tc.util, "node-a"); got != tc.want {
+			t.Errorf("nodeLinkTitle(%q, %q, node-a) = %q, want %q", tc.tab, tc.util, got, tc.want)
 		}
 	}
 }
