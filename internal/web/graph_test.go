@@ -219,9 +219,8 @@ func TestLoadersIndexRender(t *testing.T) {
 	}
 }
 
-// TestLoadersIndexCounts checks a non-zero maps or links count is the way into
-// that tab for the group, and that a zero stays inert - there is nothing behind
-// it to open.
+// TestLoadersIndexCounts checks every count is the way into that tab for the
+// group, and that a zero stays inert - there is nothing behind it to open.
 func TestLoadersIndexCounts(t *testing.T) {
 	h, err := New(nil, nil)
 	if err != nil {
@@ -231,7 +230,9 @@ func TestLoadersIndexCounts(t *testing.T) {
 		Node: "node-a", Tab: "loaders",
 		Loaders: []loaderSummary{
 			{ID: "sg_1000", Label: "loader: agent(1000)", Progs: 2, Maps: 3, Links: 4},
-			{ID: "sg_2000", Label: "loader: profiler(2000)", Progs: 1},
+			// Nothing in any column: the row the inert case is read off, so
+			// each count is checked against a zero of its own kind.
+			{ID: "sg_2000", Label: "loader: profiler(2000)"},
 		},
 	}
 	var buf strings.Builder
@@ -240,7 +241,7 @@ func TestLoadersIndexCounts(t *testing.T) {
 	}
 	out := buf.String()
 
-	for _, tab := range []string{"maps", "links"} {
+	for _, tab := range []string{"programs", "maps", "links"} {
 		if !strings.Contains(out, `href="/nodes/node-a/`+tab+`?loader=sg_1000"`) {
 			t.Errorf("%s count is not a link to the filtered %s page\n%s", tab, tab, out)
 		}
@@ -252,10 +253,6 @@ func TestLoadersIndexCounts(t *testing.T) {
 		if strings.Contains(out, `href="/nodes/node-a/`+tab+`?loader=sg_2000"`) {
 			t.Errorf("a zero %s count should not be a link\n%s", tab, out)
 		}
-	}
-	// The programs count is not a way in yet: that page has no loader filter.
-	if strings.Contains(out, `href="/nodes/node-a/programs?loader=`) {
-		t.Errorf("programs count links to a filter the programs page does not have\n%s", out)
 	}
 }
 
@@ -288,6 +285,58 @@ func TestLoaderGraphRender(t *testing.T) {
 func TestSanitizeLabel(t *testing.T) {
 	if got := sanitizeLabel(`a"b[c]d|e<f>g`); strings.ContainsAny(got, `"[]|<>`) {
 		t.Errorf("sanitizeLabel left unsafe chars: %q", got)
+	}
+}
+
+// TestFilterProgramsByLoader checks the programs page's filter partitions
+// programs the same way the loaders index counts them, including the fallback
+// that collects the ones no live process holds an fd to.
+func TestFilterProgramsByLoader(t *testing.T) {
+	progs, _, _ := sampleGraphData()
+
+	// The short label: the programs page's picker is already called "loader",
+	// so the group's own prefix would say the word twice.
+	got, label := filterProgramsByLoader(progs, nil, "sg_1000")
+	if label != "agent(1000)" {
+		t.Errorf("label = %q, want the short form", label)
+	}
+	if len(got) != 1 || got[0].GetId() != 7 {
+		t.Errorf("sg_1000 programs = %+v, want just prog 7", got)
+	}
+
+	// Prog 9 has no holder, so it names the group the same way the index does.
+	got, label = filterProgramsByLoader(progs, nil, unattachedGroupID)
+	if label != unattachedLabel {
+		t.Errorf("label = %q, want %q", label, unattachedLabel)
+	}
+	if len(got) != 1 || got[0].GetId() != 9 {
+		t.Errorf("unattached programs = %+v, want just prog 9", got)
+	}
+
+	// A group with nothing in it is empty, not everything.
+	if got, _ := filterProgramsByLoader(progs, nil, "sg_9999"); len(got) != 0 {
+		t.Errorf("sg_9999 programs = %+v, want none", got)
+	}
+
+	// Hidden PIDs move a program to its next holder, and the filter has to
+	// agree with the count that opened it or a count of N opens a list of
+	// something else.
+	shared := []*pb.ProgramInfo{{
+		Id:   7,
+		Pids: []*pb.ProcessRef{{Pid: 1, Comm: "systemd"}, {Pid: 1000, Comm: "agent"}},
+	}}
+	hidden := map[uint32]bool{1: true}
+	if got, _ := filterProgramsByLoader(shared, hidden, "sg_1"); len(got) != 0 {
+		t.Errorf("hidden pid 1 still owns programs: %+v", got)
+	}
+	got, label = filterProgramsByLoader(shared, hidden, "sg_1000")
+	if len(got) != 1 || label != "agent(1000)" {
+		t.Errorf("programs = %+v, label = %q, want prog 7 under agent(1000)", got, label)
+	}
+	groups, _ := groupByLoader(shared, nil, nil, hidden)
+	g := findGroup(groups, "sg_1000")
+	if g == nil || len(g.Progs) != len(got) {
+		t.Errorf("loaders index and programs filter disagree: %+v vs %+v", g, got)
 	}
 }
 
@@ -660,6 +709,60 @@ func TestMapLoaderChoicesMatchIndexCounts(t *testing.T) {
 	}
 }
 
+// TestProgramLoaderChoices checks the programs page's picker offers every
+// group that loaded something, counted as the loaders index counts it, and
+// pins those counts to the index the way the other two pickers are pinned.
+func TestProgramLoaderChoices(t *testing.T) {
+	progs, maps, links := sampleGraphData()
+
+	got := programLoaderChoices(progs, nil)
+	want := []loaderChoice{
+		{Group: "sg_1000", Label: "agent(1000)", Count: 1},
+		{Group: "sg_2000", Label: "profiler(2000)", Count: 1},
+		{Group: unattachedGroupID, Label: unattachedLabel, Count: 1},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("choices = %+v, want %+v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("choice %d = %+v, want %+v", i, got[i], want[i])
+		}
+	}
+
+	// A group is only in this picker if it loaded a program: one that exists
+	// on the loaders index because it holds an fd to a map has nothing to
+	// narrow the programs page to.
+	holder := []*pb.MapInfo{{Id: 12, Pids: []*pb.ProcessRef{{Pid: 3000, Comm: "keeper"}}}}
+	if hasLoaderChoice(programLoaderChoices(progs, nil), "sg_3000") {
+		t.Errorf("a map-holding group with no programs should not be offered")
+	}
+	if g, _ := groupByLoader(progs, holder, nil, nil); findGroup(g, "sg_3000") == nil {
+		t.Errorf("the loaders index should still have that group: %+v", g)
+	}
+
+	// And the counts the picker offers are the counts the index shows.
+	groups, _ := groupByLoader(progs, maps, links, nil)
+	for _, c := range got {
+		g := findGroup(groups, c.Group)
+		if g == nil {
+			t.Errorf("picker offers %q, which the loaders index does not group", c.Group)
+			continue
+		}
+		if len(g.Progs) != c.Count {
+			t.Errorf("%s: picker says %d programs, index says %d", c.Group, c.Count, len(g.Progs))
+		}
+		if shortLoaderLabel(g.Label) != c.Label {
+			t.Errorf("%s: picker label %q, index label %q", c.Group, c.Label, g.Label)
+		}
+	}
+
+	// With nothing on the node there is nothing to narrow.
+	if got := programLoaderChoices(nil, nil); len(got) != 0 {
+		t.Errorf("choices with no programs = %+v, want none", got)
+	}
+}
+
 // TestShortLoaderLabel checks the two spellings stay in step: the loaders index
 // keeps the prefix that tells a loader from the no-loader row, and everything
 // under a field already called "loader" drops it.
@@ -765,8 +868,10 @@ func TestLoadersIndexResidualRow(t *testing.T) {
 	if !strings.Contains(out, `<tr class="residual">`) {
 		t.Errorf("no-loader group is not marked as the residual row\n%s", out)
 	}
-	if !strings.Contains(out, `href="/nodes/node-a/maps?loader=`+unattachedGroupID+`"`) {
-		t.Errorf("residual row's maps count is not a link to the filtered page\n%s", out)
+	for _, tab := range []string{"programs", "maps"} {
+		if !strings.Contains(out, `href="/nodes/node-a/`+tab+`?loader=`+unattachedGroupID+`"`) {
+			t.Errorf("residual row's %s count is not a link to the filtered page\n%s", tab, out)
+		}
 	}
 	if !strings.Contains(out, `href="/nodes/node-a/loaders/`+unattachedGroupID+`"`) {
 		t.Errorf("residual row has no graph link\n%s", out)

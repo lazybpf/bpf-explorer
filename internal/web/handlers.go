@@ -104,10 +104,13 @@ type pageData struct {
 	Maps     []*pb.MapInfo
 	Programs []*pb.ProgramInfo
 	Links    []*pb.LinkInfo
-	// LinkFilter and MapFilter narrow Links and Maps to one loader group. Nil
-	// when the page is showing everything on the node; LinkLoaders/MapLoaders
-	// are what it can be narrowed to, and are filled in either way - the picker
-	// is how the filter is reached without coming from the loaders page.
+	// ProgFilter, MapFilter and LinkFilter narrow Programs, Maps and Links to
+	// one loader group. Nil when the page is showing everything on the node;
+	// the matching *Loaders slice is what it can be narrowed to, and is filled
+	// in either way - the picker is how the filter is reached without coming
+	// from the loaders page.
+	ProgFilter  *loaderFilter
+	ProgLoaders []loaderChoice
 	LinkFilter  *loaderFilter
 	LinkLoaders []loaderChoice
 	MapFilter   *loaderFilter
@@ -162,7 +165,7 @@ func loaderRoster(groups []*loaderGroupData) (loaders []loaderSummary, noLoader 
 
 // loaderFilter narrows a list page to a single loader group - the partition the
 // loaders index counts - so a count there can be clicked through to the rows
-// behind it. The links and maps pages each take one.
+// behind it. The programs, maps and links pages each take one.
 type loaderFilter struct {
 	Group string // group id: "sg_1234" or "sg_unattached"
 	Label string // how the loaders index names the group, without its "loader: " prefix
@@ -328,16 +331,42 @@ func (h *Handlers) maps(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handlers) programs(w http.ResponseWriter, r *http.Request) {
-	node := r.PathValue("node")
-	data := pageData{Node: node, Tab: "programs"}
-	data.Nodes, _ = h.nodes()
-
 	// As in maps: one program's xlated listing gets its own page rather than
 	// repeating the list it was opened from.
 	idStr := r.PathValue("id")
 	page := "programs"
 	if idStr != "" {
 		page = "progdump"
+	}
+
+	// ?loader=<group> narrows the list to one loader, which is how a programs
+	// count on the loaders index gets clicked through; the value is that page's
+	// group id, the same spelling its diagram URL and the other two filters
+	// use. An xlated listing is one program, so the filter means nothing there
+	// and is not read. As on the other list pages a malformed group is rejected
+	// before any work is done for the page: unlike a program id, reading it
+	// needs nothing from the node.
+	var group, groupLabel string
+	if idStr == "" {
+		group = strings.TrimSpace(r.URL.Query().Get("loader"))
+	}
+	if group != "" {
+		var ok bool
+		if groupLabel, ok = parseLoaderGroup(group); !ok {
+			http.Error(w, "bad loader group", http.StatusBadRequest)
+			return
+		}
+	}
+
+	node := r.PathValue("node")
+	data := pageData{Node: node, Tab: "programs"}
+	data.Nodes, _ = h.nodes()
+	if group != "" {
+		// Set before anything is fetched, so that a page that ends in an error
+		// still says which loader was asked for: the heading is the only trace
+		// left of the click that got here. The label and the total are filled
+		// in below, once there is something to fill them in from.
+		data.ProgFilter = &loaderFilter{Group: group, Label: groupLabel}
 	}
 
 	conn, err := h.dial(node)
@@ -362,12 +391,37 @@ func (h *Handlers) programs(w http.ResponseWriter, r *http.Request) {
 
 	// Best-effort map metadata, so a map reference can say which map it is: a
 	// tooltip on the list's map-ref column, and on the map a dump's listing
-	// loads. A failure here must not break the page.
+	// loads. A failure here must not break the page - not even under a filter,
+	// unlike the links and maps pages: a program is grouped by the processes
+	// holding an fd to it, which the list above already carries, so nothing
+	// about the grouping depends on this call.
 	if maps, merr := client.ListMaps(ctx, &pb.ListMapsRequest{}); merr == nil {
 		data.MapsByID = mapsByID(maps.GetMaps())
 	}
 
 	if idStr == "" {
+		// Built from the unfiltered list, so the picker offers the same groups
+		// whichever one is currently selected.
+		choices := programLoaderChoices(data.Programs, h.hiddenLoaders)
+
+		if f := data.ProgFilter; f != nil {
+			filtered, label := filterProgramsByLoader(data.Programs, h.hiddenLoaders, group)
+			if label != "" {
+				// The group's own spelling, with the loader's comm; the fallback
+				// stands when nothing on the node is in this group any more.
+				f.Label = label
+			}
+			f.Total = len(data.Programs)
+			data.Programs = filtered
+			if !hasLoaderChoice(choices, group) {
+				// A group with no programs is not worth offering, but the one
+				// being shown has to be in the list or the picker cannot say
+				// what is selected - a stale link, or a loader that has since
+				// exited.
+				choices = append(choices, loaderChoice{Group: group, Label: f.Label})
+			}
+		}
+		data.ProgLoaders = choices
 		h.render(w, page, data)
 		return
 	}
@@ -741,6 +795,10 @@ func pageTitle(page string, data pageData) string {
 	case "maps":
 		if f := data.MapFilter; f != nil {
 			what = f.Label + " maps"
+		}
+	case "programs":
+		if f := data.ProgFilter; f != nil {
+			what = f.Label + " programs"
 		}
 	// A utility page is named by what was asked of it, so several of these tabs
 	// can be told apart; by the utility itself when nothing has been asked yet.

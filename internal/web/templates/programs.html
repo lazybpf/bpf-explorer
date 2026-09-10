@@ -1,9 +1,41 @@
 {{define "content"}}
 {{template "nodebar" .}}
 
-<h2>programs on {{.Node}} <span class="muted">({{len .Programs}})</span></h2>
+{{$group := ""}}{{with .ProgFilter}}{{$group = .Group}}{{end}}
+{{/* How many of how many, so the heading's count cannot be mistaken for the
+     whole node. No total when the fetch never got that far. */}}
+{{$count := printf "%d" (len .Programs)}}
+{{with .ProgFilter}}{{if .Total}}{{$count = printf "%d of %d" (len $.Programs) .Total}}{{end}}{{end}}
+<h2>programs on {{.Node}}{{with .ProgFilter}} <span class="muted">/ {{.Label}}</span>{{end}} <span class="muted">({{$count}})</span></h2>
+{{if .ProgLoaders}}
+{{/* GET, so a narrowed list can be linked to and reloaded - the same form the
+     maps and links pages and the utilities use. Only groups that have programs
+     are offered: narrowing to one with none is a question with a known answer.
+     Unlike the maps counts these do add up to the node's total - a program has
+     one loader, so it is in exactly one group. */}}
+<form class="controls" method="get" action="/nodes/{{.Node}}/programs">
+  <label>loader
+    <select name="loader" title="show only the programs this group loaded: those whose lowest-numbered holder is this process, plus - under no loader - the programs no live process holds an fd to">
+      <option value=""{{if not $group}} selected{{end}}>all loaders</option>
+      {{range .ProgLoaders}}
+        <option value="{{.Group}}"{{if eq .Group $group}} selected{{end}}>{{.Label}}{{with .Count}} ({{.}}){{end}}</option>
+      {{end}}
+    </select>
+  </label>
+  <button type="submit">filter</button>
+  {{/* The one place the picker cannot go: this group's diagram, the same
+       programs drawn with their maps and links rather than listed. Only with a
+       group selected - there is no diagram of "all loaders" - and the loaders
+       tab above is the way back to the roster, so it is not repeated here. */}}
+  {{with .ProgFilter}}<a href="/nodes/{{$.Node}}/loaders/{{.Group}}" target="_blank" rel="noopener" title="graph: everything this group loaded - its programs, maps and links (new tab)">graph</a>{{end}}
+</form>
+{{end}}
 <div class="scroll">
 <table>
+  {{/* The Holders column stays under a filter, unlike the links page's Loader:
+       only the lowest-numbered holder names the group, so these rows are not
+       one value repeated - a program held by its loader and by a second process
+       says so here. */}}
   <thead><tr><th title="the kernel's id for this program, what bpftool prog show lists it by. The kernel recycles ids, so one names this program only while it exists">ID</th><th>Name</th><th>Type</th><th>Tag</th><th>Maps</th><th title="processes holding an open fd to this program; the lowest-numbered one is treated as its loader">Holders</th><th></th></tr></thead>
   <tbody>
   {{range .Programs}}
@@ -21,7 +53,7 @@
       </td>
     </tr>
   {{else}}
-    <tr><td colspan="7" class="muted">(no programs)</td></tr>
+    <tr><td colspan="7" class="muted">{{with .ProgFilter}}(no programs for {{.Label}}){{else}}(no programs){{end}}</td></tr>
   {{end}}
   </tbody>
 </table>

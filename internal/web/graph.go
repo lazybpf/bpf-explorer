@@ -196,7 +196,8 @@ func shortLoaderLabel(label string) string {
 
 // loaderGroupID names a loader by its PID. Several places have to agree on this
 // spelling - the loaders index, the {group} segment of a diagram URL, and the
-// ?loader= filter on the links and maps pages - so it is written once here.
+// ?loader= filter on the programs, maps and links pages - so it is written once
+// here.
 func loaderGroupID(pid uint32) string { return fmt.Sprintf("sg_%d", pid) }
 
 // parseLoaderGroup validates a group id arriving from a URL and returns a label
@@ -217,6 +218,28 @@ func parseLoaderGroup(group string) (label string, ok bool) {
 		return "", false
 	}
 	return fmt.Sprintf("pid %d", pid), true
+}
+
+// filterProgramsByLoader keeps the programs belonging to one loader group. It
+// needs no trip through groupByLoader the way the maps filter does: a program's
+// group is the partition itself - loaderGroup is the whole rule, and what the
+// other two filters are derived from - so there is nothing here that could
+// drift from it. Rows come back in the order they were listed in.
+//
+// Also returns the group's label, in the short form and for the same reason as
+// filterLinksByLoader, or "" when nothing on the node is in the group.
+func filterProgramsByLoader(progs []*pb.ProgramInfo, hidden map[uint32]bool, group string) ([]*pb.ProgramInfo, string) {
+	var out []*pb.ProgramInfo
+	var label string
+	for _, p := range progs {
+		id, l := loaderGroup(p, hidden)
+		if id != group {
+			continue
+		}
+		label = shortLoaderLabel(l)
+		out = append(out, p)
+	}
+	return out, label
 }
 
 // filterLinksByLoader keeps the links belonging to one loader group, partitioned
@@ -297,7 +320,7 @@ func groupByID(groups []*loaderGroupData, id string) *loaderGroupData {
 }
 
 // loaderChoicesFor turns a partition into a page's picker: one entry per group
-// that has something to narrow to, counted by count. Both pickers go through
+// that has something to narrow to, counted by count. Every picker goes through
 // groupByLoader, so the groups they offer, the loaders index's counts and the
 // filtered rows are all one partition.
 func loaderChoicesFor(groups []*loaderGroupData, count func(*loaderGroupData) int) []loaderChoice {
@@ -326,6 +349,13 @@ func linkLoaderChoices(progs []*pb.ProgramInfo, links []*pb.LinkInfo, hidden map
 func mapLoaderChoices(progs []*pb.ProgramInfo, maps []*pb.MapInfo, hidden map[uint32]bool) []loaderChoice {
 	groups, _ := groupByLoader(progs, maps, nil, hidden)
 	return loaderChoicesFor(groups, func(g *loaderGroupData) int { return len(g.Maps) })
+}
+
+// programLoaderChoices is the same for the programs page. Neither maps nor
+// links play a part in grouping programs, and neither is fetched for it.
+func programLoaderChoices(progs []*pb.ProgramInfo, hidden map[uint32]bool) []loaderChoice {
+	groups, _ := groupByLoader(progs, nil, nil, hidden)
+	return loaderChoicesFor(groups, func(g *loaderGroupData) int { return len(g.Progs) })
 }
 
 // hasLoaderChoice reports whether the picker already offers a group.

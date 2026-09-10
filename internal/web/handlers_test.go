@@ -68,6 +68,11 @@ func TestPageTitle(t *testing.T) {
 			pageData{Node: "node-a", LinkFilter: &loaderFilter{Group: "sg_1000", Label: "agent(1000)"}},
 			"agent(1000) links - node-a - bpf-explorer",
 		},
+		{
+			"programs for a loader", "programs",
+			pageData{Node: "node-a", ProgFilter: &loaderFilter{Group: "sg_1000", Label: "agent(1000)"}},
+			"agent(1000) programs - node-a - bpf-explorer",
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -227,6 +232,125 @@ func TestLinksProgLinks(t *testing.T) {
 	// The prog-less link must not fabricate a programs/0 link.
 	if strings.Contains(out, `/nodes/node-a/programs/0`) {
 		t.Errorf("prog-less link should not render a programs/0 link\n%s", out)
+	}
+}
+
+// TestProgramsLoaderFilterRender checks the narrowed programs page says whose
+// programs it is showing and offers the ways back out - the filter arrives from
+// another page, so the tab bar alone cannot undo it.
+func TestProgramsLoaderFilterRender(t *testing.T) {
+	h, err := New(nil, nil)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	data := pageData{
+		Node: "node-a",
+		Tab:  "programs",
+		Programs: []*pb.ProgramInfo{{
+			Id: 5, Name: "trace_conn", Type: "Tracing",
+			Pids: []*pb.ProcessRef{{Pid: 1000, Comm: "agent"}, {Pid: 4242, Comm: "holder"}},
+		}},
+		ProgFilter:  &loaderFilter{Group: "sg_1000", Label: "agent(1000)", Total: 9},
+		ProgLoaders: []loaderChoice{{Group: "sg_1000", Label: "agent(1000)", Count: 1}},
+	}
+
+	var buf bytes.Buffer
+	if err := h.pages["programs"].ExecuteTemplate(&buf, "layout", data); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	out := buf.String()
+
+	// How many of how many, in the heading's count: on its own it would look
+	// like the whole node.
+	if !strings.Contains(out, "(1 of 9)") {
+		t.Errorf("expected the filtered count against the node total\n%s", out)
+	}
+	// Named once by the heading and once by the picker's option, as on the
+	// other two filtered pages - the row's own Holders cell names it a third
+	// time, which is the column doing its job rather than the filter repeating
+	// itself.
+	if n := strings.Count(out, "agent(1000)"); n != 3 {
+		t.Errorf("loader named %d times, want the heading, the picker's option and the row\n%s", n, out)
+	}
+	if strings.Contains(out, "loader: agent(1000)") {
+		t.Errorf("the picker's own label already says \"loader\"\n%s", out)
+	}
+	// Unlike the links page's Loader column, Holders stays: only the
+	// lowest-numbered holder names the group, so the column is not one value
+	// repeated down the rows.
+	if !strings.Contains(out, ">Holders</th>") || !strings.Contains(out, "holder(4242)") {
+		t.Errorf("filtered programs page dropped the holders column\n%s", out)
+	}
+	if cols := strings.Count(out, "</th>"); cols != 7 {
+		t.Errorf("filtered table has %d columns, want the unfiltered 7\n%s", cols, out)
+	}
+	// The way back to everything is the picker's first option.
+	if !strings.Contains(out, `<option value=""`) {
+		t.Errorf("expected an all-loaders option to undo the filter\n%s", out)
+	}
+	if !strings.Contains(out, `href="/nodes/node-a/loaders/sg_1000"`) {
+		t.Errorf("expected a link to this group's graph\n%s", out)
+	}
+	// Still the programs tab, not a sub-page of it: the page is the list,
+	// narrowed.
+	if !strings.Contains(out, `class="active" href="/nodes/node-a/programs"`) {
+		t.Errorf("programs tab should stay active\n%s", out)
+	}
+}
+
+// TestProgramsLoaderPicker checks the programs page can narrow itself: the
+// picker is there with no filter applied, marks the selected group when one is,
+// and is absent when the node has nothing to narrow.
+func TestProgramsLoaderPicker(t *testing.T) {
+	h, err := New(nil, nil)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	choices := []loaderChoice{
+		{Group: "sg_1000", Label: "agent(1000)", Count: 4},
+		{Group: unattachedGroupID, Label: unattachedLabel, Count: 2},
+	}
+
+	render := func(data pageData) string {
+		t.Helper()
+		var buf bytes.Buffer
+		if err := h.pages["programs"].ExecuteTemplate(&buf, "layout", data); err != nil {
+			t.Fatalf("execute: %v", err)
+		}
+		return buf.String()
+	}
+
+	// Arrived at the page directly: the picker offers every group that loaded
+	// something, with its count, and nothing is selected but "all loaders".
+	out := render(pageData{Node: "node-a", Tab: "programs", ProgLoaders: choices})
+	for _, want := range []string{
+		`action="/nodes/node-a/programs"`,
+		`<select name="loader"`,
+		`<option value="" selected>all loaders</option>`,
+		`<option value="sg_1000">agent(1000) (4)</option>`,
+		`<option value="sg_unattached">` + unattachedLabel + ` (2)</option>`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("picker missing %q\n%s", want, out)
+		}
+	}
+
+	// With a filter on, that group is the selected option.
+	out = render(pageData{
+		Node: "node-a", Tab: "programs", ProgLoaders: choices,
+		ProgFilter: &loaderFilter{Group: "sg_1000", Label: "agent(1000)", Total: 6},
+	})
+	if !strings.Contains(out, `<option value="sg_1000" selected>`) {
+		t.Errorf("picker does not mark the active group\n%s", out)
+	}
+	if strings.Contains(out, `<option value="" selected>`) {
+		t.Errorf("all-loaders should not be selected under a filter\n%s", out)
+	}
+
+	// Nothing to narrow: no picker at all.
+	if out := render(pageData{Node: "node-a", Tab: "programs"}); strings.Contains(out, `<select name="loader"`) {
+		t.Errorf("picker rendered with no loaders to choose\n%s", out)
 	}
 }
 
@@ -591,6 +715,46 @@ func TestMapsBadLoaderGroupRejected(t *testing.T) {
 	dh.Router().ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Errorf("dump page with a stray loader group = %d, want %d", rec.Code, http.StatusOK)
+	}
+}
+
+// TestProgramsBadLoaderGroupRejected covers a hand-edited URL, as on the other
+// two list pages: the group is read before anything is fetched, so a malformed
+// one is a 400 rather than a silently unfiltered list of every program on the
+// node.
+func TestProgramsBadLoaderGroupRejected(t *testing.T) {
+	h, err := New(nil, nil)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	router := h.Router()
+
+	for _, group := range []string{"1000", "sg_nope", "sg_"} {
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/nodes/node-a/programs?loader="+group, nil)
+		router.ServeHTTP(rec, req)
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("GET ?loader=%s = %d, want %d", group, rec.Code, http.StatusBadRequest)
+		}
+	}
+
+	// An xlated listing is one program, so the filter means nothing there and
+	// is not read: a stray group must not turn it into a 400. Reaching that far
+	// needs a discoverer; the node is not one it knows, so the page renders the
+	// "unknown node" error without dialling anything.
+	disc, derr := discovery.ParseStatic("other=127.0.0.1:1")
+	if derr != nil {
+		t.Fatalf("ParseStatic: %v", derr)
+	}
+	dh, err := New(disc, nil)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/nodes/node-a/programs/5?loader=sg_nope", nil)
+	dh.Router().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Errorf("xlated page with a stray loader group = %d, want %d", rec.Code, http.StatusOK)
 	}
 }
 
