@@ -14,22 +14,28 @@
     <span class="muted">({{len .Entries}})</span>
   </h2>
   <div class="scroll">
+  {{/* A map-of-maps stores an inner map's id in each slot, and a program array
+       a program's, so either one's value column is a set of ids rather than
+       data: named and linked here, since reading one off the hex and looking it
+       up in its tab is the same lookup done by hand. Neither hex column earns
+       its place in such a map - a slot's key is its index and its value an id,
+       both already spelled out beside them, so the bytes say nothing the row
+       does not - and the value an id was decoded from stays in the link's
+       tooltip. A keyed map keeps both: there the bytes are the data. */}}
+  {{$slots := or .OfMaps .OfProgs}}
   <table>
-    {{/* A map-of-maps stores an inner map's id in each slot, and a program array
-         a program's, so either one's value column is a set of ids rather than
-         data: named and linked here, since reading one off the hex and looking
-         it up in its tab is the same lookup done by hand. The hex column keeps
-         the bytes either way. */}}
-    <thead><tr><th>key</th><th>key (hex)</th>
+    <thead><tr>{{if .Indexed}}<th title="the slot this row is: an array-shaped map's key is its index, a host-order u32, which bpf_tail_call and an inner-map lookup both select with. bpftool map dump prints it as raw key bytes">index</th>{{else}}<th>key</th>{{end}}{{if not $slots}}<th>key (hex)</th>{{end}}
       {{if .OfMaps}}<th title="the map held in this slot: a map-of-maps' value is an inner map's id, the value bpftool map dump prints as inner_map_id">inner map</th>
       {{else if .OfProgs}}<th title="the program this slot tail-calls into: a program array's value is a program's id, which bpf_tail_call jumps to by index">program</th>
       {{else}}<th>value</th>{{end}}
-      <th>value (hex)</th></tr></thead>
+      {{if not $slots}}<th>value (hex)</th>{{end}}</tr></thead>
     <tbody>
     {{range .Entries}}
       <tr>
         <td>{{.KeyFmt}}</td>
-        <td><code{{with hexASCII .KeyHex}} title="ASCII: {{.}}"{{end}}>{{.KeyHex}}</code></td>
+        {{if not $slots}}
+          <td><code{{with hexASCII .KeyHex}} title="ASCII: {{.}}"{{end}}>{{.KeyHex}}</code></td>
+        {{end}}
         {{if .InnerMapId}}
           {{$inner := index $.MapsByID .InnerMapId}}
           {{/* name(id), the spelling a loader gets as comm(pid), and the tooltip
@@ -53,11 +59,15 @@
         {{end}}
         {{/* No ASCII hint on a slot's value: these bytes are an id, and reading
              them as text says something about the map that isn't true. And no
-             empty <code> box where there are no bytes at all. */}}
-        <td>{{if .ValueHex}}<code{{if .InnerMapId}} title="map id {{.InnerMapId}}, host-order u32"{{else if .ProgId}} title="program id {{.ProgId}}, host-order u32"{{else}}{{with hexASCII .ValueHex}} title="ASCII: {{.}}"{{end}}{{end}}>{{.ValueHex}}</code>{{else}}<span class="muted">-</span>{{end}}</td>
+             empty <code> box where there are no bytes at all. The id branches
+             stay for a map the listing could not type, whose slots the agent
+             decoded even though the header above could not be labelled. */}}
+        {{if not $slots}}
+          <td>{{if .ValueHex}}<code{{if .InnerMapId}} title="map id {{.InnerMapId}}, host-order u32"{{else if .ProgId}} title="program id {{.ProgId}}, host-order u32"{{else}}{{with hexASCII .ValueHex}} title="ASCII: {{.}}"{{end}}{{end}}>{{.ValueHex}}</code>{{else}}<span class="muted">-</span>{{end}}</td>
+        {{end}}
       </tr>
     {{else}}
-      <tr><td colspan="4" class="muted">(map is empty)</td></tr>
+      <tr><td colspan="{{if $slots}}2{{else}}4{{end}}" class="muted">(map is empty)</td></tr>
     {{end}}
     </tbody>
   </table>

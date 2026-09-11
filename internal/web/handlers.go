@@ -206,6 +206,10 @@ type dumpView struct {
 	// OfProgs is the same for a program array, whose values are the program ids
 	// its programs tail-call into.
 	OfProgs bool
+	// Indexed marks the slot maps whose keys are array indices rather than keys
+	// of their own, which is what the key column is called on them. A HashOfMaps
+	// is not one: it holds inner map ids under keys of its own like any hash.
+	Indexed bool
 }
 
 type progDumpView struct {
@@ -380,6 +384,7 @@ func (h *Handlers) maps(w http.ResponseWriter, r *http.Request) {
 			Truncated: dump.GetTruncated(),
 			OfMaps:    isMapOfMaps(typ),
 			OfProgs:   isProgArray(typ),
+			Indexed:   isIndexedSlots(typ),
 		}
 	}
 	h.render(w, page, data)
@@ -935,6 +940,14 @@ func isMapOfMaps(t string) bool {
 // prog_array.
 func isProgArray(t string) bool {
 	return t == "ProgramArray"
+}
+
+// isIndexedSlots reports whether a map type string names a slot map addressed by
+// array index rather than by a key of its own. Both kinds hold object ids, but
+// only an array's key is a slot number: a HashOfMaps is a hash, and its keys are
+// data the way any other hash's are.
+func isIndexedSlots(t string) bool {
+	return t == "ProgramArray" || t == "ArrayOfMaps"
 }
 
 // innerMapLabel names the map sitting in a map-of-maps slot the way every other

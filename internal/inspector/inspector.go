@@ -12,6 +12,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"strconv"
 	"syscall"
 
 	"github.com/cilium/ebpf"
@@ -158,6 +159,12 @@ func (i *Inspector) DumpMap(id uint32, limit uint32) (*Dump, error) {
 	// jumps to - so they are followed too.
 	mapOfMaps := m.Type() == ebpf.ArrayOfMaps || m.Type() == ebpf.HashOfMaps
 	progArray := m.Type() == ebpf.ProgramArray
+	// An array's key is its index, but these two are usually loaded with no BTF
+	// describing it - userspace fills their slots, so nothing declares the key
+	// type - and formatBTF then falls back to raw bytes. "00 00 00 00" is the
+	// index 0 said in the least useful way, so say it as the number it is. A
+	// HashOfMaps is keyed like any other hash and keeps its key as it comes.
+	indexed := progArray || m.Type() == ebpf.ArrayOfMaps
 
 	dump := &Dump{}
 	key, err := m.NextKeyBytes(nil)
@@ -170,6 +177,9 @@ func (i *Inspector) DumpMap(id uint32, limit uint32) (*Dump, error) {
 			break
 		}
 		e := Entry{KeyHex: hex.EncodeToString(key), KeyFmt: formatBTF(keyType, key)}
+		if indexed && keyType == nil {
+			e.KeyFmt = formatIndex(key)
+		}
 		if value, lerr := m.LookupBytes(key); lerr == nil && value != nil {
 			e.ValueHex = hex.EncodeToString(value)
 			e.ValueFmt = formatBTF(valueType, value)
@@ -346,6 +356,18 @@ func fdArrayID(value []byte) uint32 {
 		return 0
 	}
 	return binary.NativeEndian.Uint32(value)
+}
+
+// formatIndex renders an array slot's key as the index it is: a host-order u32,
+// the decoding fdArrayID does on the value side, read on the node so the host's
+// byte order is the one that applies. Falls back to the raw bytes for a key that
+// cannot hold an index - an array's always can, but nothing here has to trust
+// that to stay readable.
+func formatIndex(key []byte) string {
+	if len(key) != 4 {
+		return hexBytes(key)
+	}
+	return strconv.FormatUint(uint64(binary.NativeEndian.Uint32(key)), 10)
 }
 
 // undumpableReason explains why a map type does not support key iteration, or

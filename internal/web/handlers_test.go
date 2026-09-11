@@ -1453,7 +1453,7 @@ func TestMapDumpInnerMapLinks(t *testing.T) {
 		Maps:     maps,
 		MapsByID: mapsByID(maps),
 		Dump: &dumpView{
-			ID: 18733, Name: "string_maps_0", OfMaps: true,
+			ID: 18733, Name: "string_maps_0", OfMaps: true, Indexed: true,
 			Entries: []*pb.MapEntry{
 				{KeyFmt: "0", KeyHex: "00000000", ValueFmt: "18798", ValueHex: "6e490000", InnerMapId: 18798},
 				// An inner map the listing no longer has: still followable.
@@ -1494,13 +1494,19 @@ func TestMapDumpInnerMapLinks(t *testing.T) {
 	if !strings.Contains(out, "key does not exist") {
 		t.Errorf("an unreadable slot should keep its formatted value\n%s", out)
 	}
-	// The bytes stay: the link is a reading of them, not a replacement. Their
-	// tooltip says what they decode to, rather than reading an id as ASCII.
-	if !strings.Contains(out, `title="map id 18798, host-order u32">6e490000<`) {
-		t.Errorf("hex column should show the raw value, decoded\n%s", out)
+	// Neither hex column is here: a slot's key is its index and its value an
+	// inner map's id, both spelled out beside them already, so the bytes only
+	// repeat the row. What they decode to stays in the link's tooltip, checked
+	// above - and never as ASCII, which an id is not.
+	if strings.Contains(out, ">key (hex)</th>") || strings.Contains(out, ">value (hex)</th>") {
+		t.Errorf("a map-of-maps' slots are index and id: no hex columns\n%s", out)
 	}
-	if strings.Contains(out, "ASCII: nI") {
-		t.Errorf("a slot's id bytes are not text and must not get an ASCII hint\n%s", out)
+	if strings.Contains(out, ">6e490000<") || strings.Contains(out, "ASCII: nI") {
+		t.Errorf("the slot's bytes belong in the link tooltip alone\n%s", out)
+	}
+	// An ArrayOfMaps is addressed by slot number, so the column says so.
+	if !strings.Contains(out, ">index</th>") || strings.Contains(out, ">key</th>") {
+		t.Errorf("an array-shaped slot map's keys are indices\n%s", out)
 	}
 }
 
@@ -1582,7 +1588,7 @@ func TestMapDumpProgArrayLinks(t *testing.T) {
 		Maps: maps, MapsByID: mapsByID(maps),
 		Programs: progs, ProgramsByID: progsByID(progs),
 		Dump: &dumpView{
-			ID: 211, Name: "jmp_table", OfProgs: true,
+			ID: 211, Name: "jmp_table", OfProgs: true, Indexed: true,
 			Entries: []*pb.MapEntry{
 				{KeyFmt: "0", KeyHex: "00000000", ValueFmt: "512", ValueHex: "00020000", ProgId: 512},
 				// A program the listing does not have: still followable.
@@ -1624,9 +1630,17 @@ func TestMapDumpProgArrayLinks(t *testing.T) {
 	if !strings.Contains(out, "permission denied") {
 		t.Errorf("an unreadable slot should keep its formatted value\n%s", out)
 	}
-	// The bytes stay, decoded rather than read as text.
-	if !strings.Contains(out, `title="program id 512, host-order u32">00020000<`) {
-		t.Errorf("hex column should show the raw value, decoded\n%s", out)
+	// The same two columns are gone here, for the same reason: an index and a
+	// program id, with the bytes left in the link's tooltip.
+	if strings.Contains(out, ">key (hex)</th>") || strings.Contains(out, ">value (hex)</th>") {
+		t.Errorf("a program array's slots are index and id: no hex columns\n%s", out)
+	}
+	if strings.Contains(out, ">00020000<") {
+		t.Errorf("the slot's bytes belong in the link tooltip alone\n%s", out)
+	}
+	// The index a bpf_tail_call selects with, named as one.
+	if !strings.Contains(out, ">index</th>") || strings.Contains(out, ">key</th>") {
+		t.Errorf("a program array's keys are indices\n%s", out)
 	}
 	// An unused index says so: a row of blank cells reads as a half-rendered
 	// page, which is the one thing this table must not look like.
@@ -1664,6 +1678,15 @@ func TestMapDumpValuelessKey(t *testing.T) {
 	if !strings.Contains(out, ">(no entry)<") || strings.Contains(out, ">(empty slot)<") {
 		t.Errorf("a keyed map has no slots, so its marker is (no entry)\n%s", out)
 	}
+	// A keyed map keeps both hex columns: there the bytes are the data, not a
+	// restatement of an index and an id.
+	if !strings.Contains(out, ">key (hex)</th>") || !strings.Contains(out, ">value (hex)</th>") {
+		t.Errorf("a keyed map's bytes are its data: it keeps its hex columns\n%s", out)
+	}
+	// And its keys are keys: nothing here is addressed by slot number.
+	if !strings.Contains(out, ">key</th>") || strings.Contains(out, ">index</th>") {
+		t.Errorf("a hash's keys are not indices\n%s", out)
+	}
 	// No empty <code> box where there are no bytes.
 	if !strings.Contains(out, `<span class="muted">-</span>`) {
 		t.Errorf("the hex column should read - when there are no bytes\n%s", out)
@@ -1683,6 +1706,22 @@ func TestProgLabel(t *testing.T) {
 	}
 	if got := progLabel(nil, 600); got != "prog(600)" {
 		t.Errorf("progLabel(nil) = %q, want prog(600)", got)
+	}
+}
+
+// TestIsIndexedSlots splits the slot maps by how they are addressed: both kinds
+// hold object ids, but only an array's key is a slot number. A HashOfMaps is a
+// hash, so its keys stay keys even though its values are inner map ids.
+func TestIsIndexedSlots(t *testing.T) {
+	for _, typ := range []string{"ProgramArray", "ArrayOfMaps"} {
+		if !isIndexedSlots(typ) {
+			t.Errorf("%q is addressed by index", typ)
+		}
+	}
+	for _, typ := range []string{"HashOfMaps", "Hash", "Array", "", "prog_array"} {
+		if isIndexedSlots(typ) {
+			t.Errorf("%q is not an indexed slot map", typ)
+		}
 	}
 }
 
