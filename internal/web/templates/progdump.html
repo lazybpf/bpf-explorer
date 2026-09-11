@@ -5,7 +5,8 @@
      the tab this dump was opened from - and no back link either, since the tab
      bar above marks the programs tab as the way up. */}}
 {{with .ProgDump}}
-  <h2>program {{.ID}} — <span class="name">{{.Name}}</span> xlated</h2>
+  {{/* Same spelling as the map dump's heading and as this page's title. */}}
+  <h2>program {{.ID}}{{with .Name}}: <span class="name">{{.}}</span>{{end}} xlated</h2>
   {{if .Available}}
     {{/* Two views of the same listing: the source it was compiled from, and the
          instructions it compiled to. Then the listing itself, as text, for

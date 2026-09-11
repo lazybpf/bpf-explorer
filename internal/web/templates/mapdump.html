@@ -5,9 +5,13 @@
      this dump was opened from - and no back link either, since the tab bar above
      marks the maps tab as the way up. */}}
 {{with .Dump}}
-  <h2>map {{.ID}} — <span class="name">{{.Name}}</span> contents
+  {{/* Named the way every other heading here names an object with an id - "map
+       42: counters", the spelling of the page title and of the diagram pages -
+       and the count spelled the way the list pages spell theirs. A map with no
+       name is the id alone: there is nothing for a separator to separate. */}}
+  <h2>map {{.ID}}{{with .Name}}: <span class="name">{{.}}</span>{{end}} contents
     {{if .Truncated}}<span class="badge">truncated</span>{{end}}
-    <span class="muted">({{len .Entries}} shown)</span>
+    <span class="muted">({{len .Entries}})</span>
   </h2>
   <div class="scroll">
   <table>
