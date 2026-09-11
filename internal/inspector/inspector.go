@@ -35,6 +35,9 @@ type MapSummary struct {
 	PIDs       []ProcessRef
 	// InnerMapIDs is set for ArrayOfMaps/HashOfMaps only: the ids in its slots.
 	InnerMapIDs []uint32
+	// ProgIDs is the same for a ProgramArray: the programs in its slots, which
+	// a bpf_tail_call jumps to by index.
+	ProgIDs []uint32
 }
 
 // Entry is one key/value pair, in both raw hex and BTF-formatted forms.
@@ -46,6 +49,9 @@ type Entry struct {
 	// InnerMapID is set for a map-of-maps' slots only: the id the value bytes
 	// hold. Decoded here because the host's byte order is only known here.
 	InnerMapID uint32
+	// ProgID is the same for a program array's slots: the program the slot
+	// tail-calls into.
+	ProgID uint32
 }
 
 // Dump is a (possibly truncated) page of a map's contents.
@@ -119,9 +125,11 @@ func (i *Inspector) ListMaps() ([]MapSummary, error) {
 			Dumpable:   note == "",
 			DumpNote:   note,
 			PIDs:       pidsByMap[uint32(mapID)],
-			// Cheap for the shapes that have it: only maps-of-maps are read,
-			// and this is the only way to learn who an inner map belongs to.
+			// Cheap for the shapes that have it: only maps-of-maps and program
+			// arrays are read, and their slots are the only way to learn who
+			// the object in one belongs to.
 			InnerMapIDs: innerMapIDs(m, info.Type),
+			ProgIDs:     progArrayIDs(m, info.Type),
 		})
 		m.Close()
 	}
@@ -145,8 +153,11 @@ func (i *Inspector) DumpMap(id uint32, limit uint32) (*Dump, error) {
 
 	keyType, valueType := mapBTFTypes(m)
 	// A map-of-maps' value is an inner map's id, not data: the dump says which
-	// map sits in each slot, so the value can be followed rather than read.
+	// map sits in each slot, so the value can be followed rather than read. A
+	// program array's slots hold program ids the same way - what a tail call
+	// jumps to - so they are followed too.
 	mapOfMaps := m.Type() == ebpf.ArrayOfMaps || m.Type() == ebpf.HashOfMaps
+	progArray := m.Type() == ebpf.ProgramArray
 
 	dump := &Dump{}
 	key, err := m.NextKeyBytes(nil)
@@ -163,7 +174,10 @@ func (i *Inspector) DumpMap(id uint32, limit uint32) (*Dump, error) {
 			e.ValueHex = hex.EncodeToString(value)
 			e.ValueFmt = formatBTF(valueType, value)
 			if mapOfMaps {
-				e.InnerMapID = innerMapID(value)
+				e.InnerMapID = fdArrayID(value)
+			}
+			if progArray {
+				e.ProgID = fdArrayID(value)
 			}
 		} else if lerr != nil {
 			e.ValueFmt = fmt.Sprintf("<error: %v>", lerr)
@@ -264,14 +278,10 @@ func (i *Inspector) DumpProgram(id uint32) (*ProgramDump, error) {
 	return &ProgramDump{Available: true, Lines: lines}, nil
 }
 
-// undumpableReason explains why a map type does not support key iteration, or
-// returns "" when it does. It is the single source of truth for both the
-// Dumpable flag and the note the UI shows in its place, so the two cannot
-// disagree about which types dump.
-// maxInnerMaps caps how many slots of one map-of-maps are read while listing.
-// The listing walks every map on the node, so this is a bound on work done for
-// every page view, not on a dump the caller asked for.
-const maxInnerMaps = 1024
+// maxFDArraySlots caps how many slots of one map-of-maps or program array are
+// read while listing. The listing walks every map on the node, so this is a
+// bound on work done for every page view, not on a dump the caller asked for.
+const maxFDArraySlots = 1024
 
 // innerMapIDs reads the inner map ids held in a map-of-maps' slots - the values
 // `bpftool map dump` prints as "inner_map_id". For ArrayOfMaps/HashOfMaps a
@@ -282,21 +292,40 @@ const maxInnerMaps = 1024
 // creates an inner map, inserts it into the outer map and closes the fd leaves
 // the inner map with no holder in /proc, no bpffs pin, and no program naming it
 // in map_ids - the outer map's slot is the only thing keeping it alive.
-//
-// Best-effort, like the /proc scan: a slot that cannot be read is skipped
-// rather than failing the listing.
 func innerMapIDs(m *ebpf.Map, t ebpf.MapType) []uint32 {
 	if t != ebpf.ArrayOfMaps && t != ebpf.HashOfMaps {
 		return nil
 	}
+	return fdArraySlotIDs(m)
+}
+
+// progArrayIDs reads the program ids held in a program array's slots - the
+// programs a bpf_tail_call jumps to by index. Returns nil for any other type.
+//
+// It matters for the same reason inner map ids do: a loader that inserts a
+// program into the tail-call table and closes its fd leaves that program with
+// no holder in /proc, and no link attaching it either - only the entry program
+// of the chain keeps one. The slot is then the only thing naming it, so without
+// this the UI cannot attribute a tail-call target to anyone.
+func progArrayIDs(m *ebpf.Map, t ebpf.MapType) []uint32 {
+	if t != ebpf.ProgramArray {
+		return nil
+	}
+	return fdArraySlotIDs(m)
+}
+
+// fdArraySlotIDs walks the slots of a map holding kernel objects and returns the
+// ids in them, skipping empty ones. Best-effort, like the /proc scan: a slot
+// that cannot be read is skipped rather than failing the listing.
+func fdArraySlotIDs(m *ebpf.Map) []uint32 {
 	var out []uint32
 	key, err := m.NextKeyBytes(nil)
 	if err != nil {
 		return nil
 	}
-	for key != nil && len(out) < maxInnerMaps {
+	for key != nil && len(out) < maxFDArraySlots {
 		if value, lerr := m.LookupBytes(key); lerr == nil {
-			if id := innerMapID(value); id != 0 {
+			if id := fdArrayID(value); id != 0 {
 				out = append(out, id)
 			}
 		}
@@ -307,17 +336,22 @@ func innerMapIDs(m *ebpf.Map, t ebpf.MapType) []uint32 {
 	return out
 }
 
-// innerMapID decodes one map-of-maps slot's value as the inner map's id. A
-// userspace lookup returns that id as a host-order u32, so the value bytes are
-// the id. Returns 0 - not a valid map id - for an empty slot and for a value
-// too short to hold one.
-func innerMapID(value []byte) uint32 {
+// fdArrayID decodes one slot of a map holding kernel objects rather than data -
+// a map-of-maps, a program array - as the id of the object in it. A userspace
+// lookup on either returns that id as a host-order u32, so the value bytes are
+// the id. Returns 0 - not a valid id - for an empty slot and for a value too
+// short to hold one.
+func fdArrayID(value []byte) uint32 {
 	if len(value) < 4 {
 		return 0
 	}
 	return binary.NativeEndian.Uint32(value)
 }
 
+// undumpableReason explains why a map type does not support key iteration, or
+// returns "" when it does. It is the single source of truth for both the
+// Dumpable flag and the note the UI shows in its place, so the two cannot
+// disagree about which types dump.
 func undumpableReason(t ebpf.MapType) string {
 	switch t {
 	case ebpf.RingBuf, ebpf.PerfEventArray:

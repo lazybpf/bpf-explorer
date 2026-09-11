@@ -39,7 +39,7 @@
     <th title="the program this link attaches; the id opens its xlated listing">Program</th>
     {{/* Dropped under a filter: every row would carry the same value, which the
          heading and the picker have both already said. */}}
-    {{if not .LinkFilter}}<th title="the process that loaded this link's program: the lowest-numbered process holding an fd to it">Loader</th>{{end}}
+    {{if not .LinkFilter}}<th title="the process that loaded this link's program: the lowest-numbered process holding an fd to it. Blank for a program nothing holds - the programs page infers a loader for those from the program array holding them, this column states the fd fact only">Loader</th>{{end}}
     <th title="what the link is attached to, as bpftool link show prints its type-specific line: a tracepoint name, a k(ret)probe's symbol, an LSM hook's target. Empty for the link types the agent does not read this detail from yet">Attach</th>
     <th></th>
   </tr></thead>

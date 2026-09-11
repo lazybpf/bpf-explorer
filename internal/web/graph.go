@@ -27,8 +27,10 @@ type loaderGroupData struct {
 }
 
 // groupByLoader partitions objects into per-loader groups. A program's loader is
-// its smallest holder PID that is not in hidden; programs with no visible holder
-// fall into the "no loader" group. Each group includes every map its programs
+// its smallest holder PID that is not in hidden, or - for a program nothing
+// holds an fd to - the loader of a program array holding it in a tail-call slot
+// (see progGroups); only a program neither route reaches falls into the "no
+// loader" group. Each group includes every map its programs
 // reference, so a map shared across loaders appears on each of their pages, plus
 // the maps it holds an fd to that no program uses, plus the inner maps of any
 // map-of-maps it is credited with. Only a map nothing points at - no holder, no
@@ -60,14 +62,12 @@ func groupByLoader(progs []*pb.ProgramInfo, maps []*pb.MapInfo, links []*pb.Link
 		return g
 	}
 
-	progGroup := map[uint32]string{}
-	groupLabel := map[string]string{} // group id -> its label, to credit a map to
+	// groupLabel: group id -> its label, to credit a map to.
+	progGroup, groupLabel := progGroups(sortedProgs, sortedMaps, hidden)
 	for _, p := range sortedProgs {
-		id, label := loaderGroup(p, hidden)
-		g := getGroup(id, label)
+		id := progGroup[p.GetId()]
+		g := getGroup(id, groupLabel[id])
 		g.Progs = append(g.Progs, p)
-		progGroup[p.GetId()] = id
-		groupLabel[id] = label
 	}
 
 	mapsSeen := map[string]map[uint32]bool{}
@@ -198,8 +198,80 @@ func groupsInOrder(groups map[string]*loaderGroupData, order []string) []*loader
 	return out
 }
 
+// progGroups assigns every program to a loader group, and returns each group's
+// label alongside. Two routes, in order:
+//
+//   - the program's own lowest visible holder, and
+//   - for a program nothing holds an fd to, the loader of a program array
+//     holding it in a tail-call slot - itself either that array's own holder or
+//     the loader of a program referencing it, the two routes the maps page
+//     already credits a map by.
+//
+// The second is the only one that reaches a tail-call target: the loader
+// inserts the program into the table and closes its fd, and only the entry
+// program of the chain keeps a link. It is what progArrayLoaders shows in the
+// programs page's Holders column, so the column and every count built from this
+// partition stay one answer. Inheritance is one level deep - an array is
+// credited from programs grouped by their own holders alone - so a chain of
+// tail calls cannot loop back into it.
+//
+// Every caller that groups programs goes through here: the loaders index, the
+// ?loader= filter and the picker on the programs page.
+func progGroups(progs []*pb.ProgramInfo, maps []*pb.MapInfo, hidden map[uint32]bool) (progGroup map[uint32]string, groupLabel map[string]string) {
+	sorted := append([]*pb.ProgramInfo(nil), progs...)
+	sort.Slice(sorted, func(i, j int) bool { return sorted[i].GetId() < sorted[j].GetId() })
+
+	progGroup = make(map[uint32]string, len(sorted))
+	groupLabel = map[string]string{}
+	for _, p := range sorted {
+		id, label := loaderGroup(p, hidden)
+		progGroup[p.GetId()] = id
+		groupLabel[id] = label
+	}
+
+	// Which group each map can pass on: the group of the lowest-numbered
+	// program referencing it, for an array whose own fd nobody holds.
+	refGroup := map[uint32]string{}
+	for _, p := range sorted {
+		g := progGroup[p.GetId()]
+		if g == unattachedGroupID {
+			continue
+		}
+		for _, mid := range p.GetMapIds() {
+			if _, ok := refGroup[mid]; !ok {
+				refGroup[mid] = g
+			}
+		}
+	}
+
+	sortedMaps := append([]*pb.MapInfo(nil), maps...)
+	sort.Slice(sortedMaps, func(i, j int) bool { return sortedMaps[i].GetId() < sortedMaps[j].GetId() })
+	for _, m := range sortedMaps {
+		id, label := holderGroup(m.GetPids(), hidden)
+		if id == unattachedGroupID {
+			id = refGroup[m.GetId()]
+			label = groupLabel[id]
+		}
+		if id == "" || id == unattachedGroupID {
+			continue // the array has no loader to pass on
+		}
+		for _, pid := range m.GetProgIds() {
+			if g, ok := progGroup[pid]; !ok || g != unattachedGroupID {
+				// Gone from the listing, or holding its own fd: a program is
+				// credited to a tail-call slot only as a last resort, and only
+				// the lowest-numbered array gets to do it.
+				continue
+			}
+			progGroup[pid], groupLabel[id] = id, label
+		}
+	}
+	return progGroup, groupLabel
+}
+
 // loaderGroup returns the group id and label for a program: its smallest holder
 // PID not in hidden (with comm), or the no-loader group when none is visible.
+// The rule for a program nothing holds is in progGroups, which is what every
+// caller grouping programs should use.
 func loaderGroup(p *pb.ProgramInfo, hidden map[uint32]bool) (id, label string) {
 	return holderGroup(p.GetPids(), hidden)
 }
@@ -251,22 +323,23 @@ func parseLoaderGroup(group string) (label string, ok bool) {
 }
 
 // filterProgramsByLoader keeps the programs belonging to one loader group. It
-// needs no trip through groupByLoader the way the maps filter does: a program's
-// group is the partition itself - loaderGroup is the whole rule, and what the
-// other two filters are derived from - so there is nothing here that could
-// drift from it. Rows come back in the order they were listed in.
+// needs no trip through groupByLoader the way the maps filter does: progGroups
+// is the partition itself - the whole rule for a program, and what the other two
+// filters are derived from - so there is nothing here that could drift from it.
+// The maps are part of that rule, for a program held only by a tail-call slot.
+// Rows come back in the order they were listed in.
 //
 // Also returns the group's label, or "" when nothing on the node is in the
 // group.
-func filterProgramsByLoader(progs []*pb.ProgramInfo, hidden map[uint32]bool, group string) ([]*pb.ProgramInfo, string) {
+func filterProgramsByLoader(progs []*pb.ProgramInfo, maps []*pb.MapInfo, hidden map[uint32]bool, group string) ([]*pb.ProgramInfo, string) {
+	progGroup, groupLabel := progGroups(progs, maps, hidden)
 	var out []*pb.ProgramInfo
 	var label string
 	for _, p := range progs {
-		id, l := loaderGroup(p, hidden)
-		if id != group {
+		if progGroup[p.GetId()] != group {
 			continue
 		}
-		label = l
+		label = groupLabel[group]
 		out = append(out, p)
 	}
 	return out, label
@@ -276,14 +349,14 @@ func filterProgramsByLoader(progs []*pb.ProgramInfo, hidden map[uint32]bool, gro
 // exactly as groupByLoader does it, so the count on the loaders index and the
 // rows here can never disagree. Also returns the group's label when a program
 // in it supplies one - "" when nothing on the node is in the group.
-func filterLinksByLoader(progs []*pb.ProgramInfo, links []*pb.LinkInfo, hidden map[uint32]bool, group string) ([]*pb.LinkInfo, string) {
-	progGroup := make(map[uint32]string, len(progs))
+func filterLinksByLoader(progs []*pb.ProgramInfo, links []*pb.LinkInfo, maps []*pb.MapInfo, hidden map[uint32]bool, group string) ([]*pb.LinkInfo, string) {
+	// Through progGroups, not loaderGroup: a link follows its program's group,
+	// and that group can come from a program array's tail-call slot.
+	progGroup, groupLabel := progGroups(progs, maps, hidden)
 	var label string
 	for _, p := range progs {
-		id, l := loaderGroup(p, hidden)
-		progGroup[p.GetId()] = id
-		if id == group {
-			label = l
+		if progGroup[p.GetId()] == group {
+			label = groupLabel[group]
 		}
 	}
 
@@ -364,10 +437,10 @@ func loaderChoicesFor(groups []*loaderGroupData, count func(*loaderGroupData) in
 
 // linkLoaderChoices lists the loader groups that have links, for the links
 // page's picker - so the filter can be reached on the page itself, not only by
-// arriving from the loaders index. Maps play no part in grouping links and are
-// not fetched for it.
-func linkLoaderChoices(progs []*pb.ProgramInfo, links []*pb.LinkInfo, hidden map[uint32]bool) []loaderChoice {
-	groups, _ := groupByLoader(progs, nil, links, hidden)
+// arriving from the loaders index. The maps come along because a link follows
+// its program's group, and a program can be grouped by a tail-call slot.
+func linkLoaderChoices(progs []*pb.ProgramInfo, links []*pb.LinkInfo, maps []*pb.MapInfo, hidden map[uint32]bool) []loaderChoice {
+	groups, _ := groupByLoader(progs, maps, links, hidden)
 	return loaderChoicesFor(groups, func(g *loaderGroupData) int { return len(g.Links) })
 }
 
@@ -378,10 +451,11 @@ func mapLoaderChoices(progs []*pb.ProgramInfo, maps []*pb.MapInfo, hidden map[ui
 	return loaderChoicesFor(groups, func(g *loaderGroupData) int { return len(g.Maps) })
 }
 
-// programLoaderChoices is the same for the programs page. Neither maps nor
-// links play a part in grouping programs, and neither is fetched for it.
-func programLoaderChoices(progs []*pb.ProgramInfo, hidden map[uint32]bool) []loaderChoice {
-	groups, _ := groupByLoader(progs, nil, nil, hidden)
+// programLoaderChoices is the same for the programs page. Links play no part in
+// grouping programs and are not fetched for it; the maps carry the tail-call
+// slots a program with no holder of its own is grouped by.
+func programLoaderChoices(progs []*pb.ProgramInfo, maps []*pb.MapInfo, hidden map[uint32]bool) []loaderChoice {
+	groups, _ := groupByLoader(progs, maps, nil, hidden)
 	return loaderChoicesFor(groups, func(g *loaderGroupData) int { return len(g.Progs) })
 }
 

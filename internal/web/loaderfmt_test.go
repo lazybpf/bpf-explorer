@@ -29,7 +29,7 @@ func TestProcessRefFormatIsConsistent(t *testing.T) {
 	}
 
 	// mapLoaders renders the inferred loader of a map nothing holds an fd to.
-	got := mapLoaders(progs, 12)
+	got := mapLoaders(progs, nil, 12)
 	if len(got) != 1 || got[0] != "agent(1000) via prog 7" {
 		t.Errorf("mapLoaders = %v, want [\"agent(1000) via prog 7\"]", got)
 	}

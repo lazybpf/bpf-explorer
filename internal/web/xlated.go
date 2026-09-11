@@ -269,3 +269,13 @@ func mapsByID(maps []*pb.MapInfo) map[uint32]*pb.MapInfo {
 	}
 	return byID
 }
+
+// progsByID indexes a program listing the same way, for a program array dump's
+// slots: each holds the id of the program a tail call jumps to.
+func progsByID(progs []*pb.ProgramInfo) map[uint32]*pb.ProgramInfo {
+	byID := make(map[uint32]*pb.ProgramInfo, len(progs))
+	for _, p := range progs {
+		byID[p.GetId()] = p
+	}
+	return byID
+}

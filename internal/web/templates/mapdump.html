@@ -15,12 +15,15 @@
   </h2>
   <div class="scroll">
   <table>
-    {{/* A map-of-maps stores an inner map's id in each slot, so its value column
-         is a set of ids rather than data: named and linked here, since reading
-         one off the hex and looking it up in the maps tab is the same lookup
-         done by hand. The hex column keeps the bytes either way. */}}
+    {{/* A map-of-maps stores an inner map's id in each slot, and a program array
+         a program's, so either one's value column is a set of ids rather than
+         data: named and linked here, since reading one off the hex and looking
+         it up in its tab is the same lookup done by hand. The hex column keeps
+         the bytes either way. */}}
     <thead><tr><th>key</th><th>key (hex)</th>
-      {{if .OfMaps}}<th title="the map held in this slot: a map-of-maps' value is an inner map's id, the value bpftool map dump prints as inner_map_id">inner map</th>{{else}}<th>value</th>{{end}}
+      {{if .OfMaps}}<th title="the map held in this slot: a map-of-maps' value is an inner map's id, the value bpftool map dump prints as inner_map_id">inner map</th>
+      {{else if .OfProgs}}<th title="the program this slot tail-calls into: a program array's value is a program's id, which bpf_tail_call jumps to by index">program</th>
+      {{else}}<th>value</th>{{end}}
       <th>value (hex)</th></tr></thead>
     <tbody>
     {{range .Entries}}
@@ -33,12 +36,25 @@
                shows the bytes it was read out of: the id is a decoding of the
                value, so what was decoded stays visible next to it. */}}
           <td><a href="/nodes/{{$.Node}}/maps/{{.InnerMapId}}" target="_blank" rel="noopener" title="value {{.ValueHex}} is map id {{.InnerMapId}} as a host-order u32{{with $inner}} - {{.Type}}, {{.MaxEntries}} entries{{end}} - its keys and values (new tab)"><span class="name">{{innerMapLabel $inner .InnerMapId}}</span></a></td>
-        {{else}}
+        {{else if .ProgId}}
+          {{$prog := index $.ProgramsByID .ProgId}}
+          {{/* The same spelling, pointing at the program's xlated listing - the
+               instructions a tail call at this index lands in. */}}
+          <td><a href="/nodes/{{$.Node}}/programs/{{.ProgId}}" target="_blank" rel="noopener" title="value {{.ValueHex}} is program id {{.ProgId}} as a host-order u32{{with $prog}} - {{.Type}}{{end}} - its xlated instructions (new tab)"><span class="name">{{progLabel $prog .ProgId}}</span></a></td>
+        {{else if or .ValueHex .ValueFmt}}
           <td>{{.ValueFmt}}</td>
+        {{else}}
+          {{/* The kernel returned no value for this key, which the agent leaves
+               as nothing at all. Said out loud, or a row of blank cells reads as
+               the page having failed to render one. What it means depends on the
+               shape: an index nothing has been inserted at, or - in a keyed map -
+               a key deleted between being listed and being read. */}}
+          <td>{{if or $.Dump.OfMaps $.Dump.OfProgs}}<span class="muted" title="nothing has been inserted at this index: the slot is free. bpftool map dump prints &lt;no entry&gt; for it">(empty slot)</span>{{else}}<span class="muted" title="the kernel returned no value for this key - it was deleted between being listed and being read, so there is nothing to show rather than nothing stored. bpftool map dump prints &lt;no entry&gt; for it">(no entry)</span>{{end}}</td>
         {{end}}
         {{/* No ASCII hint on a slot's value: these bytes are an id, and reading
-             them as text says something about the map that isn't true. */}}
-        <td><code{{if .InnerMapId}} title="map id {{.InnerMapId}}, host-order u32"{{else}}{{with hexASCII .ValueHex}} title="ASCII: {{.}}"{{end}}{{end}}>{{.ValueHex}}</code></td>
+             them as text says something about the map that isn't true. And no
+             empty <code> box where there are no bytes at all. */}}
+        <td>{{if .ValueHex}}<code{{if .InnerMapId}} title="map id {{.InnerMapId}}, host-order u32"{{else if .ProgId}} title="program id {{.ProgId}}, host-order u32"{{else}}{{with hexASCII .ValueHex}} title="ASCII: {{.}}"{{end}}{{end}}>{{.ValueHex}}</code>{{else}}<span class="muted">-</span>{{end}}</td>
       </tr>
     {{else}}
       <tr><td colspan="4" class="muted">(map is empty)</td></tr>

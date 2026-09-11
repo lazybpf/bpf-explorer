@@ -40,6 +40,12 @@ message MapInfo {
   // and closes its fd leaves it with no holder, no pin and no referencing
   // program, so without this the UI cannot attribute it to anyone.
   repeated uint32 inner_map_ids = 12;
+  // For a ProgramArray only: the programs in its slots, which a bpf_tail_call
+  // jumps to by index. Read the same way and for the same reason - a loader
+  // that inserts a program into the tail-call table and closes its fd leaves
+  // that program with no holder and no link, so the slot is the only thing
+  // naming it.
+  repeated uint32 prog_ids = 13;
 }
 
 message ListMapsRequest {}
@@ -57,6 +63,10 @@ message MapEntry {
   // agent can read as one. 0 for every other map type, and for an empty slot:
   // 0 is not a valid map id.
   uint32 inner_map_id = 6;
+  // For a program array only: the program this slot tail-calls into, decoded
+  // the same way - the kernel returns a program fd array's value as a
+  // host-order u32 id. 0 for every other map type, and for an empty slot.
+  uint32 prog_id = 7;
 }
 
 message DumpMapRequest {

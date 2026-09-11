@@ -44,8 +44,8 @@
         {{if .Pids}}
           {{range .Pids}}{{.Comm}}({{.Pid}}){{" "}}{{end}}
         {{else}}
-          {{with mapLoaders $.Programs .Id}}
-            {{range .}}<span class="muted" title="inferred: no process holds an fd to this map, so this is the loader of a program referencing it">{{.}}</span>{{" "}}{{end}}
+          {{with mapLoaders $.Programs $.Maps .Id}}
+            {{range .}}<span class="muted" title="inferred: no process holds an fd to this map, so this is the loader of a program referencing it - itself inferred when nothing holds that program either">{{.}}</span>{{" "}}{{end}}
           {{else}}
             {{/* Last resort, and the only route that reaches an inner map of a
                  map-of-maps: nothing holds its fd, nothing pins it and no

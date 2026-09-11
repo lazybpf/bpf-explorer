@@ -38,7 +38,9 @@ func New(disc discovery.Discoverer, hiddenLoaders map[uint32]bool) (*Handlers, e
 	funcs := template.FuncMap{
 		"mapFlags": mapFlags, "progName": progName, "progLoader": progLoader,
 		"mapLoaders": mapLoaders, "innerMapLoaders": innerMapLoaders,
-		"innerMapLabel": innerMapLabel, "hexASCII": hexASCII, "tabClass": tabClass,
+		"progArrayLoaders": progArrayLoaders,
+		"innerMapLabel":    innerMapLabel, "progLabel": progLabel,
+		"hexASCII": hexASCII, "tabClass": tabClass,
 		"holders": holders, "comma": comma, "registers": registerSheet,
 		"nsHelp": namespaceHelp, "innerPIDs": innerPIDs, "cgroupHelp": cgroupHelp,
 		"nodeLinkTitle": nodeLinkTitle,
@@ -122,9 +124,12 @@ type pageData struct {
 	MapFilter   *loaderFilter
 	MapLoaders  []loaderChoice
 	MapsByID    map[uint32]*pb.MapInfo // id -> map, for program map-ref tooltips
-	Dump        *dumpView
-	ProgDump    *progDumpView
-	Mermaid     template.HTML // dependency diagram definition
+	// ProgramsByID indexes Programs the same way, for a program array dump's
+	// slots. Only the pages that resolve a program id fill it in.
+	ProgramsByID map[uint32]*pb.ProgramInfo
+	Dump         *dumpView
+	ProgDump     *progDumpView
+	Mermaid      template.HTML // dependency diagram definition
 	// GraphHeading names a diagram page's subject - a loader, a program or a
 	// map - with the name it was handed kept apart from the words around it.
 	GraphHeading graphHeading
@@ -198,6 +203,9 @@ type dumpView struct {
 	// data. Taken from the map's type, not from the entries: an outer map whose
 	// slots are all empty still holds ids, it just has none right now.
 	OfMaps bool
+	// OfProgs is the same for a program array, whose values are the program ids
+	// its programs tail-call into.
+	OfProgs bool
 }
 
 type progDumpView struct {
@@ -349,6 +357,18 @@ func (h *Handlers) maps(w http.ResponseWriter, r *http.Request) {
 	// point at - a map-of-maps' slots - the way the programs page names the
 	// maps a program references.
 	data.MapsByID = mapsByID(data.Maps)
+	typ := data.MapsByID[uint32(id)].GetType()
+	if isProgArray(typ) {
+		// A program array's slots are program ids, and this is the only page
+		// under the maps tab that needs the programs: fetched for this dump
+		// alone, and best-effort - a slot links by id whether or not the name
+		// behind it could be read.
+		progs, perr := client.ListPrograms(ctx, &pb.ListProgramsRequest{})
+		if perr == nil {
+			data.Programs = progs.GetPrograms()
+			data.ProgramsByID = progsByID(data.Programs)
+		}
+	}
 	dump, derr := client.DumpMap(ctx, &pb.DumpMapRequest{Id: uint32(id)})
 	if derr != nil {
 		data.Err = derr.Error()
@@ -358,7 +378,8 @@ func (h *Handlers) maps(w http.ResponseWriter, r *http.Request) {
 			Name:      mapName(data.Maps, uint32(id)),
 			Entries:   dump.GetEntries(),
 			Truncated: dump.GetTruncated(),
-			OfMaps:    isMapOfMaps(data.MapsByID[uint32(id)].GetType()),
+			OfMaps:    isMapOfMaps(typ),
+			OfProgs:   isProgArray(typ),
 		}
 	}
 	h.render(w, page, data)
@@ -423,23 +444,38 @@ func (h *Handlers) programs(w http.ResponseWriter, r *http.Request) {
 	}
 	data.Programs = list.GetPrograms()
 
-	// Best-effort map metadata, so a map reference can say which map it is: a
+	// Map metadata, for a map reference that should say which map it is - a
 	// tooltip on the list's map-ref column, and on the map a dump's listing
-	// loads. A failure here must not break the page - not even under a filter,
-	// unlike the links and maps pages: a program is grouped by the processes
-	// holding an fd to it, which the list above already carries, so nothing
-	// about the grouping depends on this call.
-	if maps, merr := client.ListMaps(ctx, &pb.ListMapsRequest{}); merr == nil {
-		data.MapsByID = mapsByID(maps.GetMaps())
+	// loads - and for the grouping: a program nothing holds an fd to is credited
+	// to the loader of the program array holding it in a tail-call slot, an edge
+	// only the maps carry. Best-effort for the tooltips, but not under a filter:
+	// without the maps every tail-call target groups as having no loader, and
+	// the only honest page is then the error, not a list quietly missing the
+	// programs that belong to the loader asked for.
+	maps, merr := client.ListMaps(ctx, &pb.ListMapsRequest{})
+	if merr != nil && group != "" {
+		data.Err = merr.Error()
+		data.Programs = nil
+		h.render(w, page, data)
+		return
 	}
+	data.Maps = maps.GetMaps()
+	data.MapsByID = mapsByID(data.Maps)
 
 	if idStr == "" {
 		// Built from the unfiltered list, so the picker offers the same groups
-		// whichever one is currently selected.
-		choices := programLoaderChoices(data.Programs, h.hiddenLoaders)
+		// whichever one is currently selected. Only when the maps were actually
+		// read, as on the maps page: without them the tail-call targets all
+		// group as having no loader, and offering that as a choice states
+		// something about the node that is really just the failed fetch above.
+		// (Under a filter merr has already returned.)
+		var choices []loaderChoice
+		if merr == nil {
+			choices = programLoaderChoices(data.Programs, data.Maps, h.hiddenLoaders)
+		}
 
 		if f := data.ProgFilter; f != nil {
-			filtered, label := filterProgramsByLoader(data.Programs, h.hiddenLoaders, group)
+			filtered, label := filterProgramsByLoader(data.Programs, data.Maps, h.hiddenLoaders, group)
 			if label != "" {
 				// The group's own spelling, with the loader's comm; the fallback
 				// stands when nothing on the node is in this group any more.
@@ -541,18 +577,30 @@ func (h *Handlers) links(w http.ResponseWriter, r *http.Request) {
 	}
 	data.Programs = progs.GetPrograms()
 
+	// And the maps, on the same terms: a link follows its program's group, and a
+	// program nothing holds an fd to is grouped by the program array holding it
+	// in a tail-call slot - an edge only the maps carry.
+	maps, merr := client.ListMaps(ctx, &pb.ListMapsRequest{})
+	if merr != nil && group != "" {
+		data.Err = merr.Error()
+		data.Links = nil
+		h.render(w, "links", data)
+		return
+	}
+	data.Maps = maps.GetMaps()
+
 	// Built from the unfiltered list, so the picker offers the same groups
-	// whichever one is currently selected. Only when the programs were actually
-	// read: without them every link groups as having no loader, and offering
+	// whichever one is currently selected. Only when both fetches above
+	// succeeded: without them links group as having no loader, and offering
 	// that as a choice states something about the node that is really just the
-	// failed fetch above. (Under a filter perr has already returned.)
+	// failed fetch. (Under a filter both have already returned.)
 	var choices []loaderChoice
-	if perr == nil {
-		choices = linkLoaderChoices(data.Programs, data.Links, h.hiddenLoaders)
+	if perr == nil && merr == nil {
+		choices = linkLoaderChoices(data.Programs, data.Links, data.Maps, h.hiddenLoaders)
 	}
 
 	if f := data.LinkFilter; f != nil {
-		filtered, label := filterLinksByLoader(data.Programs, data.Links, h.hiddenLoaders, group)
+		filtered, label := filterLinksByLoader(data.Programs, data.Links, data.Maps, h.hiddenLoaders, group)
 		if label != "" {
 			// The group's own spelling, with the loader's comm; the fallback
 			// stands when nothing on the node is in this group any more.
@@ -882,6 +930,13 @@ func isMapOfMaps(t string) bool {
 	return t == "ArrayOfMaps" || t == "HashOfMaps"
 }
 
+// isProgArray reports whether a map type string names a program array, whose
+// values are the program ids a tail call jumps to - what bpftool calls
+// prog_array.
+func isProgArray(t string) bool {
+	return t == "ProgramArray"
+}
+
 // innerMapLabel names the map sitting in a map-of-maps slot the way every other
 // object with an id is named here - a loader is comm(pid), so an inner map is
 // name(id) rather than prose. A map the listing has no name for, or no row for
@@ -892,6 +947,18 @@ func innerMapLabel(m *pb.MapInfo, id uint32) string {
 	name := m.GetName()
 	if name == "" {
 		name = "map"
+	}
+	return fmt.Sprintf("%s(%d)", name, id)
+}
+
+// progLabel names the program sitting in a program array slot the way
+// innerMapLabel names an inner map: name(id), with "prog" standing in when the
+// listing has no name for it, or no row for it at all - a program loaded
+// between the listing and the dump, or one the programs could not be read for.
+func progLabel(p *pb.ProgramInfo, id uint32) string {
+	name := p.GetName()
+	if name == "" {
+		name = "prog"
 	}
 	return fmt.Sprintf("%s(%d)", name, id)
 }
@@ -949,7 +1016,12 @@ func loaderRef(p *pb.ProgramInfo) *pb.ProcessRef {
 // loaded (always so for .rodata/.bss, which loaders never keep), leaving the map
 // alive on the program's kernel reference alone. Each entry reads
 // "comm(pid) via prog <ids>", one per distinct loader, in program-id order.
-func mapLoaders(progs []*pb.ProgramInfo, id uint32) []string {
+//
+// The referencing program is credited the way its own row credits it, so a map
+// reached only through a tail-call target still names the loader at the end of
+// the chain rather than falling through to "-": the maps are needed for that
+// step and for nothing else here.
+func mapLoaders(progs []*pb.ProgramInfo, maps []*pb.MapInfo, id uint32) []string {
 	type loader struct {
 		ref   *pb.ProcessRef
 		progs []string
@@ -961,9 +1033,9 @@ func mapLoaders(progs []*pb.ProgramInfo, id uint32) []string {
 		if !refsMap(p, id) {
 			continue
 		}
-		ref := loaderRef(p)
+		ref := progLoaderRef(p, progs, maps)
 		if ref == nil {
-			continue // the referencing program has no holder either
+			continue // the referencing program has no loader either
 		}
 		l, ok := byPID[ref.GetPid()]
 		if !ok {
@@ -1027,11 +1099,87 @@ func innerMapLoaders(progs []*pb.ProgramInfo, maps []*pb.MapInfo, id uint32) []s
 	return out
 }
 
-// outerLoaderRef picks the process an outer map is credited to, so an inner map
-// can inherit it: the outer map's own lowest holder, or failing that the loader
-// of a program referencing the outer map. Both routes are already what the
-// Holders column shows for the outer map's own row, so the inner row never
-// names a loader the outer row does not.
+// progArrayLoaders infers the loaders of a program nothing holds an fd to, from
+// the program arrays holding it in a slot. It is to a tail-call target what
+// innerMapLoaders is to an inner map, and the only route that reaches one: the
+// loader inserts the program into the tail-call table and closes its fd, and no
+// link attaches it either - only the entry program of the chain keeps one. The
+// kernel holds it on the array's slot alone, which is why `bpftool prog show`
+// prints no pids for it either.
+//
+// Each entry reads "comm(pid) via map <ids>", one per distinct loader, in
+// map-id order - the same spelling the maps page uses for an inner map.
+func progArrayLoaders(progs []*pb.ProgramInfo, maps []*pb.MapInfo, id uint32) []string {
+	type loader struct {
+		ref    *pb.ProcessRef
+		arrays []string
+	}
+	byPID := map[uint32]*loader{}
+	var order []uint32
+
+	for _, m := range maps {
+		if !holdsProg(m, id) {
+			continue
+		}
+		ref := outerLoaderRef(progs, m)
+		if ref == nil {
+			continue // the array has no loader to inherit either
+		}
+		l, ok := byPID[ref.GetPid()]
+		if !ok {
+			l = &loader{ref: ref}
+			byPID[ref.GetPid()] = l
+			order = append(order, ref.GetPid())
+		}
+		l.arrays = append(l.arrays, strconv.FormatUint(uint64(m.GetId()), 10))
+	}
+
+	out := make([]string, 0, len(order))
+	for _, pid := range order {
+		l := byPID[pid]
+		out = append(out, fmt.Sprintf("%s(%d) via map %s",
+			l.ref.GetComm(), l.ref.GetPid(), strings.Join(l.arrays, ", ")))
+	}
+	return out
+}
+
+// progLoaderRef picks the process a program is credited to: its own lowest
+// holder, or - when nothing holds an fd to it - the loader of a program array
+// holding it in a tail-call slot. One step of inheritance, the same two routes
+// progGroups partitions by and progArrayLoaders spells out in the program's own
+// Holders cell, so a map credited "via prog" never names a loader that
+// program's row does not.
+func progLoaderRef(p *pb.ProgramInfo, progs []*pb.ProgramInfo, maps []*pb.MapInfo) *pb.ProcessRef {
+	if ref := loaderRef(p); ref != nil {
+		return ref
+	}
+	var best *pb.ProcessRef
+	for _, m := range maps {
+		if !holdsProg(m, p.GetId()) {
+			continue
+		}
+		if ref := outerLoaderRef(progs, m); ref != nil && (best == nil || ref.GetPid() < best.GetPid()) {
+			best = ref
+		}
+	}
+	return best
+}
+
+// holdsProg reports whether m has program id in one of its slots.
+func holdsProg(m *pb.MapInfo, id uint32) bool {
+	for _, pid := range m.GetProgIds() {
+		if pid == id {
+			return true
+		}
+	}
+	return false
+}
+
+// outerLoaderRef picks the process a map holding other objects is credited to,
+// so what sits in its slots can inherit it: the map's own lowest holder, or
+// failing that the loader of a program referencing the map. Both routes are
+// already what the Holders column shows for the map's own row, so an inner map
+// or a tail-call target never names a loader that row does not.
 func outerLoaderRef(progs []*pb.ProgramInfo, m *pb.MapInfo) *pb.ProcessRef {
 	var best *pb.ProcessRef
 	for _, r := range m.GetPids() {

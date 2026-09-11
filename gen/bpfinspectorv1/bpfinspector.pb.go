@@ -41,7 +41,13 @@ type MapInfo struct {
 	// inner map may have no other trace of - a loader that inserts an inner map
 	// and closes its fd leaves it with no holder, no pin and no referencing
 	// program, so without this the UI cannot attribute it to anyone.
-	InnerMapIds   []uint32 `protobuf:"varint,12,rep,packed,name=inner_map_ids,json=innerMapIds,proto3" json:"inner_map_ids,omitempty"`
+	InnerMapIds []uint32 `protobuf:"varint,12,rep,packed,name=inner_map_ids,json=innerMapIds,proto3" json:"inner_map_ids,omitempty"`
+	// For a ProgramArray only: the programs in its slots, which a bpf_tail_call
+	// jumps to by index. Read the same way and for the same reason - a loader
+	// that inserts a program into the tail-call table and closes its fd leaves
+	// that program with no holder and no link, so the slot is the only thing
+	// naming it.
+	ProgIds       []uint32 `protobuf:"varint,13,rep,packed,name=prog_ids,json=progIds,proto3" json:"prog_ids,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -160,6 +166,13 @@ func (x *MapInfo) GetInnerMapIds() []uint32 {
 	return nil
 }
 
+func (x *MapInfo) GetProgIds() []uint32 {
+	if x != nil {
+		return x.ProgIds
+	}
+	return nil
+}
+
 type ListMapsRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
@@ -252,7 +265,11 @@ type MapEntry struct {
 	// value bytes on the node - they are a host-order u32 id, which only the
 	// agent can read as one. 0 for every other map type, and for an empty slot:
 	// 0 is not a valid map id.
-	InnerMapId    uint32 `protobuf:"varint,6,opt,name=inner_map_id,json=innerMapId,proto3" json:"inner_map_id,omitempty"`
+	InnerMapId uint32 `protobuf:"varint,6,opt,name=inner_map_id,json=innerMapId,proto3" json:"inner_map_id,omitempty"`
+	// For a program array only: the program this slot tail-calls into, decoded
+	// the same way - the kernel returns a program fd array's value as a
+	// host-order u32 id. 0 for every other map type, and for an empty slot.
+	ProgId        uint32 `protobuf:"varint,7,opt,name=prog_id,json=progId,proto3" json:"prog_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -325,6 +342,13 @@ func (x *MapEntry) GetPerCpuValueFmt() []string {
 func (x *MapEntry) GetInnerMapId() uint32 {
 	if x != nil {
 		return x.InnerMapId
+	}
+	return 0
+}
+
+func (x *MapEntry) GetProgId() uint32 {
+	if x != nil {
+		return x.ProgId
 	}
 	return 0
 }
@@ -2151,7 +2175,7 @@ var File_proto_bpfinspector_proto protoreflect.FileDescriptor
 
 const file_proto_bpfinspector_proto_rawDesc = "" +
 	"\n" +
-	"\x18proto/bpfinspector.proto\x12\x0fbpfinspector.v1\"\xe3\x02\n" +
+	"\x18proto/bpfinspector.proto\x12\x0fbpfinspector.v1\"\xfe\x02\n" +
 	"\aMapInfo\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\rR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x12\n" +
@@ -2167,10 +2191,11 @@ const file_proto_bpfinspector_proto_rawDesc = "" +
 	"\x04pids\x18\n" +
 	" \x03(\v2\x1b.bpfinspector.v1.ProcessRefR\x04pids\x12\x1b\n" +
 	"\tdump_note\x18\v \x01(\tR\bdumpNote\x12\"\n" +
-	"\rinner_map_ids\x18\f \x03(\rR\vinnerMapIds\"\x11\n" +
+	"\rinner_map_ids\x18\f \x03(\rR\vinnerMapIds\x12\x19\n" +
+	"\bprog_ids\x18\r \x03(\rR\aprogIds\"\x11\n" +
 	"\x0fListMapsRequest\"@\n" +
 	"\x10ListMapsResponse\x12,\n" +
-	"\x04maps\x18\x01 \x03(\v2\x18.bpfinspector.v1.MapInfoR\x04maps\"\xc3\x01\n" +
+	"\x04maps\x18\x01 \x03(\v2\x18.bpfinspector.v1.MapInfoR\x04maps\"\xdc\x01\n" +
 	"\bMapEntry\x12\x17\n" +
 	"\akey_hex\x18\x01 \x01(\tR\x06keyHex\x12\x17\n" +
 	"\akey_fmt\x18\x02 \x01(\tR\x06keyFmt\x12\x1b\n" +
@@ -2178,7 +2203,8 @@ const file_proto_bpfinspector_proto_rawDesc = "" +
 	"\tvalue_fmt\x18\x04 \x01(\tR\bvalueFmt\x12)\n" +
 	"\x11per_cpu_value_fmt\x18\x05 \x03(\tR\x0eperCpuValueFmt\x12 \n" +
 	"\finner_map_id\x18\x06 \x01(\rR\n" +
-	"innerMapId\"N\n" +
+	"innerMapId\x12\x17\n" +
+	"\aprog_id\x18\a \x01(\rR\x06progId\"N\n" +
 	"\x0eDumpMapRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\rR\x02id\x12\x14\n" +
 	"\x05limit\x18\x02 \x01(\rR\x05limit\x12\x16\n" +

@@ -354,7 +354,7 @@ func TestFilterProgramsByLoader(t *testing.T) {
 
 	// The short label: the programs page's picker is already called "loader",
 	// so the group's own prefix would say the word twice.
-	got, label := filterProgramsByLoader(progs, nil, "sg_1000")
+	got, label := filterProgramsByLoader(progs, nil, nil, "sg_1000")
 	if label != "agent(1000)" {
 		t.Errorf("label = %q, want the short form", label)
 	}
@@ -363,7 +363,7 @@ func TestFilterProgramsByLoader(t *testing.T) {
 	}
 
 	// Prog 9 has no holder, so it names the group the same way the index does.
-	got, label = filterProgramsByLoader(progs, nil, unattachedGroupID)
+	got, label = filterProgramsByLoader(progs, nil, nil, unattachedGroupID)
 	if label != unattachedLabel {
 		t.Errorf("label = %q, want %q", label, unattachedLabel)
 	}
@@ -372,7 +372,7 @@ func TestFilterProgramsByLoader(t *testing.T) {
 	}
 
 	// A group with nothing in it is empty, not everything.
-	if got, _ := filterProgramsByLoader(progs, nil, "sg_9999"); len(got) != 0 {
+	if got, _ := filterProgramsByLoader(progs, nil, nil, "sg_9999"); len(got) != 0 {
 		t.Errorf("sg_9999 programs = %+v, want none", got)
 	}
 
@@ -384,10 +384,10 @@ func TestFilterProgramsByLoader(t *testing.T) {
 		Pids: []*pb.ProcessRef{{Pid: 1, Comm: "systemd"}, {Pid: 1000, Comm: "agent"}},
 	}}
 	hidden := map[uint32]bool{1: true}
-	if got, _ := filterProgramsByLoader(shared, hidden, "sg_1"); len(got) != 0 {
+	if got, _ := filterProgramsByLoader(shared, nil, hidden, "sg_1"); len(got) != 0 {
 		t.Errorf("hidden pid 1 still owns programs: %+v", got)
 	}
-	got, label = filterProgramsByLoader(shared, hidden, "sg_1000")
+	got, label = filterProgramsByLoader(shared, nil, hidden, "sg_1000")
 	if len(got) != 1 || label != "agent(1000)" {
 		t.Errorf("programs = %+v, label = %q, want prog 7 under agent(1000)", got, label)
 	}
@@ -413,7 +413,7 @@ func TestFilterLinksByLoader(t *testing.T) {
 
 	// The short label: the links page's picker is already called "loader", so
 	// the group's own prefix would say the word twice.
-	got, label := filterLinksByLoader(progs, links, nil, "sg_1000")
+	got, label := filterLinksByLoader(progs, links, nil, nil, "sg_1000")
 	if label != "agent(1000)" {
 		t.Errorf("label = %q, want the short form", label)
 	}
@@ -422,7 +422,7 @@ func TestFilterLinksByLoader(t *testing.T) {
 	}
 
 	// prog 9 has no loader, so it names the group the same way the index does.
-	got, label = filterLinksByLoader(progs, links, nil, unattachedGroupID)
+	got, label = filterLinksByLoader(progs, links, nil, nil, unattachedGroupID)
 	if label != unattachedLabel {
 		t.Errorf("label = %q, want %q", label, unattachedLabel)
 	}
@@ -435,7 +435,7 @@ func TestFilterLinksByLoader(t *testing.T) {
 	}
 
 	// A group with nothing in it is empty, not everything.
-	if got, _ := filterLinksByLoader(progs, links, nil, "sg_9999"); len(got) != 0 {
+	if got, _ := filterLinksByLoader(progs, links, nil, nil, "sg_9999"); len(got) != 0 {
 		t.Errorf("sg_9999 links = %+v, want none", got)
 	}
 }
@@ -452,10 +452,10 @@ func TestFilterLinksByLoaderHonoursHidden(t *testing.T) {
 	links := []*pb.LinkInfo{{Id: 3, ProgId: 7}}
 	hidden := map[uint32]bool{1: true}
 
-	if got, _ := filterLinksByLoader(progs, links, hidden, "sg_1"); len(got) != 0 {
+	if got, _ := filterLinksByLoader(progs, links, nil, hidden, "sg_1"); len(got) != 0 {
 		t.Errorf("hidden pid 1 still owns links: %+v", got)
 	}
-	got, label := filterLinksByLoader(progs, links, hidden, "sg_1000")
+	got, label := filterLinksByLoader(progs, links, nil, hidden, "sg_1000")
 	if len(got) != 1 || label != "agent(1000)" {
 		t.Errorf("links = %+v, label = %q, want link 3 under agent(1000)", got, label)
 	}
@@ -666,7 +666,7 @@ func TestLinkLoaderChoices(t *testing.T) {
 		{Id: 5},            // no program: the no-loader group
 	}
 
-	got := linkLoaderChoices(progs, links, nil)
+	got := linkLoaderChoices(progs, links, nil, nil)
 	want := []loaderChoice{
 		{Group: "sg_1000", Label: "agent(1000)", Count: 2},
 		{Group: unattachedGroupID, Label: unattachedLabel, Count: 1},
@@ -687,7 +687,7 @@ func TestLinkLoaderChoices(t *testing.T) {
 	}
 
 	// And with no links at all there is nothing to narrow.
-	if got := linkLoaderChoices(progs, nil, nil); len(got) != 0 {
+	if got := linkLoaderChoices(progs, nil, nil, nil); len(got) != 0 {
 		t.Errorf("choices with no links = %+v, want none", got)
 	}
 }
@@ -697,7 +697,7 @@ func TestLinkLoaderChoices(t *testing.T) {
 func TestLinkLoaderChoicesMatchIndexCounts(t *testing.T) {
 	progs, maps, links := sampleGraphData()
 	groups, _ := groupByLoader(progs, maps, links, nil)
-	for _, c := range linkLoaderChoices(progs, links, nil) {
+	for _, c := range linkLoaderChoices(progs, links, nil, nil) {
 		g := findGroup(groups, c.Group)
 		if g == nil {
 			t.Errorf("picker offers %q, which the loaders index does not group", c.Group)
@@ -773,7 +773,7 @@ func TestMapLoaderChoicesMatchIndexCounts(t *testing.T) {
 func TestProgramLoaderChoices(t *testing.T) {
 	progs, maps, links := sampleGraphData()
 
-	got := programLoaderChoices(progs, nil)
+	got := programLoaderChoices(progs, nil, nil)
 	want := []loaderChoice{
 		{Group: "sg_1000", Label: "agent(1000)", Count: 1},
 		{Group: "sg_2000", Label: "profiler(2000)", Count: 1},
@@ -792,7 +792,7 @@ func TestProgramLoaderChoices(t *testing.T) {
 	// on the loaders index because it holds an fd to a map has nothing to
 	// narrow the programs page to.
 	holder := []*pb.MapInfo{{Id: 12, Pids: []*pb.ProcessRef{{Pid: 3000, Comm: "keeper"}}}}
-	if hasLoaderChoice(programLoaderChoices(progs, nil), "sg_3000") {
+	if hasLoaderChoice(programLoaderChoices(progs, nil, nil), "sg_3000") {
 		t.Errorf("a map-holding group with no programs should not be offered")
 	}
 	if g, _ := groupByLoader(progs, holder, nil, nil); findGroup(g, "sg_3000") == nil {
@@ -816,7 +816,7 @@ func TestProgramLoaderChoices(t *testing.T) {
 	}
 
 	// With nothing on the node there is nothing to narrow.
-	if got := programLoaderChoices(nil, nil); len(got) != 0 {
+	if got := programLoaderChoices(nil, nil, nil); len(got) != 0 {
 		t.Errorf("choices with no programs = %+v, want none", got)
 	}
 }
@@ -848,7 +848,7 @@ func TestGroupByLoaderPutsNoLoaderLast(t *testing.T) {
 	}
 
 	// The pickers are built from the same partition, so they end with it too.
-	choices := linkLoaderChoices(progs, []*pb.LinkInfo{{Id: 3, ProgId: 1}, {Id: 4, ProgId: 2}}, nil)
+	choices := linkLoaderChoices(progs, []*pb.LinkInfo{{Id: 3, ProgId: 1}, {Id: 4, ProgId: 2}}, nil, nil)
 	if len(choices) == 0 || choices[len(choices)-1].Group != unattachedGroupID {
 		t.Errorf("picker = %+v, want the no-loader group last", choices)
 	}
@@ -1141,4 +1141,162 @@ func TestMapGroupDataInnerReachesOuter(t *testing.T) {
 	if len(g.Links) != 1 || g.Links[0].GetId() != 3 {
 		t.Errorf("want link 3 (attaches prog 1769), got %+v", g.Links)
 	}
+}
+
+// TestGroupByLoaderInheritsTailCallTargets checks a program sitting in a program
+// array's slot is credited to that array's loader rather than left in the
+// no-loader group. The programs page names that loader in its Holders column
+// ("tetragon(1000) via map 100"), so a row reading that while filed under "no
+// loader" is the page contradicting itself - the same invariant the inner-map
+// route keeps for maps.
+func TestGroupByLoaderInheritsTailCallTargets(t *testing.T) {
+	progs := []*pb.ProgramInfo{
+		// The entry program: attached, and the only one anybody holds.
+		{Id: 1, Name: "generic_kprobe_event", MapIds: []uint32{100},
+			Pids: []*pb.ProcessRef{{Pid: 1000, Comm: "tetragon"}}},
+		// A tail-call target: inserted into the table, its fd closed.
+		{Id: 2, Name: "generic_kprobe_filter_arg", MapIds: []uint32{100, 101}},
+		// And a program nothing reaches at all.
+		{Id: 3, Name: "orphan"},
+	}
+	maps := []*pb.MapInfo{
+		{Id: 100, Name: "kprobe_calls", Type: "ProgramArray",
+			Pids:    []*pb.ProcessRef{{Pid: 1000, Comm: "tetragon"}},
+			ProgIds: []uint32{1, 2}},
+		{Id: 101, Name: "retprobe_map", Type: "Hash"},
+	}
+
+	groups, _ := groupByLoader(progs, maps, nil, nil)
+	byID := map[string]*loaderGroupData{}
+	for _, g := range groups {
+		byID[g.ID] = g
+	}
+
+	tetragon := byID["sg_1000"]
+	if tetragon == nil {
+		t.Fatalf("no tetragon group in %+v", groups)
+	}
+	if !hasProg(tetragon.Progs, 2) {
+		t.Errorf("tail-call target 2 missing from the array's loader, got %+v", tetragon.Progs)
+	}
+	// Its maps come with it: a map only a tail-call target references is that
+	// loader's map, not a no-loader one.
+	if !hasMap(tetragon.Maps, 101) {
+		t.Errorf("map 101 missing from the group of the program referencing it, got %v", tetragon.Maps)
+	}
+
+	noLoader := byID[unattachedGroupID]
+	if noLoader == nil {
+		t.Fatalf("no-loader group missing; program 3 should be in it")
+	}
+	if hasProg(noLoader.Progs, 2) {
+		t.Errorf("tail-call target 2 still under %q", unattachedLabel)
+	}
+	if !hasProg(noLoader.Progs, 3) {
+		t.Errorf("program 3 is reached by nothing and belongs under %q, got %+v",
+			unattachedLabel, noLoader.Progs)
+	}
+	if hasMap(noLoader.Maps, 101) {
+		t.Errorf("map 101 still under %q, got %v", unattachedLabel, noLoader.Maps)
+	}
+}
+
+// TestGroupByLoaderTailCallArrayHeldByProgram checks the second route into an
+// array: nobody holds its fd, but a program referencing it has a loader, and the
+// targets inherit that - the same two routes the maps page credits a map by.
+func TestGroupByLoaderTailCallArrayHeldByProgram(t *testing.T) {
+	progs := []*pb.ProgramInfo{
+		{Id: 1, Name: "entry", MapIds: []uint32{100},
+			Pids: []*pb.ProcessRef{{Pid: 1000, Comm: "tetragon"}}},
+		{Id: 2, Name: "target"},
+	}
+	maps := []*pb.MapInfo{
+		{Id: 100, Name: "calls", Type: "ProgramArray", ProgIds: []uint32{2}},
+	}
+
+	groups, _ := groupByLoader(progs, maps, nil, nil)
+	for _, g := range groups {
+		if g.ID == "sg_1000" && hasProg(g.Progs, 2) {
+			return
+		}
+	}
+	t.Errorf("target 2 should inherit the loader of the program referencing the array, got %+v", groups)
+}
+
+// TestGroupByLoaderTailCallWithoutArrayLoader checks nothing is invented: when
+// the array has no loader either, its targets stay in the no-loader group,
+// matching the "-" their Holders cell still reads.
+func TestGroupByLoaderTailCallWithoutArrayLoader(t *testing.T) {
+	progs := []*pb.ProgramInfo{{Id: 2, Name: "target"}}
+	maps := []*pb.MapInfo{{Id: 100, Name: "calls", Type: "ProgramArray", ProgIds: []uint32{2}}}
+
+	groups, _ := groupByLoader(progs, maps, nil, nil)
+	if len(groups) != 1 || groups[0].ID != unattachedGroupID {
+		t.Fatalf("groups = %+v, want only the no-loader group", groups)
+	}
+	if !hasProg(groups[0].Progs, 2) {
+		t.Errorf("program 2 belongs under %q, got %+v", unattachedLabel, groups[0].Progs)
+	}
+}
+
+// TestGroupByLoaderTailCallHiddenLoader checks the target follows the
+// hidden-loader rule through the inheritance: crediting it to a hidden loader
+// would smuggle back a group the caller asked to exclude.
+func TestGroupByLoaderTailCallHiddenLoader(t *testing.T) {
+	progs := []*pb.ProgramInfo{{Id: 2, Name: "target"}}
+	maps := []*pb.MapInfo{
+		{Id: 100, Name: "calls", Type: "ProgramArray",
+			Pids:    []*pb.ProcessRef{{Pid: 1, Comm: "systemd"}},
+			ProgIds: []uint32{2}},
+	}
+	groups, _ := groupByLoader(progs, maps, nil, map[uint32]bool{1: true})
+	for _, g := range groups {
+		if g.ID == "sg_1" {
+			t.Errorf("hidden loader got a group: %+v", g)
+		}
+	}
+}
+
+// TestFilterProgramsByLoaderIncludesTailCallTargets checks the ?loader= filter
+// and the picker on the programs page partition exactly as groupByLoader does:
+// a count there that cannot be clicked through to the same rows is the pair of
+// pages disagreeing.
+func TestFilterProgramsByLoaderIncludesTailCallTargets(t *testing.T) {
+	progs := []*pb.ProgramInfo{
+		{Id: 1, Name: "entry", Pids: []*pb.ProcessRef{{Pid: 1000, Comm: "tetragon"}}},
+		{Id: 2, Name: "target"},
+	}
+	maps := []*pb.MapInfo{
+		{Id: 100, Name: "calls", Type: "ProgramArray",
+			Pids:    []*pb.ProcessRef{{Pid: 1000, Comm: "tetragon"}},
+			ProgIds: []uint32{2}},
+	}
+
+	filtered, label := filterProgramsByLoader(progs, maps, nil, "sg_1000")
+	if len(filtered) != 2 {
+		t.Errorf("filter = %+v, want both the entry program and its tail-call target", filtered)
+	}
+	if label != "tetragon(1000)" {
+		t.Errorf("label = %q, want tetragon(1000)", label)
+	}
+
+	choices := programLoaderChoices(progs, maps, nil)
+	for _, c := range choices {
+		if c.Group == "sg_1000" && c.Count != 2 {
+			t.Errorf("picker counts %d for tetragon, want 2 - the rows the filter returns", c.Count)
+		}
+		if c.Group == unattachedGroupID {
+			t.Errorf("nothing is left with no loader, but the picker offers %+v", c)
+		}
+	}
+}
+
+// hasProg reports whether progs contains a program with id.
+func hasProg(progs []*pb.ProgramInfo, id uint32) bool {
+	for _, p := range progs {
+		if p.GetId() == id {
+			return true
+		}
+	}
+	return false
 }

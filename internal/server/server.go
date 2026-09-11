@@ -48,6 +48,7 @@ func (s *Server) ListMaps(_ context.Context, _ *pb.ListMapsRequest) (*pb.ListMap
 			DumpNote:    m.DumpNote,
 			Pids:        pids,
 			InnerMapIds: m.InnerMapIDs,
+			ProgIds:     m.ProgIDs,
 		})
 	}
 	return resp, nil
@@ -69,6 +70,7 @@ func (s *Server) DumpMap(_ context.Context, req *pb.DumpMapRequest) (*pb.DumpMap
 			ValueHex:   e.ValueHex,
 			ValueFmt:   e.ValueFmt,
 			InnerMapId: e.InnerMapID,
+			ProgId:     e.ProgID,
 		})
 	}
 	return resp, nil

@@ -36,7 +36,7 @@
        only the lowest-numbered holder names the group, so these rows are not
        one value repeated - a program held by its loader and by a second process
        says so here. */}}
-  <thead><tr><th title="the kernel's id for this program, what bpftool prog show lists it by. The kernel recycles ids, so one names this program only while it exists">ID</th><th>Name</th><th>Type</th><th>Tag</th><th>Maps</th><th title="processes holding an open fd to this program; the lowest-numbered one is treated as its loader">Holders</th><th></th></tr></thead>
+  <thead><tr><th title="the kernel's id for this program, what bpftool prog show lists it by. The kernel recycles ids, so one names this program only while it exists">ID</th><th>Name</th><th>Type</th><th>Tag</th><th>Maps</th><th title="processes holding an open fd to this program; the lowest-numbered one is treated as its loader. When none do, an inferred loader is shown instead - of the program array holding this program in a tail-call slot">Holders</th><th></th></tr></thead>
   <tbody>
   {{range .Programs}}
     <tr>
@@ -45,7 +45,16 @@
         {{range .MapIds}}{{$id := .}}{{$m := index $.MapsByID $id}}<a href="/nodes/{{$.Node}}/maps/{{$id}}" target="_blank" rel="noopener"{{with $m}} title="{{.Name}} ({{.Type}})"{{end}}>{{$id}}</a>{{" "}}{{else}}<span class="muted">-</span>{{end}}
       </td>
       <td>
-        {{range .Pids}}{{.Comm}}({{.Pid}}){{" "}}{{else}}<span class="muted">-</span>{{end}}
+        {{if .Pids}}
+          {{range .Pids}}{{.Comm}}({{.Pid}}){{" "}}{{end}}
+        {{else}}
+          {{/* The only route that reaches a tail-call target: nothing holds its
+               fd and no link attaches it - the entry program of the chain keeps
+               the only one - so the program array's slot is all there is. */}}
+          {{with progArrayLoaders $.Programs $.Maps .Id}}
+            {{range .}}<span class="muted" title="inferred: nothing holds an fd to this program - it sits in a tail-call slot of the program array named here, and this is that map's loader. bpftool prog show reports no pids for this program for the same reason">{{.}}</span>{{" "}}{{end}}
+          {{else}}<span class="muted">-</span>{{end}}
+        {{end}}
       </td>
       <td>
         <a href="/nodes/{{$.Node}}/programs/{{.Id}}" target="_blank" rel="noopener" title="xlated (post-verifier) instructions for this program (new tab)">xlated</a>{{" "}}

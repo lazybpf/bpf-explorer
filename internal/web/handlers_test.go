@@ -1155,11 +1155,11 @@ func TestMapLoadersSkipsHolderlessProgram(t *testing.T) {
 		{Id: 27, Name: "pinned_prog", MapIds: []uint32{7}},
 		{Id: 31, Name: "other", MapIds: []uint32{8}, Pids: []*pb.ProcessRef{{Pid: 1234, Comm: "loader"}}},
 	}
-	if got := mapLoaders(progs, 7); len(got) != 0 {
+	if got := mapLoaders(progs, nil, 7); len(got) != 0 {
 		t.Errorf("mapLoaders(7) = %v, want none", got)
 	}
 	want := "loader(1234) via prog 31"
-	if got := mapLoaders(progs, 8); len(got) != 1 || got[0] != want {
+	if got := mapLoaders(progs, nil, 8); len(got) != 1 || got[0] != want {
 		t.Errorf("mapLoaders(8) = %v, want [%q]", got, want)
 	}
 }
@@ -1563,4 +1563,247 @@ func TestIsMapOfMaps(t *testing.T) {
 			t.Errorf("%q is not a map-of-maps", typ)
 		}
 	}
+}
+
+// TestMapDumpProgArrayLinks verifies a program array's dump renders each slot's
+// value as a link to the program a tail call at that index jumps to, named from
+// the programs listing, rather than the bare id the caller would otherwise have
+// to decode and look up by hand.
+func TestMapDumpProgArrayLinks(t *testing.T) {
+	h, err := New(nil, nil)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	maps := []*pb.MapInfo{{Id: 211, Name: "jmp_table", Type: "ProgramArray", MaxEntries: 8, Dumpable: true}}
+	progs := []*pb.ProgramInfo{{Id: 512, Name: "handle_tcp", Type: "XDP"}}
+	data := pageData{
+		Node: "node-a", Tab: "maps", Sub: true,
+		Maps: maps, MapsByID: mapsByID(maps),
+		Programs: progs, ProgramsByID: progsByID(progs),
+		Dump: &dumpView{
+			ID: 211, Name: "jmp_table", OfProgs: true,
+			Entries: []*pb.MapEntry{
+				{KeyFmt: "0", KeyHex: "00000000", ValueFmt: "512", ValueHex: "00020000", ProgId: 512},
+				// A program the listing does not have: still followable.
+				{KeyFmt: "1", KeyHex: "01000000", ValueFmt: "600", ValueHex: "58020000", ProgId: 600},
+				// A slot the agent could not read: no id to link, so whatever it
+				// formatted stands as it is.
+				{KeyFmt: "2", KeyHex: "02000000", ValueFmt: "<error: lookup: read: permission denied>"},
+				// And an unused index, which reads back as no value and no error
+				// at all - cilium's LookupBytes returns (nil, nil) for one.
+				{KeyFmt: "3", KeyHex: "03000000"},
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	if err := h.pages["mapdump"].ExecuteTemplate(&buf, "layout", data); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	out := buf.String()
+
+	if !strings.Contains(out, `href="/nodes/node-a/programs/512"`) {
+		t.Errorf("slot value should link to the program's xlated listing\n%s", out)
+	}
+	// name(id), the spelling an inner map and a loader both get.
+	if !strings.Contains(out, ">handle_tcp(512)<") {
+		t.Errorf("program link should read name(id)\n%s", out)
+	}
+	// The bytes the id was decoded from, next to the id itself.
+	if !strings.Contains(out, `title="value 00020000 is program id 512 as a host-order u32 - XDP - its xlated instructions (new tab)"`) {
+		t.Errorf("link tooltip should show the raw value it decoded\n%s", out)
+	}
+	// The column says what it holds, so the ids are not read as data.
+	if !strings.Contains(out, ">program</th>") {
+		t.Errorf("program array dump should label its value column\n%s", out)
+	}
+	if !strings.Contains(out, `href="/nodes/node-a/programs/600"`) || !strings.Contains(out, ">prog(600)<") {
+		t.Errorf("unlisted program should still link, as prog(id)\n%s", out)
+	}
+	if !strings.Contains(out, "permission denied") {
+		t.Errorf("an unreadable slot should keep its formatted value\n%s", out)
+	}
+	// The bytes stay, decoded rather than read as text.
+	if !strings.Contains(out, `title="program id 512, host-order u32">00020000<`) {
+		t.Errorf("hex column should show the raw value, decoded\n%s", out)
+	}
+	// An unused index says so: a row of blank cells reads as a half-rendered
+	// page, which is the one thing this table must not look like.
+	if !strings.Contains(out, ">(empty slot)<") {
+		t.Errorf("an unused slot should say it is empty\n%s", out)
+	}
+	if !strings.Contains(out, "bpftool map dump prints &lt;no entry&gt; for it") {
+		t.Errorf("the marker should name what bpftool prints there\n%s", out)
+	}
+}
+
+// TestMapDumpValuelessKey verifies the same marker in a keyed map, where no
+// value means something else: the key was deleted between being listed and being
+// read, not a free slot.
+func TestMapDumpValuelessKey(t *testing.T) {
+	h, err := New(nil, nil)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	maps := []*pb.MapInfo{{Id: 42, Name: "counters", Type: "Hash", Dumpable: true}}
+	data := pageData{
+		Node: "node-a", Tab: "maps", Sub: true,
+		Maps: maps, MapsByID: mapsByID(maps),
+		Dump: &dumpView{ID: 42, Name: "counters",
+			Entries: []*pb.MapEntry{{KeyFmt: "1", KeyHex: "01"}}},
+	}
+
+	var buf bytes.Buffer
+	if err := h.pages["mapdump"].ExecuteTemplate(&buf, "layout", data); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	out := buf.String()
+
+	if !strings.Contains(out, ">(no entry)<") || strings.Contains(out, ">(empty slot)<") {
+		t.Errorf("a keyed map has no slots, so its marker is (no entry)\n%s", out)
+	}
+	// No empty <code> box where there are no bytes.
+	if !strings.Contains(out, `<span class="muted">-</span>`) {
+		t.Errorf("the hex column should read - when there are no bytes\n%s", out)
+	}
+}
+
+// TestProgLabel pins the spelling of a slot's program: name(id), with a stand-in
+// when the listing has none.
+func TestProgLabel(t *testing.T) {
+	p := &pb.ProgramInfo{Id: 512, Name: "handle_tcp", Type: "XDP"}
+	if got := progLabel(p, 512); got != "handle_tcp(512)" {
+		t.Errorf("progLabel = %q, want handle_tcp(512)", got)
+	}
+	// A program the agent could not name, and one the listing does not have.
+	if got := progLabel(&pb.ProgramInfo{Id: 7}, 7); got != "prog(7)" {
+		t.Errorf("progLabel(nameless) = %q, want prog(7)", got)
+	}
+	if got := progLabel(nil, 600); got != "prog(600)" {
+		t.Errorf("progLabel(nil) = %q, want prog(600)", got)
+	}
+}
+
+// TestIsProgArray pins the type name whose values are program ids - the spelling
+// comes from cilium's MapType.String(), not from us.
+func TestIsProgArray(t *testing.T) {
+	if !isProgArray("ProgramArray") {
+		t.Error("ProgramArray holds program ids")
+	}
+	for _, typ := range []string{"Array", "ArrayOfMaps", "PerfEventArray", "", "progarray"} {
+		if isProgArray(typ) {
+			t.Errorf("%q is not a program array", typ)
+		}
+	}
+}
+
+// TestProgArrayLoaders pins the inference behind a tail-call target's Holders
+// cell: the loader of the program array holding it, by either of the two routes
+// that credit a map, and nothing when the array has no loader either.
+func TestProgArrayLoaders(t *testing.T) {
+	progs := []*pb.ProgramInfo{
+		{Id: 1, Name: "entry", MapIds: []uint32{100, 200},
+			Pids: []*pb.ProcessRef{{Pid: 1000, Comm: "tetragon"}}},
+		{Id: 2, Name: "target"},
+	}
+	// 100 is held by the loader itself; 200 only by the program referencing it.
+	maps := []*pb.MapInfo{
+		{Id: 100, Name: "calls", Type: "ProgramArray",
+			Pids:    []*pb.ProcessRef{{Pid: 1000, Comm: "tetragon"}},
+			ProgIds: []uint32{1, 2}},
+		{Id: 200, Name: "more_calls", Type: "ProgramArray", ProgIds: []uint32{2}},
+		{Id: 300, Name: "orphan_calls", Type: "ProgramArray", ProgIds: []uint32{2}},
+	}
+
+	got := progArrayLoaders(progs, maps, 2)
+	// One entry per loader, naming every array that credits it, in map-id order.
+	// Map 300 has no loader to pass on, so it is not named at all.
+	if len(got) != 1 || got[0] != "tetragon(1000) via map 100, 200" {
+		t.Errorf("progArrayLoaders = %q, want [tetragon(1000) via map 100, 200]", got)
+	}
+	// A program no array holds gets nothing invented for it.
+	if got := progArrayLoaders(progs, maps, 9); len(got) != 0 {
+		t.Errorf("progArrayLoaders(unheld) = %q, want none", got)
+	}
+}
+
+// TestProgramsTailCallLoaderRendered verifies the programs page shows that
+// inference in the Holders column - muted, the way the maps page shows an
+// inner map's - instead of the "-" a tail-call target used to read.
+func TestProgramsTailCallLoaderRendered(t *testing.T) {
+	h, err := New(nil, nil)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	progs := []*pb.ProgramInfo{
+		{Id: 1767, Name: "generic_kprobe_event", Type: "Kprobe",
+			Pids: []*pb.ProcessRef{{Pid: 107547, Comm: "tetragon"}}},
+		{Id: 1765, Name: "generic_kprobe_setup_event", Type: "Kprobe"},
+		{Id: 9, Name: "orphan", Type: "Kprobe"},
+	}
+	maps := []*pb.MapInfo{
+		{Id: 18723, Name: "kprobe_calls", Type: "ProgramArray",
+			Pids:    []*pb.ProcessRef{{Pid: 107547, Comm: "tetragon"}},
+			ProgIds: []uint32{1765, 1767}},
+	}
+	data := pageData{
+		Node: "node-a", Tab: "programs",
+		Programs: progs, Maps: maps, MapsByID: mapsByID(maps),
+	}
+
+	var buf bytes.Buffer
+	if err := h.pages["programs"].ExecuteTemplate(&buf, "layout", data); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	out := buf.String()
+
+	if !strings.Contains(out, "tetragon(107547) via map 18723") {
+		t.Errorf("a tail-call target should name the array's loader\n%s", out)
+	}
+	if !strings.Contains(out, `class="muted" title="inferred: nothing holds an fd to this program`) {
+		t.Errorf("the inference should be marked as one\n%s", out)
+	}
+	// A program with its own holder is untouched by the inference, and one
+	// nothing reaches still reads "-".
+	row := rowFor(t, out, "generic_kprobe_event")
+	if strings.Contains(row, "via map") {
+		t.Errorf("a program with its own holder should not be inferred\n%s", row)
+	}
+	if orphan := rowFor(t, out, ">orphan<"); !strings.Contains(orphan, `<span class="muted">-</span>`) {
+		t.Errorf("a program nothing reaches should still read -\n%s", orphan)
+	}
+}
+
+// TestMapLoadersThroughTailCallTarget verifies the "via prog" inference follows
+// the program's own credit: a map referenced only by a tail-call target names
+// the loader at the end of the chain, rather than reading "-" while the loaders
+// filter lists it under that loader.
+func TestMapLoadersThroughTailCallTarget(t *testing.T) {
+	progs := []*pb.ProgramInfo{
+		{Id: 1, Name: "entry", MapIds: []uint32{100},
+			Pids: []*pb.ProcessRef{{Pid: 1000, Comm: "tetragon"}}},
+		{Id: 2, Name: "target", MapIds: []uint32{101}}, // nothing holds it
+	}
+	maps := []*pb.MapInfo{
+		{Id: 100, Name: "calls", Type: "ProgramArray",
+			Pids:    []*pb.ProcessRef{{Pid: 1000, Comm: "tetragon"}},
+			ProgIds: []uint32{1, 2}},
+		{Id: 101, Name: "retprobe_map", Type: "Hash"},
+	}
+
+	got := mapLoaders(progs, maps, 101)
+	if len(got) != 1 || got[0] != "tetragon(1000) via prog 2" {
+		t.Errorf("mapLoaders = %q, want [tetragon(1000) via prog 2]", got)
+	}
+	// And the partition agrees: the map is in that loader's group.
+	groups, _ := groupByLoader(progs, maps, nil, nil)
+	for _, g := range groups {
+		if g.ID == "sg_1000" && hasMap(g.Maps, 101) {
+			return
+		}
+	}
+	t.Errorf("map 101 should be in the tail-call target's loader group, got %+v", groups)
 }
