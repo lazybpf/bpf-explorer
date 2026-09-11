@@ -248,8 +248,13 @@ type MapEntry struct {
 	ValueFmt string                 `protobuf:"bytes,4,opt,name=value_fmt,json=valueFmt,proto3" json:"value_fmt,omitempty"`
 	// For per-CPU maps, one formatted value per CPU (value_fmt holds a summary).
 	PerCpuValueFmt []string `protobuf:"bytes,5,rep,name=per_cpu_value_fmt,json=perCpuValueFmt,proto3" json:"per_cpu_value_fmt,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// For a map-of-maps only: the inner map held in this slot, decoded from the
+	// value bytes on the node - they are a host-order u32 id, which only the
+	// agent can read as one. 0 for every other map type, and for an empty slot:
+	// 0 is not a valid map id.
+	InnerMapId    uint32 `protobuf:"varint,6,opt,name=inner_map_id,json=innerMapId,proto3" json:"inner_map_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *MapEntry) Reset() {
@@ -315,6 +320,13 @@ func (x *MapEntry) GetPerCpuValueFmt() []string {
 		return x.PerCpuValueFmt
 	}
 	return nil
+}
+
+func (x *MapEntry) GetInnerMapId() uint32 {
+	if x != nil {
+		return x.InnerMapId
+	}
+	return 0
 }
 
 type DumpMapRequest struct {
@@ -2158,13 +2170,15 @@ const file_proto_bpfinspector_proto_rawDesc = "" +
 	"\rinner_map_ids\x18\f \x03(\rR\vinnerMapIds\"\x11\n" +
 	"\x0fListMapsRequest\"@\n" +
 	"\x10ListMapsResponse\x12,\n" +
-	"\x04maps\x18\x01 \x03(\v2\x18.bpfinspector.v1.MapInfoR\x04maps\"\xa1\x01\n" +
+	"\x04maps\x18\x01 \x03(\v2\x18.bpfinspector.v1.MapInfoR\x04maps\"\xc3\x01\n" +
 	"\bMapEntry\x12\x17\n" +
 	"\akey_hex\x18\x01 \x01(\tR\x06keyHex\x12\x17\n" +
 	"\akey_fmt\x18\x02 \x01(\tR\x06keyFmt\x12\x1b\n" +
 	"\tvalue_hex\x18\x03 \x01(\tR\bvalueHex\x12\x1b\n" +
 	"\tvalue_fmt\x18\x04 \x01(\tR\bvalueFmt\x12)\n" +
-	"\x11per_cpu_value_fmt\x18\x05 \x03(\tR\x0eperCpuValueFmt\"N\n" +
+	"\x11per_cpu_value_fmt\x18\x05 \x03(\tR\x0eperCpuValueFmt\x12 \n" +
+	"\finner_map_id\x18\x06 \x01(\rR\n" +
+	"innerMapId\"N\n" +
 	"\x0eDumpMapRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\rR\x02id\x12\x14\n" +
 	"\x05limit\x18\x02 \x01(\rR\x05limit\x12\x16\n" +

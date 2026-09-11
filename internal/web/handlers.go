@@ -38,7 +38,7 @@ func New(disc discovery.Discoverer, hiddenLoaders map[uint32]bool) (*Handlers, e
 	funcs := template.FuncMap{
 		"mapFlags": mapFlags, "progName": progName, "progLoader": progLoader,
 		"mapLoaders": mapLoaders, "innerMapLoaders": innerMapLoaders,
-		"hexASCII": hexASCII, "tabClass": tabClass,
+		"innerMapLabel": innerMapLabel, "hexASCII": hexASCII, "tabClass": tabClass,
 		"holders": holders, "comma": comma, "registers": registerSheet,
 		"nsHelp": namespaceHelp, "innerPIDs": innerPIDs, "cgroupHelp": cgroupHelp,
 		"nodeLinkTitle": nodeLinkTitle,
@@ -194,6 +194,10 @@ type dumpView struct {
 	Name      string
 	Entries   []*pb.MapEntry
 	Truncated bool
+	// OfMaps marks a map-of-maps, whose values are inner map ids rather than
+	// data. Taken from the map's type, not from the entries: an outer map whose
+	// slots are all empty still holds ids, it just has none right now.
+	OfMaps bool
 }
 
 type progDumpView struct {
@@ -341,6 +345,10 @@ func (h *Handlers) maps(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad map id", http.StatusBadRequest)
 		return
 	}
+	// The listing is already here, so the dump can name the maps its values
+	// point at - a map-of-maps' slots - the way the programs page names the
+	// maps a program references.
+	data.MapsByID = mapsByID(data.Maps)
 	dump, derr := client.DumpMap(ctx, &pb.DumpMapRequest{Id: uint32(id)})
 	if derr != nil {
 		data.Err = derr.Error()
@@ -350,6 +358,7 @@ func (h *Handlers) maps(w http.ResponseWriter, r *http.Request) {
 			Name:      mapName(data.Maps, uint32(id)),
 			Entries:   dump.GetEntries(),
 			Truncated: dump.GetTruncated(),
+			OfMaps:    isMapOfMaps(data.MapsByID[uint32(id)].GetType()),
 		}
 	}
 	h.render(w, page, data)
@@ -864,6 +873,27 @@ func objectTitle(kind string, id uint32, name string) string {
 		return fmt.Sprintf("%s %d", kind, id)
 	}
 	return fmt.Sprintf("%s %d: %s", kind, id, name)
+}
+
+// isMapOfMaps reports whether a map type string - the agent's spelling of
+// cilium's MapType, which is what bpftool calls array_of_maps/hash_of_maps -
+// names a map whose values are inner map ids.
+func isMapOfMaps(t string) bool {
+	return t == "ArrayOfMaps" || t == "HashOfMaps"
+}
+
+// innerMapLabel names the map sitting in a map-of-maps slot the way every other
+// object with an id is named here - a loader is comm(pid), so an inner map is
+// name(id) rather than prose. A map the listing has no name for, or no row for
+// at all (one created between the listing and the dump), keeps the shape with
+// "map" standing in for the name: the id is what the slot holds either way, and
+// a column of two spellings reads worse than a column of one.
+func innerMapLabel(m *pb.MapInfo, id uint32) string {
+	name := m.GetName()
+	if name == "" {
+		name = "map"
+	}
+	return fmt.Sprintf("%s(%d)", name, id)
 }
 
 func mapName(maps []*pb.MapInfo, id uint32) string {

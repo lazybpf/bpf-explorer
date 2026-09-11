@@ -11,14 +11,30 @@
   </h2>
   <div class="scroll">
   <table>
-    <thead><tr><th>key</th><th>key (hex)</th><th>value</th><th>value (hex)</th></tr></thead>
+    {{/* A map-of-maps stores an inner map's id in each slot, so its value column
+         is a set of ids rather than data: named and linked here, since reading
+         one off the hex and looking it up in the maps tab is the same lookup
+         done by hand. The hex column keeps the bytes either way. */}}
+    <thead><tr><th>key</th><th>key (hex)</th>
+      {{if .OfMaps}}<th title="the map held in this slot: a map-of-maps' value is an inner map's id, the value bpftool map dump prints as inner_map_id">inner map</th>{{else}}<th>value</th>{{end}}
+      <th>value (hex)</th></tr></thead>
     <tbody>
     {{range .Entries}}
       <tr>
         <td>{{.KeyFmt}}</td>
         <td><code{{with hexASCII .KeyHex}} title="ASCII: {{.}}"{{end}}>{{.KeyHex}}</code></td>
-        <td>{{.ValueFmt}}</td>
-        <td><code{{with hexASCII .ValueHex}} title="ASCII: {{.}}"{{end}}>{{.ValueHex}}</code></td>
+        {{if .InnerMapId}}
+          {{$inner := index $.MapsByID .InnerMapId}}
+          {{/* name(id), the spelling a loader gets as comm(pid), and the tooltip
+               shows the bytes it was read out of: the id is a decoding of the
+               value, so what was decoded stays visible next to it. */}}
+          <td><a href="/nodes/{{$.Node}}/maps/{{.InnerMapId}}" target="_blank" rel="noopener" title="value {{.ValueHex}} is map id {{.InnerMapId}} as a host-order u32{{with $inner}} - {{.Type}}, {{.MaxEntries}} entries{{end}} - its keys and values (new tab)"><span class="name">{{innerMapLabel $inner .InnerMapId}}</span></a></td>
+        {{else}}
+          <td>{{.ValueFmt}}</td>
+        {{end}}
+        {{/* No ASCII hint on a slot's value: these bytes are an id, and reading
+             them as text says something about the map that isn't true. */}}
+        <td><code{{if .InnerMapId}} title="map id {{.InnerMapId}}, host-order u32"{{else}}{{with hexASCII .ValueHex}} title="ASCII: {{.}}"{{end}}{{end}}>{{.ValueHex}}</code></td>
       </tr>
     {{else}}
       <tr><td colspan="4" class="muted">(map is empty)</td></tr>

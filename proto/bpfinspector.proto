@@ -52,6 +52,11 @@ message MapEntry {
   string value_fmt = 4;
   // For per-CPU maps, one formatted value per CPU (value_fmt holds a summary).
   repeated string per_cpu_value_fmt = 5;
+  // For a map-of-maps only: the inner map held in this slot, decoded from the
+  // value bytes on the node - they are a host-order u32 id, which only the
+  // agent can read as one. 0 for every other map type, and for an empty slot:
+  // 0 is not a valid map id.
+  uint32 inner_map_id = 6;
 }
 
 message DumpMapRequest {

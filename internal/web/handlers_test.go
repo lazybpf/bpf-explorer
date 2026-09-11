@@ -1431,3 +1431,136 @@ func rowFor(t *testing.T, page, marker string) string {
 	t.Fatalf("no row containing %q", marker)
 	return ""
 }
+
+// TestMapDumpInnerMapLinks verifies a map-of-maps dump renders each slot's value
+// as a link to the inner map it holds, named from the listing, rather than the
+// bare id the caller would otherwise have to decode and look up by hand. A slot
+// the agent could not read keeps the formatted value.
+func TestMapDumpInnerMapLinks(t *testing.T) {
+	h, err := New(nil, nil)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	maps := []*pb.MapInfo{
+		{Id: 18733, Name: "string_maps_0", Type: "ArrayOfMaps", Dumpable: true},
+		{Id: 18798, Name: "string_maps_ro", Type: "Hash", MaxEntries: 512},
+	}
+	data := pageData{
+		Node:     "node-a",
+		Tab:      "maps",
+		Sub:      true,
+		Maps:     maps,
+		MapsByID: mapsByID(maps),
+		Dump: &dumpView{
+			ID: 18733, Name: "string_maps_0", OfMaps: true,
+			Entries: []*pb.MapEntry{
+				{KeyFmt: "0", KeyHex: "00000000", ValueFmt: "18798", ValueHex: "6e490000", InnerMapId: 18798},
+				// An inner map the listing no longer has: still followable.
+				{KeyFmt: "1", KeyHex: "01000000", ValueFmt: "19001", ValueHex: "394a0000", InnerMapId: 19001},
+				// An empty slot: no id to link, so the value stands as it is.
+				{KeyFmt: "2", KeyHex: "02000000", ValueFmt: "<error: lookup: key does not exist>"},
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	if err := h.pages["mapdump"].ExecuteTemplate(&buf, "layout", data); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	out := buf.String()
+
+	if !strings.Contains(out, `href="/nodes/node-a/maps/18798"`) {
+		t.Errorf("slot value should link to the inner map's dump\n%s", out)
+	}
+	// name(id), the spelling a loader gets as comm(pid).
+	if !strings.Contains(out, ">string_maps_ro(18798)<") {
+		t.Errorf("inner map link should read name(id)\n%s", out)
+	}
+	// The bytes the id was decoded from, next to the id itself.
+	if !strings.Contains(out, `title="value 6e490000 is map id 18798 as a host-order u32 - Hash, 512 entries - its keys and values (new tab)"`) {
+		t.Errorf("link tooltip should show the raw value it decoded\n%s", out)
+	}
+	// The column says what it holds, so the ids are not read as data.
+	if !strings.Contains(out, ">inner map</th>") {
+		t.Errorf("map-of-maps dump should label its value column\n%s", out)
+	}
+	// An id the listing does not know still links, keeping the shape with "map"
+	// where the name would be - the map may have been created between the
+	// listing and the dump.
+	if !strings.Contains(out, `href="/nodes/node-a/maps/19001"`) || !strings.Contains(out, ">map(19001)<") {
+		t.Errorf("unlisted inner map should still link, as map(id)\n%s", out)
+	}
+	if !strings.Contains(out, "key does not exist") {
+		t.Errorf("an unreadable slot should keep its formatted value\n%s", out)
+	}
+	// The bytes stay: the link is a reading of them, not a replacement. Their
+	// tooltip says what they decode to, rather than reading an id as ASCII.
+	if !strings.Contains(out, `title="map id 18798, host-order u32">6e490000<`) {
+		t.Errorf("hex column should show the raw value, decoded\n%s", out)
+	}
+	if strings.Contains(out, "ASCII: nI") {
+		t.Errorf("a slot's id bytes are not text and must not get an ASCII hint\n%s", out)
+	}
+}
+
+// TestInnerMapLabel pins the spelling of a slot's inner map: name(id), the form
+// a loader gets as comm(pid), with a stand-in name when the listing has none.
+func TestInnerMapLabel(t *testing.T) {
+	m := &pb.MapInfo{Id: 18798, Name: "string_maps_ro", Type: "Hash"}
+	if got := innerMapLabel(m, 18798); got != "string_maps_ro(18798)" {
+		t.Errorf("innerMapLabel = %q, want string_maps_ro(18798)", got)
+	}
+	// A map the agent could not name, and one the listing does not have at all.
+	if got := innerMapLabel(&pb.MapInfo{Id: 7}, 7); got != "map(7)" {
+		t.Errorf("innerMapLabel(nameless) = %q, want map(7)", got)
+	}
+	if got := innerMapLabel(nil, 19001); got != "map(19001)" {
+		t.Errorf("innerMapLabel(nil) = %q, want map(19001)", got)
+	}
+}
+
+// TestMapDumpPlainValuesUnlinked verifies an ordinary map's dump is untouched by
+// the inner-map linking: its values are data, not ids.
+func TestMapDumpPlainValuesUnlinked(t *testing.T) {
+	h, err := New(nil, nil)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	maps := []*pb.MapInfo{{Id: 42, Name: "counters", Type: "Hash", Dumpable: true}}
+	data := pageData{
+		Node: "node-a", Tab: "maps", Sub: true,
+		Maps: maps, MapsByID: mapsByID(maps),
+		Dump: &dumpView{ID: 42, Name: "counters",
+			Entries: []*pb.MapEntry{{KeyFmt: "1", KeyHex: "01", ValueFmt: "1000", ValueHex: "e803"}}},
+	}
+
+	var buf bytes.Buffer
+	if err := h.pages["mapdump"].ExecuteTemplate(&buf, "layout", data); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	out := buf.String()
+
+	if !strings.Contains(out, ">value</th>") || strings.Contains(out, ">inner map</th>") {
+		t.Errorf("a plain map's value column should stay a value column\n%s", out)
+	}
+	if !strings.Contains(out, ">1000<") {
+		t.Errorf("expected the formatted value\n%s", out)
+	}
+}
+
+// TestIsMapOfMaps pins the two type names whose values are inner map ids - the
+// spelling comes from cilium's MapType.String(), not from us.
+func TestIsMapOfMaps(t *testing.T) {
+	for _, typ := range []string{"ArrayOfMaps", "HashOfMaps"} {
+		if !isMapOfMaps(typ) {
+			t.Errorf("%s holds inner maps", typ)
+		}
+	}
+	for _, typ := range []string{"Hash", "Array", "PerCPUArray", "", "arrayofmaps"} {
+		if isMapOfMaps(typ) {
+			t.Errorf("%q is not a map-of-maps", typ)
+		}
+	}
+}

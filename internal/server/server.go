@@ -64,10 +64,11 @@ func (s *Server) DumpMap(_ context.Context, req *pb.DumpMapRequest) (*pb.DumpMap
 	}
 	for _, e := range dump.Entries {
 		resp.Entries = append(resp.Entries, &pb.MapEntry{
-			KeyHex:   e.KeyHex,
-			KeyFmt:   e.KeyFmt,
-			ValueHex: e.ValueHex,
-			ValueFmt: e.ValueFmt,
+			KeyHex:     e.KeyHex,
+			KeyFmt:     e.KeyFmt,
+			ValueHex:   e.ValueHex,
+			ValueFmt:   e.ValueFmt,
+			InnerMapId: e.InnerMapID,
 		})
 	}
 	return resp, nil

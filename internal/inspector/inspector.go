@@ -43,6 +43,9 @@ type Entry struct {
 	KeyFmt   string
 	ValueHex string
 	ValueFmt string
+	// InnerMapID is set for a map-of-maps' slots only: the id the value bytes
+	// hold. Decoded here because the host's byte order is only known here.
+	InnerMapID uint32
 }
 
 // Dump is a (possibly truncated) page of a map's contents.
@@ -141,6 +144,9 @@ func (i *Inspector) DumpMap(id uint32, limit uint32) (*Dump, error) {
 	}
 
 	keyType, valueType := mapBTFTypes(m)
+	// A map-of-maps' value is an inner map's id, not data: the dump says which
+	// map sits in each slot, so the value can be followed rather than read.
+	mapOfMaps := m.Type() == ebpf.ArrayOfMaps || m.Type() == ebpf.HashOfMaps
 
 	dump := &Dump{}
 	key, err := m.NextKeyBytes(nil)
@@ -156,6 +162,9 @@ func (i *Inspector) DumpMap(id uint32, limit uint32) (*Dump, error) {
 		if value, lerr := m.LookupBytes(key); lerr == nil && value != nil {
 			e.ValueHex = hex.EncodeToString(value)
 			e.ValueFmt = formatBTF(valueType, value)
+			if mapOfMaps {
+				e.InnerMapID = innerMapID(value)
+			}
 		} else if lerr != nil {
 			e.ValueFmt = fmt.Sprintf("<error: %v>", lerr)
 		}
@@ -286,10 +295,8 @@ func innerMapIDs(m *ebpf.Map, t ebpf.MapType) []uint32 {
 		return nil
 	}
 	for key != nil && len(out) < maxInnerMaps {
-		if value, lerr := m.LookupBytes(key); lerr == nil && len(value) >= 4 {
-			// An empty slot reads back as id 0, which is not a valid map id.
-			// Native order: the kernel writes the id as a host u32.
-			if id := binary.NativeEndian.Uint32(value); id != 0 {
+		if value, lerr := m.LookupBytes(key); lerr == nil {
+			if id := innerMapID(value); id != 0 {
 				out = append(out, id)
 			}
 		}
@@ -298,6 +305,17 @@ func innerMapIDs(m *ebpf.Map, t ebpf.MapType) []uint32 {
 		}
 	}
 	return out
+}
+
+// innerMapID decodes one map-of-maps slot's value as the inner map's id. A
+// userspace lookup returns that id as a host-order u32, so the value bytes are
+// the id. Returns 0 - not a valid map id - for an empty slot and for a value
+// too short to hold one.
+func innerMapID(value []byte) uint32 {
+	if len(value) < 4 {
+		return 0
+	}
+	return binary.NativeEndian.Uint32(value)
 }
 
 func undumpableReason(t ebpf.MapType) string {
