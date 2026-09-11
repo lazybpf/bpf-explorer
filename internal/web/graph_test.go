@@ -138,7 +138,7 @@ func TestMapGroupData(t *testing.T) {
 		{Id: 3, Type: "tracing", ProgId: 9}, // attaches a program outside the group
 		{Id: 5, Type: "struct_ops"},         // no program at all
 	}
-	g := mapGroupData(12, progs, links)
+	g := mapGroupData(12, progs, nil, links)
 
 	if len(g.Maps) != 1 || g.Maps[0] != 12 {
 		t.Errorf("want just map 12, got %v", g.Maps)
@@ -160,7 +160,7 @@ func TestBuildGroupMermaidFocusedMap(t *testing.T) {
 		12: {Id: 12, Name: "m_a", Type: "Hash"},
 		13: {Id: 13, Name: "m_b", Type: "Array"},
 	}
-	out := string(buildGroupMermaid(mapGroupData(12, progs, nil), mapByID, "node-a"))
+	out := string(buildGroupMermaid(mapGroupData(12, progs, nil, nil), mapByID, "node-a"))
 
 	for _, want := range []string{
 		`map_12[("map 12: m_a (Hash)")]`,
@@ -1037,4 +1037,108 @@ func hasMap(ids []uint32, id uint32) bool {
 		}
 	}
 	return false
+}
+
+// TestBuildGroupMermaidOuterInnerEdge covers the slot edge on a loader's own
+// diagram: the inner map was already drawn there - groupByLoader credits it to
+// the outer map's loader - but with nothing joining it to the map that keeps it
+// alive. The same inner map sits in two slots of the outer map, which must
+// still draw one arrow.
+func TestBuildGroupMermaidOuterInnerEdge(t *testing.T) {
+	progs := []*pb.ProgramInfo{
+		{Id: 1769, Name: "filter_arg", Type: "Kprobe", MapIds: []uint32{18733},
+			Pids: []*pb.ProcessRef{{Pid: 107547, Comm: "tetragon"}}},
+	}
+	maps := []*pb.MapInfo{
+		{Id: 18733, Name: "string_maps_0", Type: "ArrayOfMaps",
+			Pids:        []*pb.ProcessRef{{Pid: 107547, Comm: "tetragon"}},
+			InnerMapIds: []uint32{18798, 18798}},
+		{Id: 18798, Name: "string_maps_0_0", Type: "Hash"},
+	}
+	groups, mapByID := groupByLoader(progs, maps, nil, nil)
+	out := string(buildGroupMermaid(findGroup(groups, "sg_107547"), mapByID, "node-a"))
+
+	for _, want := range []string{
+		`map_18798[("map 18798: string_maps_0_0 (Hash)")]`,
+		"prog_1769 -->|uses| map_18733",
+		"map_18733 -->|holds| map_18798",
+		`click map_18798 "/nodes/node-a/maps/18798"`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("loader diagram missing %q\n%s", want, out)
+		}
+	}
+	if n := strings.Count(out, "map_18733 -->|holds| map_18798"); n != 1 {
+		t.Errorf("the inner map is in two slots; want 1 arrow, got %d\n%s", n, out)
+	}
+}
+
+// TestBuildGroupMermaidUndeclaredInner checks the slot edge obeys the same
+// declared-only rule the prog edges do: a focused diagram leaves maps out on
+// purpose, and mermaid would invent a bare node for each one an edge named.
+func TestBuildGroupMermaidUndeclaredInner(t *testing.T) {
+	mapByID := map[uint32]*pb.MapInfo{
+		12: {Id: 12, Name: "outer", Type: "ArrayOfMaps", InnerMapIds: []uint32{13}},
+		13: {Id: 13, Name: "inner", Type: "Hash"},
+	}
+	g := &loaderGroupData{Maps: []uint32{12}} // 13 deliberately not in the group
+	out := string(buildGroupMermaid(g, mapByID, "node-a"))
+
+	if strings.Contains(out, "map_13") {
+		t.Errorf("map 13 is outside the group and must not appear\n%s", out)
+	}
+}
+
+// TestMapGroupDataOuterReachesInner is the page Daniel opened: the outer map's
+// graph showed the outer map alone, with no sign of what it holds.
+func TestMapGroupDataOuterReachesInner(t *testing.T) {
+	progs := []*pb.ProgramInfo{
+		{Id: 1769, Name: "filter_arg", MapIds: []uint32{18733}},
+		{Id: 1770, Name: "other", MapIds: []uint32{99}}, // references neither
+	}
+	maps := []*pb.MapInfo{
+		{Id: 18733, Name: "string_maps_0", Type: "ArrayOfMaps", InnerMapIds: []uint32{18798, 18799}},
+		{Id: 18798, Name: "string_maps_0_0", Type: "Hash"},
+		{Id: 18799, Name: "string_maps_0_1", Type: "Hash"},
+		{Id: 99, Name: "unrelated", Type: "Hash"},
+	}
+	g := mapGroupData(18733, progs, maps, nil)
+
+	// The focused map first, then its slots in the order the outer map lays
+	// them out.
+	if len(g.Maps) != 3 || g.Maps[0] != 18733 || g.Maps[1] != 18798 || g.Maps[2] != 18799 {
+		t.Errorf("want maps [18733 18798 18799], got %v", g.Maps)
+	}
+	if len(g.Progs) != 1 || g.Progs[0].GetId() != 1769 {
+		t.Errorf("want only the program referencing the outer map, got %+v", g.Progs)
+	}
+}
+
+// TestMapGroupDataInnerReachesOuter is the same edge from the other end. An
+// inner map has no holder, no pin and no program naming it, so without the
+// outer map its page is a single node saying nothing about where it came from.
+// The program referencing the outer map comes with it: that is the whole chain
+// the inner map is reached by.
+func TestMapGroupDataInnerReachesOuter(t *testing.T) {
+	progs := []*pb.ProgramInfo{
+		{Id: 1769, Name: "filter_arg", MapIds: []uint32{18733}},
+	}
+	maps := []*pb.MapInfo{
+		{Id: 18733, Name: "string_maps_0", Type: "ArrayOfMaps", InnerMapIds: []uint32{18798}},
+		{Id: 18734, Name: "string_maps_1", Type: "ArrayOfMaps", InnerMapIds: []uint32{18798}},
+		{Id: 18798, Name: "string_maps_0_0", Type: "Hash"},
+	}
+	links := []*pb.LinkInfo{{Id: 3, Type: "kprobe", ProgId: 1769}}
+	g := mapGroupData(18798, progs, maps, links)
+
+	// Both outer maps hold it; neither is the one true answer, so both are here.
+	if len(g.Maps) != 3 || g.Maps[0] != 18798 || !hasMap(g.Maps, 18733) || !hasMap(g.Maps, 18734) {
+		t.Errorf("want the inner map first plus both outer maps, got %v", g.Maps)
+	}
+	if len(g.Progs) != 1 || g.Progs[0].GetId() != 1769 {
+		t.Errorf("want the program referencing the outer map, got %+v", g.Progs)
+	}
+	if len(g.Links) != 1 || g.Links[0].GetId() != 3 {
+		t.Errorf("want link 3 (attaches prog 1769), got %+v", g.Links)
+	}
 }

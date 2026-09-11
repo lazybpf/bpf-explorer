@@ -642,7 +642,8 @@ func (h *Handlers) programGraph(w http.ResponseWriter, r *http.Request) {
 }
 
 // mapGraph renders a diagram focused on a single map: the programs referencing
-// it and the links attaching those programs. It reuses the loader diagram page.
+// it, the links attaching those programs, and the maps a map-of-maps slot joins
+// it to. It reuses the loader diagram page.
 func (h *Handlers) mapGraph(w http.ResponseWriter, r *http.Request) {
 	node := r.PathValue("node")
 	data := pageData{Node: node, Tab: "loaders"}
@@ -671,7 +672,7 @@ func (h *Handlers) mapGraph(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	data.GraphHeading = mapHeading(m.GetId(), m)
-	data.Mermaid = buildGroupMermaid(mapGroupData(uint32(id), progs, links), mapByID, node)
+	data.Mermaid = buildGroupMermaid(mapGroupData(uint32(id), progs, maps, links), mapByID, node)
 	h.render(w, "loader", data)
 }
 
@@ -1035,6 +1036,17 @@ func holdsInner(outer *pb.MapInfo, id uint32) bool {
 func refsMap(p *pb.ProgramInfo, id uint32) bool {
 	for _, mid := range p.GetMapIds() {
 		if mid == id {
+			return true
+		}
+	}
+	return false
+}
+
+// refsAnyMap is that test over a set of maps, for a diagram built around more
+// than one of them.
+func refsAnyMap(p *pb.ProgramInfo, ids []uint32) bool {
+	for _, id := range ids {
+		if refsMap(p, id) {
 			return true
 		}
 	}

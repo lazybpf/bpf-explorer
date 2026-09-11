@@ -443,6 +443,22 @@ func buildGroupMermaid(g *loaderGroupData, mapByID map[uint32]*pb.MapInfo, node 
 			fmt.Fprintf(&b, "  prog_%d -->|uses| map_%d\n", p.GetId(), mid)
 		}
 	}
+	// An ArrayOfMaps/HashOfMaps holds its inner maps in slots, and that slot is
+	// the only reference to an inner map anywhere - nothing holds its fd and no
+	// program names it in map_ids - so without this edge an inner map sits on
+	// the diagram unconnected to what keeps it alive. Same declared-only rule as
+	// above, and a per-outer-map seen set because the same inner map can sit in
+	// several slots of one outer map.
+	for _, mid := range g.Maps {
+		seen := map[uint32]bool{}
+		for _, inner := range mapByID[mid].GetInnerMapIds() {
+			if !declared[inner] || seen[inner] {
+				continue
+			}
+			seen[inner] = true
+			fmt.Fprintf(&b, "  map_%d -->|holds| map_%d\n", mid, inner)
+		}
+	}
 
 	// Click-to-navigate: program -> its focused graph, map -> its details.
 	for _, p := range g.Progs {
@@ -476,12 +492,41 @@ func programGroupData(p *pb.ProgramInfo, links []*pb.LinkInfo) *loaderGroupData 
 }
 
 // mapGroupData builds a single-map pseudo-group for the per-map graph: the map,
-// the programs referencing it, and the links attaching those programs. Programs
-// and links are ordered by id so the diagram is stable across requests.
-func mapGroupData(id uint32, progs []*pb.ProgramInfo, links []*pb.LinkInfo) *loaderGroupData {
+// the maps a map-of-maps slot joins it to - the inner maps it holds, and the
+// outer maps holding it - the programs referencing any of those, and the links
+// attaching those programs. The neighbours are here because that slot is the
+// only reference an inner map has anywhere: without them an inner map's page is
+// one lone node with nothing to say who made it, and an outer map's page hides
+// everything it holds. Pulling in the programs referencing a neighbour is what
+// draws the chain an inner map is actually reached by - prog -> outer -> inner -
+// since no program names the inner map itself.
+//
+// Programs and links are ordered by id so the diagram is stable across
+// requests; maps keep the focused map first, then the outer maps and the inner
+// ones in the outer map's slot order.
+func mapGroupData(id uint32, progs []*pb.ProgramInfo, maps []*pb.MapInfo, links []*pb.LinkInfo) *loaderGroupData {
 	g := &loaderGroupData{Maps: []uint32{id}}
+	seen := map[uint32]bool{id: true}
+	addMap := func(mid uint32) {
+		if seen[mid] {
+			return // the same inner map in two slots, or already the focus
+		}
+		seen[mid] = true
+		g.Maps = append(g.Maps, mid)
+	}
+	for _, m := range maps {
+		if holdsInner(m, id) {
+			addMap(m.GetId())
+		}
+		if m.GetId() == id {
+			for _, inner := range m.GetInnerMapIds() {
+				addMap(inner)
+			}
+		}
+	}
+
 	for _, p := range progs {
-		if refsMap(p, id) {
+		if refsAnyMap(p, g.Maps) {
 			g.Progs = append(g.Progs, p)
 		}
 	}
