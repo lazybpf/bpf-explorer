@@ -24,6 +24,20 @@ type loaderGroupData struct {
 	Progs []*pb.ProgramInfo
 	Maps  []uint32 // referenced map ids (deduped, ordered); labels via mapByID
 	Links []*pb.LinkInfo
+	// Tail calls read out of a program's instructions, for the diagrams that
+	// have them. Empty everywhere else, and the map edges carry what is left.
+	TailCalls []tailCallEdge
+}
+
+// tailCallEdge is one program tail-calling into another, through a slot of a
+// program array. It is the one edge here that comes out of a program's
+// instructions rather than out of what the kernel lists about it, and the only
+// one that says which program calls which: a prog -> map -> prog path through
+// the table says any caller may reach any target.
+type tailCallEdge struct {
+	From, To uint32
+	MapID    uint32 // the program array it goes through
+	Index    uint32 // the slot in it
 }
 
 // groupByLoader partitions objects into per-loader groups. A program's loader is
@@ -507,6 +521,17 @@ func buildGroupMermaid(g *loaderGroupData, mapByID map[uint32]*pb.MapInfo, node 
 	for _, mid := range g.Maps {
 		declared[mid] = true
 	}
+	declaredProg := map[uint32]bool{}
+	for _, p := range g.Progs {
+		declaredProg[p.GetId()] = true
+	}
+	// Pairs a tail-call edge already accounts for, by table and target.
+	precise := map[[2]uint32]bool{}
+	for _, e := range g.TailCalls {
+		if declaredProg[e.From] && declaredProg[e.To] {
+			precise[[2]uint32{e.MapID, e.To}] = true
+		}
+	}
 	for _, p := range g.Progs {
 		seen := map[uint32]bool{}
 		for _, mid := range p.GetMapIds() {
@@ -533,6 +558,42 @@ func buildGroupMermaid(g *loaderGroupData, mapByID map[uint32]*pb.MapInfo, node 
 			fmt.Fprintf(&b, "  map_%d -->|holds| map_%d\n", mid, inner)
 		}
 	}
+	// A program array's slots are the same kind of reference, pointing at a
+	// program instead of a map: the loader inserts the target, closes its fd and
+	// leaves nothing else naming it - only the entry program of the chain keeps
+	// a link - so this edge is the only thing on the diagram saying how a
+	// tail-call target is reached. Same declared-only rule, and a per-array seen
+	// set because one program can sit in several slots of one array.
+	for _, mid := range g.Maps {
+		seen := map[uint32]bool{}
+		for _, pid := range mapByID[mid].GetProgIds() {
+			if !declaredProg[pid] || seen[pid] {
+				continue
+			}
+			if precise[[2]uint32{mid, pid}] {
+				continue // an edge below already says which call gets there
+			}
+			seen[pid] = true
+			// Dotted, and hedged in words too: the slot says this program is
+			// reachable through the table, not that anything in particular
+			// jumps to it. Every other line on the diagram is a fact about one
+			// object holding or naming another; this one is a possibility.
+			fmt.Fprintf(&b, "  map_%d -.->|may tail call| prog_%d\n", mid, pid)
+		}
+	}
+	// And where the instructions said which slot a call selects, the edge is
+	// between the two programs themselves. The table stays on the diagram - it
+	// is how the jump gets there, and its other slots are still drawn from it -
+	// but this pair no longer has to be read through it.
+	// Thick, because it is the only edge here that is control passing from one
+	// program to another: everything else on the diagram is one object holding
+	// or naming another.
+	for _, e := range g.TailCalls {
+		if !declaredProg[e.From] || !declaredProg[e.To] {
+			continue
+		}
+		fmt.Fprintf(&b, "  prog_%d ==>|tail call slot %d| prog_%d\n", e.From, e.Index, e.To)
+	}
 
 	// Click-to-navigate: program -> its focused graph, map -> its details.
 	for _, p := range g.Progs {
@@ -547,8 +608,16 @@ func buildGroupMermaid(g *loaderGroupData, mapByID map[uint32]*pb.MapInfo, node 
 }
 
 // programGroupData builds a single-program pseudo-group for the per-program
-// graph: the program, the maps it references, and the links attaching it.
-func programGroupData(p *pb.ProgramInfo, links []*pb.LinkInfo) *loaderGroupData {
+// graph: the program, the maps it references, the links attaching it, and the
+// programs it tail-calls into.
+//
+// calls comes from the program's own instructions (see the agent's
+// tailcall.go), and is what makes this page answer "which programs does this
+// one call" rather than "which tables can it jump through". It is best-effort:
+// an xlated dump needs privilege, and a call whose index is computed at runtime
+// names no one slot, so a program's targets can be partly or wholly missing
+// here - what stays is the table, with the slot edges the map already carries.
+func programGroupData(p *pb.ProgramInfo, progs []*pb.ProgramInfo, links []*pb.LinkInfo, calls []*pb.TailCall) *loaderGroupData {
 	g := &loaderGroupData{Progs: []*pb.ProgramInfo{p}}
 	seen := map[uint32]bool{}
 	for _, mid := range p.GetMapIds() {
@@ -557,6 +626,33 @@ func programGroupData(p *pb.ProgramInfo, links []*pb.LinkInfo) *loaderGroupData 
 			g.Maps = append(g.Maps, mid)
 		}
 	}
+
+	// A program can reach the same target from several call sites, and can tail
+	// call itself - the kernel allows 33 levels of it - so both the node and the
+	// edge are deduped, the edge by the slot it goes through rather than by the
+	// target, since two slots reaching one program are two different calls.
+	declared := map[uint32]bool{p.GetId(): true}
+	edges := map[tailCallEdge]bool{}
+	for _, c := range calls {
+		to := c.GetProgId()
+		if to == 0 {
+			continue // the index is computed, or the slot is empty
+		}
+		if !declared[to] {
+			t := findProg(progs, to)
+			if t == nil {
+				continue // gone from the node between the listing and the dump
+			}
+			declared[to] = true
+			g.Progs = append(g.Progs, t)
+		}
+		e := tailCallEdge{From: p.GetId(), To: to, MapID: c.GetMapId(), Index: c.GetIndex()}
+		if !edges[e] {
+			edges[e] = true
+			g.TailCalls = append(g.TailCalls, e)
+		}
+	}
+
 	for _, l := range links {
 		if l.GetProgId() == p.GetId() {
 			g.Links = append(g.Links, l)
@@ -568,7 +664,11 @@ func programGroupData(p *pb.ProgramInfo, links []*pb.LinkInfo) *loaderGroupData 
 // mapGroupData builds a single-map pseudo-group for the per-map graph: the map,
 // the maps a map-of-maps slot joins it to - the inner maps it holds, and the
 // outer maps holding it - the programs referencing any of those, and the links
-// attaching those programs. The neighbours are here because that slot is the
+// attaching those programs. A program array's slots point at programs rather
+// than maps, and those come too, for the same reason: nothing else on the page
+// says what the array jumps to.
+//
+// The neighbours are here because that slot is the
 // only reference an inner map has anywhere: without them an inner map's page is
 // one lone node with nothing to say who made it, and an outer map's page hides
 // everything it holds. Pulling in the programs referencing a neighbour is what
@@ -588,6 +688,7 @@ func mapGroupData(id uint32, progs []*pb.ProgramInfo, maps []*pb.MapInfo, links 
 		seen[mid] = true
 		g.Maps = append(g.Maps, mid)
 	}
+	target := map[uint32]bool{} // what the focused map tail-calls into, if it is a program array
 	for _, m := range maps {
 		if holdsInner(m, id) {
 			addMap(m.GetId())
@@ -596,11 +697,14 @@ func mapGroupData(id uint32, progs []*pb.ProgramInfo, maps []*pb.MapInfo, links 
 			for _, inner := range m.GetInnerMapIds() {
 				addMap(inner)
 			}
+			for _, pid := range m.GetProgIds() {
+				target[pid] = true
+			}
 		}
 	}
 
 	for _, p := range progs {
-		if refsAnyMap(p, g.Maps) {
+		if refsAnyMap(p, g.Maps) || target[p.GetId()] {
 			g.Progs = append(g.Progs, p)
 		}
 	}

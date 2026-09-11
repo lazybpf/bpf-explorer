@@ -7,8 +7,11 @@
 {{$h := .GraphHeading}}
 <h2>{{$h.Prefix}}{{with $h.Name}} <span class="name">{{.}}</span>{{end}}{{with $h.Suffix}} {{.}}{{end}}</h2>
 <p class="muted">
-  links attach programs; programs reference maps.
+  links attach programs; programs reference maps; a tail call hands one program's
+  execution to another.
   Shapes: [ programs ] &nbsp; ( maps ) &nbsp; &lt; links &gt;.
+  Lines: solid what one object holds or names &nbsp; thick a tail call &nbsp;
+  dotted only reachable through a program array's slot.
   Click a program to zoom into it, or a map to open its details.
 </p>
 

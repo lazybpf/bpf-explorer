@@ -253,6 +253,10 @@ type ProgramDump struct {
 	Lines     []string
 	Available bool
 	Note      string
+	// Where the program tail-calls, read out of the same instructions the lines
+	// are formatted from. See tailcall.go: this is the only place the node says
+	// which program calls which.
+	TailCalls []TailCall
 }
 
 // DumpProgram returns a program's xlated instructions as formatted lines, like
@@ -285,7 +289,9 @@ func (i *Inspector) DumpProgram(id uint32) (*ProgramDump, error) {
 	if len(lines) == 0 {
 		return &ProgramDump{Available: false, Note: "kernel exposed no instructions for this program"}, nil
 	}
-	return &ProgramDump{Available: true, Lines: lines}, nil
+	calls := tailCalls(insns)
+	resolveTailCallTargets(calls)
+	return &ProgramDump{Available: true, Lines: lines, TailCalls: calls}, nil
 }
 
 // maxFDArraySlots caps how many slots of one map-of-maps or program array are

@@ -697,9 +697,17 @@ func (h *Handlers) programGraph(w http.ResponseWriter, r *http.Request) {
 	for _, m := range maps {
 		mapByID[m.GetId()] = m
 	}
+	// What this program actually calls, which only its own instructions say: a
+	// program array names every program in it and this one references the whole
+	// table, so without this the page can say no more than "any of these".
+	// Best-effort - the dump needs privilege the agent may not have, and an
+	// index computed at runtime names no slot - and the table's own edges stay
+	// underneath whatever it turns up.
+	calls := h.fetchTailCalls(r, node, uint32(id))
+
 	// Same shape as the diagram's own node label, and as the map page's heading.
 	data.GraphHeading = progHeading(prog)
-	data.Mermaid = buildGroupMermaid(programGroupData(prog, links), mapByID, node)
+	data.Mermaid = buildGroupMermaid(programGroupData(prog, progs, links, calls), mapByID, node)
 	h.render(w, "loader", data)
 }
 
@@ -736,6 +744,29 @@ func (h *Handlers) mapGraph(w http.ResponseWriter, r *http.Request) {
 	data.GraphHeading = mapHeading(m.GetId(), m)
 	data.Mermaid = buildGroupMermaid(mapGroupData(uint32(id), progs, maps, links), mapByID, node)
 	h.render(w, "loader", data)
+}
+
+// fetchTailCalls asks the node where one program tail-calls. Best-effort: the
+// diagram is worth drawing without it, so every failure - no agent, no
+// privilege for an xlated dump, a program that went away - returns no calls
+// rather than an error. It is a dump of one program, so it stays on the pages
+// about one program; a diagram of a whole loader would be one of these per
+// program on it.
+func (h *Handlers) fetchTailCalls(r *http.Request, node string, id uint32) []*pb.TailCall {
+	conn, err := h.dial(node)
+	if err != nil {
+		return nil
+	}
+	defer conn.Close()
+
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+
+	dump, err := pb.NewBpfInspectorClient(conn).DumpProgram(ctx, &pb.DumpProgramRequest{Id: id})
+	if err != nil {
+		return nil
+	}
+	return dump.GetTailCalls()
 }
 
 // fetchGraph dials the node's agent and returns its programs/maps/links.

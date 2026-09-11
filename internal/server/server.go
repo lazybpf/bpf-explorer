@@ -104,10 +104,21 @@ func (s *Server) DumpProgram(_ context.Context, req *pb.DumpProgramRequest) (*pb
 	if err != nil {
 		return nil, err
 	}
+	calls := make([]*pb.TailCall, 0, len(dump.TailCalls))
+	for _, c := range dump.TailCalls {
+		calls = append(calls, &pb.TailCall{
+			Site:     c.Site,
+			MapId:    c.MapID,
+			Index:    c.Index,
+			HasIndex: c.HasIndex,
+			ProgId:   c.ProgID,
+		})
+	}
 	return &pb.DumpProgramResponse{
 		Lines:     dump.Lines,
 		Available: dump.Available,
 		Note:      dump.Note,
+		TailCalls: calls,
 	}, nil
 }
 

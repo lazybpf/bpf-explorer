@@ -114,7 +114,7 @@ func TestProgramGroupData(t *testing.T) {
 		{Id: 3, Type: "xdp", ProgId: 7},
 		{Id: 4, Type: "tracing", ProgId: 8}, // different program -> excluded
 	}
-	g := programGroupData(prog, links)
+	g := programGroupData(prog, nil, links, nil)
 
 	if len(g.Progs) != 1 || g.Progs[0].GetId() != 7 {
 		t.Errorf("want just prog 7, got %+v", g.Progs)
@@ -1288,6 +1288,150 @@ func TestFilterProgramsByLoaderIncludesTailCallTargets(t *testing.T) {
 		if c.Group == unattachedGroupID {
 			t.Errorf("nothing is left with no loader, but the picker offers %+v", c)
 		}
+	}
+}
+
+// TestBuildGroupMermaidTailCallEdge covers the slot edge on a loader's own
+// diagram, the program-array half of the outer/inner map one. The target was
+// already drawn there - groupByLoader credits a program in a tail-call slot to
+// the array's loader - but with nothing joining it to the array that jumps to
+// it. The same program sits in two slots, which must still draw one arrow.
+func TestBuildGroupMermaidTailCallEdge(t *testing.T) {
+	progs := []*pb.ProgramInfo{
+		// The entry program of the chain: attached, and the only one anybody
+		// holds an fd to.
+		{Id: 1767, Name: "generic_kprobe_event", Type: "Kprobe", MapIds: []uint32{18723},
+			Pids: []*pb.ProcessRef{{Pid: 107547, Comm: "tetragon"}}},
+		{Id: 1769, Name: "generic_kprobe_filter_arg", Type: "Kprobe"},
+	}
+	maps := []*pb.MapInfo{
+		{Id: 18723, Name: "kprobe_calls", Type: "ProgramArray",
+			Pids:    []*pb.ProcessRef{{Pid: 107547, Comm: "tetragon"}},
+			ProgIds: []uint32{1769, 1769}},
+	}
+	groups, mapByID := groupByLoader(progs, maps, nil, nil)
+	out := string(buildGroupMermaid(findGroup(groups, "sg_107547"), mapByID, "node-a"))
+
+	for _, want := range []string{
+		`prog_1769["prog 1769: generic_kprobe_filter_arg (Kprobe)"]`,
+		"prog_1767 -->|uses| map_18723",
+		"map_18723 -.->|may tail call| prog_1769",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("loader diagram missing %q\n%s", want, out)
+		}
+	}
+	if n := strings.Count(out, "map_18723 -.->|may tail call| prog_1769"); n != 1 {
+		t.Errorf("the target is in two slots; want 1 arrow, got %d\n%s", n, out)
+	}
+}
+
+// TestBuildGroupMermaidUndeclaredTailCallTarget checks the tail-call edge obeys
+// the declared-only rule the other edges do: a focused diagram leaves programs
+// out on purpose, and mermaid would invent a bare node for each one an edge
+// named.
+func TestBuildGroupMermaidUndeclaredTailCallTarget(t *testing.T) {
+	mapByID := map[uint32]*pb.MapInfo{
+		12: {Id: 12, Name: "calls", Type: "ProgramArray", ProgIds: []uint32{7}},
+	}
+	g := &loaderGroupData{Maps: []uint32{12}} // prog 7 deliberately not in the group
+	out := string(buildGroupMermaid(g, mapByID, "node-a"))
+
+	if strings.Contains(out, "prog_7") {
+		t.Errorf("prog 7 is outside the group and must not appear\n%s", out)
+	}
+}
+
+// TestMapGroupDataArrayReachesTargets is the inner-map page one step on: a
+// program array's own graph showed the programs referencing it and nothing of
+// what it jumps to, though the slot is the only reference a target has.
+func TestMapGroupDataArrayReachesTargets(t *testing.T) {
+	progs := []*pb.ProgramInfo{
+		{Id: 1767, Name: "generic_kprobe_event", MapIds: []uint32{18723}},
+		{Id: 1769, Name: "generic_kprobe_filter_arg"}, // in a slot, referencing nothing
+		{Id: 1770, Name: "other", MapIds: []uint32{99}},
+	}
+	maps := []*pb.MapInfo{
+		{Id: 18723, Name: "kprobe_calls", Type: "ProgramArray", ProgIds: []uint32{1769}},
+		{Id: 99, Name: "unrelated", Type: "Hash"},
+	}
+	links := []*pb.LinkInfo{{Id: 3, Type: "kprobe", ProgId: 1767}}
+	g := mapGroupData(18723, progs, maps, links)
+
+	if len(g.Maps) != 1 || g.Maps[0] != 18723 {
+		t.Errorf("want only the focused array, got %v", g.Maps)
+	}
+	if len(g.Progs) != 2 || !hasProg(g.Progs, 1767) || !hasProg(g.Progs, 1769) {
+		t.Errorf("want the program referencing the array and the one in its slot, got %+v", g.Progs)
+	}
+	if len(g.Links) != 1 || g.Links[0].GetId() != 3 {
+		t.Errorf("want link 3 (attaches prog 1767), got %+v", g.Links)
+	}
+}
+
+// TestProgramGroupDataTailCallEdges is what the instructions are read for: the
+// program's page says which program it calls, where the table alone could only
+// say which programs are reachable from it. Two sites hitting the same slot are
+// one edge, and a site whose index is computed leaves the table to speak for
+// itself.
+func TestProgramGroupDataTailCallEdges(t *testing.T) {
+	prog := &pb.ProgramInfo{Id: 1767, Name: "generic_kprobe_event", Type: "Kprobe",
+		MapIds: []uint32{18723}}
+	progs := []*pb.ProgramInfo{
+		prog,
+		{Id: 1765, Name: "generic_kprobe_process_filter", Type: "Kprobe"},
+		{Id: 1769, Name: "generic_kprobe_filter_arg", Type: "Kprobe"},
+	}
+	calls := []*pb.TailCall{
+		{Site: 42, MapId: 18723, Index: 3, HasIndex: true, ProgId: 1765},
+		{Site: 88, MapId: 18723, Index: 3, HasIndex: true, ProgId: 1765},
+		{Site: 91, MapId: 18723}, // the index is computed: no slot, no target
+	}
+	g := programGroupData(prog, progs, nil, calls)
+
+	if len(g.Progs) != 2 || g.Progs[0].GetId() != 1767 || g.Progs[1].GetId() != 1765 {
+		t.Fatalf("want the program and the one it calls, got %+v", g.Progs)
+	}
+	if len(g.TailCalls) != 1 {
+		t.Fatalf("want one edge for the two sites on one slot, got %+v", g.TailCalls)
+	}
+
+	mapByID := map[uint32]*pb.MapInfo{
+		18723: {Id: 18723, Name: "kprobe_calls", Type: "ProgramArray",
+			ProgIds: []uint32{1765, 1769}},
+	}
+	out := string(buildGroupMermaid(g, mapByID, "node-a"))
+	for _, want := range []string{
+		"prog_1767 -->|uses| map_18723",
+		"prog_1767 ==>|tail call slot 3| prog_1765",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("diagram missing %q\n%s", want, out)
+		}
+	}
+	// The table holds 1765 too, but saying so again alongside the edge naming
+	// the slot is the vaguer answer drawn twice.
+	if strings.Contains(out, "map_18723 -.->|may tail call| prog_1765") {
+		t.Errorf("the slot edge supersedes the table's\n%s", out)
+	}
+	// 1769 is in the table but not on this page: nothing says this program
+	// jumps to it, which is the whole distinction being drawn.
+	if strings.Contains(out, "prog_1769") {
+		t.Errorf("1769 is another slot's program, not this program's target\n%s", out)
+	}
+}
+
+// TestProgramGroupDataTailCallTargetGone checks the declared-only rule from the
+// other side: the dump is a second call to the node, so its target may be gone
+// from the listing the page was built from, and mermaid would invent a bare
+// node for it.
+func TestProgramGroupDataTailCallTargetGone(t *testing.T) {
+	prog := &pb.ProgramInfo{Id: 1767, Name: "entry", MapIds: []uint32{18723}}
+	calls := []*pb.TailCall{{Site: 42, MapId: 18723, Index: 3, HasIndex: true, ProgId: 1765}}
+
+	g := programGroupData(prog, []*pb.ProgramInfo{prog}, nil, calls)
+	if len(g.Progs) != 1 || len(g.TailCalls) != 0 {
+		t.Errorf("want the program alone, got progs %+v edges %+v", g.Progs, g.TailCalls)
 	}
 }
 
