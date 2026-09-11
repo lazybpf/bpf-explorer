@@ -30,8 +30,10 @@ type loaderGroupData struct {
 // its smallest holder PID that is not in hidden; programs with no visible holder
 // fall into the "no loader" group. Each group includes every map its programs
 // reference, so a map shared across loaders appears on each of their pages, plus
-// the maps it holds an fd to that no program uses. Only a map nothing points at
-// - no holder, and no referencing program that has one - is a no-loader map.
+// the maps it holds an fd to that no program uses, plus the inner maps of any
+// map-of-maps it is credited with. Only a map nothing points at - no holder, no
+// referencing program that has one, and no outer map holding it in a slot - is
+// a no-loader map.
 // Returns the groups in first-seen order plus a map-id lookup for labels.
 func groupByLoader(progs []*pb.ProgramInfo, maps []*pb.MapInfo, links []*pb.LinkInfo, hidden map[uint32]bool) ([]*loaderGroupData, map[uint32]*pb.MapInfo) {
 	mapByID := map[uint32]*pb.MapInfo{}
@@ -59,11 +61,13 @@ func groupByLoader(progs []*pb.ProgramInfo, maps []*pb.MapInfo, links []*pb.Link
 	}
 
 	progGroup := map[uint32]string{}
+	groupLabel := map[string]string{} // group id -> its label, to credit a map to
 	for _, p := range sortedProgs {
 		id, label := loaderGroup(p, hidden)
 		g := getGroup(id, label)
 		g.Progs = append(g.Progs, p)
 		progGroup[p.GetId()] = id
+		groupLabel[id] = label
 	}
 
 	mapsSeen := map[string]map[uint32]bool{}
@@ -88,17 +92,50 @@ func groupByLoader(progs []*pb.ProgramInfo, maps []*pb.MapInfo, links []*pb.Link
 	// listed under "no loader" is the page contradicting itself.
 	referenced := map[uint32]bool{} // referenced by any program at all
 	known := map[uint32]bool{}      // ...whose loader is visible, or held by one
+	refGroup := map[uint32]string{} // map id -> group of a program referencing it
 	for _, p := range sortedProgs {
 		for _, mid := range p.GetMapIds() {
 			referenced[mid] = true
-			if progGroup[p.GetId()] != unattachedGroupID {
+			if g := progGroup[p.GetId()]; g != unattachedGroupID {
 				known[mid] = true
+				if _, ok := refGroup[mid]; !ok {
+					refGroup[mid] = g // lowest prog id wins; sortedProgs is in that order
+				}
 			}
 		}
 	}
 	for _, m := range sortedMaps {
 		if id, _ := holderGroup(m.GetPids(), hidden); id != unattachedGroupID {
 			known[m.GetId()] = true
+		}
+	}
+
+	// A third route, and the only one that reaches an inner map of an
+	// ArrayOfMaps/HashOfMaps: the outer map's slot. Nothing holds such a map's
+	// fd, nothing pins it and no program names it in map_ids - the loader
+	// inserts it and closes the fd - so both routes above miss it and it would
+	// land under "no loader" while the maps page credits it to the outer map's
+	// loader as "comm(pid) via map <id>". Inherit the outer map's group, which
+	// is what innerMapLoaders shows, so the two stay one partition.
+	innerGroup := map[uint32]string{}
+	innerLabel := map[uint32]string{}
+	for _, m := range sortedMaps {
+		id, label := holderGroup(m.GetPids(), hidden)
+		if id == unattachedGroupID {
+			// The outer map may be held only by a program referencing it, in
+			// which case that program's group named itself in groupLabel.
+			id = refGroup[m.GetId()]
+			label = groupLabel[id]
+		}
+		if id == "" || id == unattachedGroupID {
+			continue // the outer map has no loader to pass on
+		}
+		for _, mid := range m.GetInnerMapIds() {
+			if _, ok := innerGroup[mid]; ok {
+				continue // already inherited from a lower-numbered outer map
+			}
+			innerGroup[mid], innerLabel[mid] = id, label
+			known[mid] = true
 		}
 	}
 
@@ -122,6 +159,11 @@ func groupByLoader(progs []*pb.ProgramInfo, maps []*pb.MapInfo, links []*pb.Link
 		id, label := holderGroup(m.GetPids(), hidden)
 		if id == unattachedGroupID && referenced[m.GetId()] {
 			continue // already under whichever groups reference it
+		}
+		if id == unattachedGroupID {
+			if inherited, ok := innerGroup[m.GetId()]; ok {
+				id, label = inherited, innerLabel[m.GetId()]
+			}
 		}
 		addMap(getGroup(id, label), m.GetId())
 	}

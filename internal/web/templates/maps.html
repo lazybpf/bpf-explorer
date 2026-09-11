@@ -34,7 +34,7 @@
        a map is grouped by the programs referencing it as well as by who holds an
        fd to it, so these values are not the group's name repeated down the rows
        - a shared map names the other loaders using it too. */}}
-  <thead><tr><th title="the kernel's id for this map, what bpftool map show lists it by. The kernel recycles ids, so one names this map only while it exists">ID</th><th>Name</th><th>Type</th><th>Key</th><th>Value</th><th>Max</th><th>Flags</th><th title="processes holding an open fd to this map; when none do, the inferred loader of a program referencing it is shown instead">Holders</th><th></th></tr></thead>
+  <thead><tr><th title="the kernel's id for this map, what bpftool map show lists it by. The kernel recycles ids, so one names this map only while it exists">ID</th><th>Name</th><th>Type</th><th>Key</th><th>Value</th><th>Max</th><th>Flags</th><th title="processes holding an open fd to this map; when none do, an inferred loader is shown instead - of a program referencing it, or of the map-of-maps holding it in a slot">Holders</th><th></th></tr></thead>
   <tbody>
   {{range .Maps}}
     <tr>
@@ -46,7 +46,14 @@
         {{else}}
           {{with mapLoaders $.Programs .Id}}
             {{range .}}<span class="muted" title="inferred: no process holds an fd to this map, so this is the loader of a program referencing it">{{.}}</span>{{" "}}{{end}}
-          {{else}}<span class="muted">-</span>{{end}}
+          {{else}}
+            {{/* Last resort, and the only route that reaches an inner map of a
+                 map-of-maps: nothing holds its fd, nothing pins it and no
+                 program names it, so the outer map's slot is all there is. */}}
+            {{with innerMapLoaders $.Programs $.Maps .Id}}
+              {{range .}}<span class="muted" title="inferred: nothing holds an fd to this map - it sits in a slot of the map-of-maps named here, and this is that map's loader. bpftool map show reports no pids for this map for the same reason">{{.}}</span>{{" "}}{{end}}
+            {{else}}<span class="muted">-</span>{{end}}
+          {{end}}
         {{end}}
       </td>
       <td>

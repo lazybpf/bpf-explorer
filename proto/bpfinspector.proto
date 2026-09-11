@@ -34,6 +34,12 @@ message MapInfo {
   // Why this map cannot be dumped, for the UI to show; empty when dumpable.
   // Mirrors DumpProgramResponse.note, which serves the same purpose.
   string dump_note = 11;
+  // For ArrayOfMaps/HashOfMaps only: the ids currently in its slots, the values
+  // `bpftool map dump` prints as "inner_map_id". This is the one reference an
+  // inner map may have no other trace of - a loader that inserts an inner map
+  // and closes its fd leaves it with no holder, no pin and no referencing
+  // program, so without this the UI cannot attribute it to anyone.
+  repeated uint32 inner_map_ids = 12;
 }
 
 message ListMapsRequest {}

@@ -37,7 +37,8 @@ type Handlers struct {
 func New(disc discovery.Discoverer, hiddenLoaders map[uint32]bool) (*Handlers, error) {
 	funcs := template.FuncMap{
 		"mapFlags": mapFlags, "progName": progName, "progLoader": progLoader,
-		"mapLoaders": mapLoaders, "hexASCII": hexASCII, "tabClass": tabClass,
+		"mapLoaders": mapLoaders, "innerMapLoaders": innerMapLoaders,
+		"hexASCII": hexASCII, "tabClass": tabClass,
 		"holders": holders, "comma": comma, "registers": registerSheet,
 		"nsHelp": namespaceHelp, "innerPIDs": innerPIDs, "cgroupHelp": cgroupHelp,
 		"nodeLinkTitle": nodeLinkTitle,
@@ -949,6 +950,86 @@ func mapLoaders(progs []*pb.ProgramInfo, id uint32) []string {
 			l.ref.GetComm(), l.ref.GetPid(), strings.Join(l.progs, ", ")))
 	}
 	return out
+}
+
+// innerMapLoaders infers the loaders of an inner map - one sitting in a slot of
+// an ArrayOfMaps/HashOfMaps - from the outer maps holding it. This is the last
+// resort of the three, and the only route that reaches such a map at all: the
+// loader inserts the inner map into the outer one and closes its fd, leaving
+// nothing in /proc to hold it, no pin, and no program naming it in map_ids. The
+// kernel keeps it alive on the outer map's slot alone, which is why `bpftool map
+// show` prints no pids for it either.
+//
+// Each entry reads "comm(pid) via map <ids>", one per distinct loader, in
+// outer-map-id order.
+func innerMapLoaders(progs []*pb.ProgramInfo, maps []*pb.MapInfo, id uint32) []string {
+	type loader struct {
+		ref   *pb.ProcessRef
+		outer []string
+	}
+	byPID := map[uint32]*loader{}
+	var order []uint32
+
+	for _, outer := range maps {
+		if !holdsInner(outer, id) {
+			continue
+		}
+		ref := outerLoaderRef(progs, outer)
+		if ref == nil {
+			continue // the outer map has no loader to inherit either
+		}
+		l, ok := byPID[ref.GetPid()]
+		if !ok {
+			l = &loader{ref: ref}
+			byPID[ref.GetPid()] = l
+			order = append(order, ref.GetPid())
+		}
+		l.outer = append(l.outer, strconv.FormatUint(uint64(outer.GetId()), 10))
+	}
+
+	out := make([]string, 0, len(order))
+	for _, pid := range order {
+		l := byPID[pid]
+		out = append(out, fmt.Sprintf("%s(%d) via map %s",
+			l.ref.GetComm(), l.ref.GetPid(), strings.Join(l.outer, ", ")))
+	}
+	return out
+}
+
+// outerLoaderRef picks the process an outer map is credited to, so an inner map
+// can inherit it: the outer map's own lowest holder, or failing that the loader
+// of a program referencing the outer map. Both routes are already what the
+// Holders column shows for the outer map's own row, so the inner row never
+// names a loader the outer row does not.
+func outerLoaderRef(progs []*pb.ProgramInfo, m *pb.MapInfo) *pb.ProcessRef {
+	var best *pb.ProcessRef
+	for _, r := range m.GetPids() {
+		if best == nil || r.GetPid() < best.GetPid() {
+			best = r
+		}
+	}
+	if best != nil {
+		return best
+	}
+	for _, p := range progs {
+		if !refsMap(p, m.GetId()) {
+			continue
+		}
+		if ref := loaderRef(p); ref != nil && (best == nil || ref.GetPid() < best.GetPid()) {
+			best = ref
+		}
+	}
+	return best
+}
+
+// holdsInner reports whether outer has id in one of its slots.
+func holdsInner(outer *pb.MapInfo, id uint32) bool {
+	for _, mid := range outer.GetInnerMapIds() {
+		if mid == id {
+			return true
+		}
+	}
+	return false
 }
 
 func refsMap(p *pb.ProgramInfo, id uint32) bool {

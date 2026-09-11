@@ -1304,3 +1304,130 @@ func mustNodes(t *testing.T, h *Handlers) []string {
 	}
 	return names
 }
+
+// TestInnerMapLoadersInheritsOuterHolder covers the case Daniel hit with
+// tetragon: an ArrayOfMaps holds a Hash in a slot, and the loader closed the
+// inner map's fd after inserting it. Nothing holds the inner map, nothing pins
+// it and no program names it in map_ids, so only the outer map's slot is left
+// to credit it by - which is also why `bpftool map show` prints no pids for it.
+func TestInnerMapLoadersInheritsOuterHolder(t *testing.T) {
+	progs := []*pb.ProgramInfo{
+		{Id: 1769, Name: "filter_arg", MapIds: []uint32{18733}},
+	}
+	maps := []*pb.MapInfo{
+		{Id: 18733, Name: "string_maps_0", Type: "ArrayOfMaps",
+			Pids:        []*pb.ProcessRef{{Pid: 107547, Comm: "tetragon"}},
+			InnerMapIds: []uint32{18798}},
+		{Id: 18798, Name: "string_maps_0_0", Type: "Hash"},
+	}
+
+	want := "tetragon(107547) via map 18733"
+	if got := innerMapLoaders(progs, maps, 18798); len(got) != 1 || got[0] != want {
+		t.Errorf("innerMapLoaders(18798) = %v, want [%q]", got, want)
+	}
+	// The outer map is credited by its own holder, not by this route.
+	if got := innerMapLoaders(progs, maps, 18733); len(got) != 0 {
+		t.Errorf("innerMapLoaders(18733) = %v, want none", got)
+	}
+}
+
+// TestInnerMapLoadersOuterHeldByProgram checks the inner map still inherits
+// when the outer map has no fd holder either and is only reachable through a
+// program referencing it - the inner row must never name a loader the outer
+// row does not.
+func TestInnerMapLoadersOuterHeldByProgram(t *testing.T) {
+	progs := []*pb.ProgramInfo{
+		{Id: 27, Name: "prog", MapIds: []uint32{10},
+			Pids: []*pb.ProcessRef{{Pid: 1234, Comm: "loader"}}},
+	}
+	maps := []*pb.MapInfo{
+		{Id: 10, Name: "outer", Type: "ArrayOfMaps", InnerMapIds: []uint32{11}},
+		{Id: 11, Name: "inner", Type: "Hash"},
+	}
+	want := "loader(1234) via map 10"
+	if got := innerMapLoaders(progs, maps, 11); len(got) != 1 || got[0] != want {
+		t.Errorf("innerMapLoaders(11) = %v, want [%q]", got, want)
+	}
+
+	// With no loader anywhere up the chain there is nothing to inherit.
+	progs[0].Pids = nil
+	if got := innerMapLoaders(progs, maps, 11); len(got) != 0 {
+		t.Errorf("innerMapLoaders(11) = %v, want none when the outer map has no loader", got)
+	}
+}
+
+// TestInnerMapLoadersGroupsOuterMaps checks one loader holding the same inner
+// map through two outer maps is named once, with both outer ids.
+func TestInnerMapLoadersGroupsOuterMaps(t *testing.T) {
+	maps := []*pb.MapInfo{
+		{Id: 10, Name: "outer_a", Type: "ArrayOfMaps", InnerMapIds: []uint32{12},
+			Pids: []*pb.ProcessRef{{Pid: 1234, Comm: "loader"}}},
+		{Id: 11, Name: "outer_b", Type: "ArrayOfMaps", InnerMapIds: []uint32{12},
+			Pids: []*pb.ProcessRef{{Pid: 1234, Comm: "loader"}}},
+		{Id: 12, Name: "inner", Type: "Hash"},
+	}
+	want := "loader(1234) via map 10, 11"
+	if got := innerMapLoaders(nil, maps, 12); len(got) != 1 || got[0] != want {
+		t.Errorf("innerMapLoaders(12) = %v, want [%q]", got, want)
+	}
+}
+
+// TestMapsInnerMapLoaderRendered checks the Holders column falls all the way
+// through to the outer map for an inner map of a map-of-maps, and that the
+// three routes keep their precedence: own holder, then referencing program,
+// then outer map.
+func TestMapsInnerMapLoaderRendered(t *testing.T) {
+	h, err := New(nil, nil)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	data := pageData{
+		Node: "node-a",
+		Tab:  "maps",
+		Maps: []*pb.MapInfo{
+			{Id: 18733, Name: "string_maps_0", Type: "ArrayOfMaps",
+				Pids:        []*pb.ProcessRef{{Pid: 107547, Comm: "tetragon"}},
+				InnerMapIds: []uint32{18798}},
+			{Id: 18798, Name: "string_maps_0_0", Type: "Hash"}, // inner -> inherits
+			{Id: 99, Name: "orphan", Type: "Hash"},             // nothing points at it
+		},
+		Programs: []*pb.ProgramInfo{
+			{Id: 1769, Name: "filter_arg", MapIds: []uint32{18733}},
+		},
+	}
+
+	var buf bytes.Buffer
+	if err := h.pages["maps"].ExecuteTemplate(&buf, "layout", data); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	out := buf.String()
+
+	if !strings.Contains(out, "tetragon(107547) via map 18733") {
+		t.Errorf("inner map should inherit the outer map's loader\n%s", out)
+	}
+	// The outer map keeps its own holder, unqualified: its row names tetragon
+	// without inheriting anything, since it holds the fd itself.
+	outerRow := rowFor(t, out, "string_maps_0<")
+	if !strings.Contains(outerRow, "tetragon(107547)") || strings.Contains(outerRow, "via") {
+		t.Errorf("outer map row should show its own holder directly, got %q", outerRow)
+	}
+	// A map nothing reaches still reads as a placeholder, which is the
+	// no-loader group's membership rule.
+	if !strings.Contains(out, `<span class="muted">-</span>`) {
+		t.Errorf("orphan map should still render a placeholder\n%s", out)
+	}
+}
+
+// rowFor returns the rendered table row containing marker, so an assertion can
+// be made about one map's cells rather than the whole page.
+func rowFor(t *testing.T, page, marker string) string {
+	t.Helper()
+	for _, row := range strings.Split(page, "<tr>") {
+		if strings.Contains(row, marker) {
+			return row
+		}
+	}
+	t.Fatalf("no row containing %q", marker)
+	return ""
+}

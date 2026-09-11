@@ -37,16 +37,17 @@ func (s *Server) ListMaps(_ context.Context, _ *pb.ListMapsRequest) (*pb.ListMap
 			pids = append(pids, &pb.ProcessRef{Pid: ref.PID, Comm: ref.Comm})
 		}
 		resp.Maps = append(resp.Maps, &pb.MapInfo{
-			Id:         m.ID,
-			Name:       m.Name,
-			Type:       m.Type,
-			KeySize:    m.KeySize,
-			ValueSize:  m.ValueSize,
-			MaxEntries: m.MaxEntries,
-			Flags:      m.Flags,
-			Dumpable:   m.Dumpable,
-			DumpNote:   m.DumpNote,
-			Pids:       pids,
+			Id:          m.ID,
+			Name:        m.Name,
+			Type:        m.Type,
+			KeySize:     m.KeySize,
+			ValueSize:   m.ValueSize,
+			MaxEntries:  m.MaxEntries,
+			Flags:       m.Flags,
+			Dumpable:    m.Dumpable,
+			DumpNote:    m.DumpNote,
+			Pids:        pids,
+			InnerMapIds: m.InnerMapIDs,
 		})
 	}
 	return resp, nil

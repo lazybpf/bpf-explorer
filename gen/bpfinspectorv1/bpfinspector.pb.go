@@ -35,7 +35,13 @@ type MapInfo struct {
 	Pids        []*ProcessRef          `protobuf:"bytes,10,rep,name=pids,proto3" json:"pids,omitempty"`                                 // holders of an open fd to this map
 	// Why this map cannot be dumped, for the UI to show; empty when dumpable.
 	// Mirrors DumpProgramResponse.note, which serves the same purpose.
-	DumpNote      string `protobuf:"bytes,11,opt,name=dump_note,json=dumpNote,proto3" json:"dump_note,omitempty"`
+	DumpNote string `protobuf:"bytes,11,opt,name=dump_note,json=dumpNote,proto3" json:"dump_note,omitempty"`
+	// For ArrayOfMaps/HashOfMaps only: the ids currently in its slots, the values
+	// `bpftool map dump` prints as "inner_map_id". This is the one reference an
+	// inner map may have no other trace of - a loader that inserts an inner map
+	// and closes its fd leaves it with no holder, no pin and no referencing
+	// program, so without this the UI cannot attribute it to anyone.
+	InnerMapIds   []uint32 `protobuf:"varint,12,rep,packed,name=inner_map_ids,json=innerMapIds,proto3" json:"inner_map_ids,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -145,6 +151,13 @@ func (x *MapInfo) GetDumpNote() string {
 		return x.DumpNote
 	}
 	return ""
+}
+
+func (x *MapInfo) GetInnerMapIds() []uint32 {
+	if x != nil {
+		return x.InnerMapIds
+	}
+	return nil
 }
 
 type ListMapsRequest struct {
@@ -2126,7 +2139,7 @@ var File_proto_bpfinspector_proto protoreflect.FileDescriptor
 
 const file_proto_bpfinspector_proto_rawDesc = "" +
 	"\n" +
-	"\x18proto/bpfinspector.proto\x12\x0fbpfinspector.v1\"\xbf\x02\n" +
+	"\x18proto/bpfinspector.proto\x12\x0fbpfinspector.v1\"\xe3\x02\n" +
 	"\aMapInfo\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\rR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x12\n" +
@@ -2141,7 +2154,8 @@ const file_proto_bpfinspector_proto_rawDesc = "" +
 	"\bdumpable\x18\t \x01(\bR\bdumpable\x12/\n" +
 	"\x04pids\x18\n" +
 	" \x03(\v2\x1b.bpfinspector.v1.ProcessRefR\x04pids\x12\x1b\n" +
-	"\tdump_note\x18\v \x01(\tR\bdumpNote\"\x11\n" +
+	"\tdump_note\x18\v \x01(\tR\bdumpNote\x12\"\n" +
+	"\rinner_map_ids\x18\f \x03(\rR\vinnerMapIds\"\x11\n" +
 	"\x0fListMapsRequest\"@\n" +
 	"\x10ListMapsResponse\x12,\n" +
 	"\x04maps\x18\x01 \x03(\v2\x18.bpfinspector.v1.MapInfoR\x04maps\"\xa1\x01\n" +

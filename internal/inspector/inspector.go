@@ -8,6 +8,7 @@
 package inspector
 
 import (
+	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -32,6 +33,8 @@ type MapSummary struct {
 	Dumpable   bool
 	DumpNote   string // why Dumpable is false; empty when it is true
 	PIDs       []ProcessRef
+	// InnerMapIDs is set for ArrayOfMaps/HashOfMaps only: the ids in its slots.
+	InnerMapIDs []uint32
 }
 
 // Entry is one key/value pair, in both raw hex and BTF-formatted forms.
@@ -113,6 +116,9 @@ func (i *Inspector) ListMaps() ([]MapSummary, error) {
 			Dumpable:   note == "",
 			DumpNote:   note,
 			PIDs:       pidsByMap[uint32(mapID)],
+			// Cheap for the shapes that have it: only maps-of-maps are read,
+			// and this is the only way to learn who an inner map belongs to.
+			InnerMapIDs: innerMapIDs(m, info.Type),
 		})
 		m.Close()
 	}
@@ -253,6 +259,47 @@ func (i *Inspector) DumpProgram(id uint32) (*ProgramDump, error) {
 // returns "" when it does. It is the single source of truth for both the
 // Dumpable flag and the note the UI shows in its place, so the two cannot
 // disagree about which types dump.
+// maxInnerMaps caps how many slots of one map-of-maps are read while listing.
+// The listing walks every map on the node, so this is a bound on work done for
+// every page view, not on a dump the caller asked for.
+const maxInnerMaps = 1024
+
+// innerMapIDs reads the inner map ids held in a map-of-maps' slots - the values
+// `bpftool map dump` prints as "inner_map_id". For ArrayOfMaps/HashOfMaps a
+// userspace lookup returns the inner map's id as a u32, so the value bytes are
+// the id; for any other type there is nothing to read and it returns nil.
+//
+// It matters because this reference is invisible everywhere else: a loader that
+// creates an inner map, inserts it into the outer map and closes the fd leaves
+// the inner map with no holder in /proc, no bpffs pin, and no program naming it
+// in map_ids - the outer map's slot is the only thing keeping it alive.
+//
+// Best-effort, like the /proc scan: a slot that cannot be read is skipped
+// rather than failing the listing.
+func innerMapIDs(m *ebpf.Map, t ebpf.MapType) []uint32 {
+	if t != ebpf.ArrayOfMaps && t != ebpf.HashOfMaps {
+		return nil
+	}
+	var out []uint32
+	key, err := m.NextKeyBytes(nil)
+	if err != nil {
+		return nil
+	}
+	for key != nil && len(out) < maxInnerMaps {
+		if value, lerr := m.LookupBytes(key); lerr == nil && len(value) >= 4 {
+			// An empty slot reads back as id 0, which is not a valid map id.
+			// Native order: the kernel writes the id as a host u32.
+			if id := binary.NativeEndian.Uint32(value); id != 0 {
+				out = append(out, id)
+			}
+		}
+		if key, err = m.NextKeyBytes(key); err != nil {
+			break
+		}
+	}
+	return out
+}
+
 func undumpableReason(t ebpf.MapType) string {
 	switch t {
 	case ebpf.RingBuf, ebpf.PerfEventArray:

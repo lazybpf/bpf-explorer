@@ -942,3 +942,99 @@ func TestLoadersIndexResidualRow(t *testing.T) {
 		t.Errorf("empty node should say so\n%s", out)
 	}
 }
+
+// TestGroupByLoaderInheritsInnerMaps checks an inner map of a map-of-maps is
+// credited to the outer map's loader rather than left in the no-loader group.
+// The maps page names that loader in its Holders column ("tetragon(1234) via
+// map 5678"), so a row reading that while filed under "no loader" is the page
+// contradicting itself - the same invariant the fd-holder and referencing-
+// program routes already keep.
+func TestGroupByLoaderInheritsInnerMaps(t *testing.T) {
+	progs := []*pb.ProgramInfo{
+		{Id: 1, Name: "filter_arg", MapIds: []uint32{100},
+			Pids: []*pb.ProcessRef{{Pid: 1000, Comm: "tetragon"}}},
+	}
+	maps := []*pb.MapInfo{
+		{Id: 100, Name: "outer", Type: "ArrayOfMaps",
+			Pids:        []*pb.ProcessRef{{Pid: 1000, Comm: "tetragon"}},
+			InnerMapIds: []uint32{101}},
+		{Id: 101, Name: "inner", Type: "Hash"}, // no holder, no pin, no prog
+		{Id: 102, Name: "orphan", Type: "Hash"},
+	}
+
+	groups, _ := groupByLoader(progs, maps, nil, nil)
+	byID := map[string]*loaderGroupData{}
+	for _, g := range groups {
+		byID[g.ID] = g
+	}
+
+	tetragon := byID["sg_1000"]
+	if tetragon == nil {
+		t.Fatalf("no tetragon group in %+v", groups)
+	}
+	if !hasMap(tetragon.Maps, 101) {
+		t.Errorf("inner map 101 missing from its outer map's loader, got %v", tetragon.Maps)
+	}
+	if tetragon.Label != "tetragon(1000)" {
+		t.Errorf("group label = %q, want the outer map's loader", tetragon.Label)
+	}
+
+	// And it is gone from the residual group, which keeps exactly the maps
+	// whose Holders cell reads "-".
+	if noLoader := byID[unattachedGroupID]; noLoader != nil {
+		if hasMap(noLoader.Maps, 101) {
+			t.Errorf("inner map 101 still under %q, got %v", unattachedLabel, noLoader.Maps)
+		}
+		if !hasMap(noLoader.Maps, 102) {
+			t.Errorf("map 102 is reached by nothing and belongs under %q, got %v",
+				unattachedLabel, noLoader.Maps)
+		}
+	} else {
+		t.Errorf("no-loader group missing; map 102 should still be in it")
+	}
+}
+
+// TestGroupByLoaderInnerMapWithoutOuterLoader checks nothing is invented: when
+// the outer map has no loader either, its inner map stays in the no-loader
+// group, matching the "-" its Holders cell still reads.
+func TestGroupByLoaderInnerMapWithoutOuterLoader(t *testing.T) {
+	maps := []*pb.MapInfo{
+		{Id: 100, Name: "outer", Type: "ArrayOfMaps", InnerMapIds: []uint32{101}},
+		{Id: 101, Name: "inner", Type: "Hash"},
+	}
+	groups, _ := groupByLoader(nil, maps, nil, nil)
+	if len(groups) != 1 || groups[0].ID != unattachedGroupID {
+		t.Fatalf("groups = %+v, want only the no-loader group", groups)
+	}
+	if !hasMap(groups[0].Maps, 100) || !hasMap(groups[0].Maps, 101) {
+		t.Errorf("both maps belong under %q, got %v", unattachedLabel, groups[0].Maps)
+	}
+}
+
+// TestGroupByLoaderInnerMapHiddenOuterLoader checks the inner map follows the
+// hidden-loader rule through the inheritance: crediting it to a hidden loader
+// would smuggle back a group the caller asked to exclude.
+func TestGroupByLoaderInnerMapHiddenOuterLoader(t *testing.T) {
+	maps := []*pb.MapInfo{
+		{Id: 100, Name: "outer", Type: "ArrayOfMaps",
+			Pids:        []*pb.ProcessRef{{Pid: 1, Comm: "systemd"}},
+			InnerMapIds: []uint32{101}},
+		{Id: 101, Name: "inner", Type: "Hash"},
+	}
+	groups, _ := groupByLoader(nil, maps, nil, map[uint32]bool{1: true})
+	for _, g := range groups {
+		if g.ID == "sg_1" {
+			t.Errorf("hidden loader got a group: %+v", g)
+		}
+	}
+}
+
+// hasMap reports whether ids contains id.
+func hasMap(ids []uint32, id uint32) bool {
+	for _, got := range ids {
+		if got == id {
+			return true
+		}
+	}
+	return false
+}
