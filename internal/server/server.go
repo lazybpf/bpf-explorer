@@ -49,6 +49,7 @@ func (s *Server) ListMaps(_ context.Context, _ *pb.ListMapsRequest) (*pb.ListMap
 			Pids:        pids,
 			InnerMapIds: m.InnerMapIDs,
 			ProgIds:     m.ProgIDs,
+			Frozen:      m.Frozen,
 		})
 	}
 	return resp, nil

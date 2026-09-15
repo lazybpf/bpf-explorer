@@ -459,8 +459,8 @@ func TestMapsLoaderFilterRender(t *testing.T) {
 	if !strings.Contains(out, ">Holders</th>") || !strings.Contains(out, "holder(4242)") {
 		t.Errorf("filtered maps page dropped the holders column\n%s", out)
 	}
-	if cols := strings.Count(out, "</th>"); cols != 9 {
-		t.Errorf("filtered table has %d columns, want the unfiltered 9\n%s", cols, out)
+	if cols := strings.Count(out, "</th>"); cols != 10 {
+		t.Errorf("filtered table has %d columns, want the unfiltered 10\n%s", cols, out)
 	}
 	// The way back to everything is the picker's first option.
 	if !strings.Contains(out, `<option value=""`) {
@@ -1070,6 +1070,65 @@ func TestMapsDumpHexTooltip(t *testing.T) {
 
 // TestMapsPIDs verifies the maps list renders each map's holder processes, and a
 // placeholder for a map nobody holds an fd to (pinned only, or no hostPID).
+// TestMapsFrozenColumn verifies the maps list says which maps have been frozen -
+// their contents final from userspace - in a column of its own, rather than
+// mixed in with the creation flags, which frozen is not one of.
+func TestMapsFrozenColumn(t *testing.T) {
+	h, err := New(nil, nil)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	data := pageData{
+		Node: "node-a",
+		Tab:  "maps",
+		Maps: []*pb.MapInfo{
+			// A .rodata map as a loader leaves it: MMAPABLE | RDONLY_PROG, and
+			// frozen once the constants are in.
+			{Id: 27, Name: ".rodata.str1.1", Type: "Array", Flags: 0x480, Frozen: true, Dumpable: true},
+			{Id: 42, Name: "counters", Type: "Hash", Dumpable: true},
+		},
+	}
+
+	var buf bytes.Buffer
+	if err := h.pages["maps"].ExecuteTemplate(&buf, "layout", data); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	out := buf.String()
+
+	if !strings.Contains(out, ">Frozen</th>") {
+		t.Errorf("maps list should carry a Frozen column\n%s", out)
+	}
+	if n := strings.Count(out, "<td>yes</td>"); n != 1 {
+		t.Errorf("want exactly the frozen map marked, got %d\n%s", n, out)
+	}
+	// The mark belongs to map 27's row, and the flags cell is left as it was:
+	// frozen is state the kernel reports separately, not a BPF_F_* bit.
+	frozen, plain := mapsRow(t, out, "27"), mapsRow(t, out, "42")
+	if !strings.Contains(frozen, "<td>yes</td>") {
+		t.Errorf("the frozen map's row should be the marked one\n%s", frozen)
+	}
+	if !strings.Contains(frozen, ">RDONLY_PROG | MMAPABLE<") {
+		t.Errorf("frozen must not disturb the flags cell\n%s", frozen)
+	}
+	if strings.Contains(plain, "<td>yes</td>") {
+		t.Errorf("an unfrozen map must not be marked frozen\n%s", plain)
+	}
+}
+
+// mapsRow returns the rendered maps-list row for a map id, so a per-row
+// assertion cannot be satisfied by some other row's cell.
+func mapsRow(t *testing.T, out, id string) string {
+	t.Helper()
+	for _, row := range strings.Split(out, "<tr>") {
+		if strings.Contains(row, "<td>"+id+"</td>") {
+			return row
+		}
+	}
+	t.Fatalf("no row for map %s\n%s", id, out)
+	return ""
+}
+
 func TestMapsPIDs(t *testing.T) {
 	h, err := New(nil, nil)
 	if err != nil {

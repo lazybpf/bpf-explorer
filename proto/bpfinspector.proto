@@ -46,6 +46,16 @@ message MapInfo {
   // that program with no holder and no link, so the slot is the only thing
   // naming it.
   repeated uint32 prog_ids = 13;
+  // Whether BPF_MAP_FREEZE has been called on this map: userspace can no longer
+  // write to it, only read, and there is no unfreeze. libbpf freezes a .rodata
+  // map once it has written the initial values in, which is what lets the
+  // verifier read them as constants. The `frozen` bpftool map show prints.
+  //
+  // The kernel does not report it in map info; it is read from the agent's own
+  // /proc/<pid>/fdinfo entry for the map fd, as bpftool reads it. So false also
+  // covers "this kernel does not say" (before 5.2), exactly as it does for
+  // bpftool - neither can tell that case from a map that is simply not frozen.
+  bool frozen = 14;
 }
 
 message ListMapsRequest {}

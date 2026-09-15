@@ -40,6 +40,12 @@ type MapSummary struct {
 	// ProgIDs is the same for a ProgramArray: the programs in its slots, which
 	// a bpf_tail_call jumps to by index.
 	ProgIDs []uint32
+	// Frozen is true when BPF_MAP_FREEZE has been called on this map: userspace
+	// can no longer write to it. The kernel reports this nowhere in map info -
+	// it comes from this process's own fdinfo entry for the map fd, which is
+	// where bpftool reads it too, so false also covers a kernel that does not
+	// report it at all (before 5.2).
+	Frozen bool
 }
 
 // Entry is one key/value pair, in both raw hex and BTF-formatted forms.
@@ -137,6 +143,9 @@ func (i *Inspector) ListMaps() ([]MapSummary, error) {
 			// the object in one belongs to.
 			InnerMapIDs: innerMapIDs(m, info.Type),
 			ProgIDs:     progArrayIDs(m, info.Type),
+			// Already paid for: Info() reads /proc/self/fdinfo for this fd
+			// whether or not anyone asks for the fields only it carries.
+			Frozen: info.Frozen(),
 		})
 		m.Close()
 	}

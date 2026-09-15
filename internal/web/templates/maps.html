@@ -34,12 +34,16 @@
        a map is grouped by the programs referencing it as well as by who holds an
        fd to it, so these values are not the group's name repeated down the rows
        - a shared map names the other loaders using it too. */}}
-  <thead><tr><th title="the kernel's id for this map, what bpftool map show lists it by. The kernel recycles ids, so one names this map only while it exists">ID</th><th>Name</th><th>Type</th><th>Key</th><th>Value</th><th>Max</th><th>Flags</th><th title="processes holding an open fd to this map; when none do, an inferred loader is shown instead - of a program referencing it, or of the map-of-maps holding it in a slot">Holders</th><th></th></tr></thead>
+  <thead><tr><th title="the kernel's id for this map, what bpftool map show lists it by. The kernel recycles ids, so one names this map only while it exists">ID</th><th>Name</th><th>Type</th><th>Key</th><th>Value</th><th>Max</th><th>Flags</th><th title="whether this map has been frozen: BPF_MAP_FREEZE makes its contents final from userspace - still readable, never writable again, and there is no unfreeze. A loader freezes a .rodata map once it has written the constants in, which is what lets the verifier read them as constants. The frozen `bpftool map show` prints; it is not a creation flag, so it has its own column">Frozen</th><th title="processes holding an open fd to this map; when none do, an inferred loader is shown instead - of a program referencing it, or of the map-of-maps holding it in a slot">Holders</th><th></th></tr></thead>
   <tbody>
   {{range .Maps}}
     <tr>
       <td>{{.Id}}</td><td>{{.Name}}</td><td>{{.Type}}</td>
       <td>{{.KeySize}}</td><td>{{.ValueSize}}</td><td>{{.MaxEntries}}</td><td title="0x{{printf "%x" .Flags}}">{{mapFlags .Flags}}</td>
+      {{/* State, not a flag bit, so it stays out of the Flags cell. Blank
+           rather than "no" for the common case: what a reader scans this
+           column for is the few rows that are frozen. */}}
+      <td>{{if .Frozen}}yes{{else}}<span class="muted">-</span>{{end}}</td>
       <td>
         {{if .Pids}}
           {{range .Pids}}{{.Comm}}({{.Pid}}){{" "}}{{end}}
@@ -68,7 +72,7 @@
       </td>
     </tr>
   {{else}}
-    <tr><td colspan="9" class="muted">{{with .MapFilter}}(no maps for {{.Label}}){{else}}(no maps){{end}}</td></tr>
+    <tr><td colspan="10" class="muted">{{with .MapFilter}}(no maps for {{.Label}}){{else}}(no maps){{end}}</td></tr>
   {{end}}
   </tbody>
 </table>

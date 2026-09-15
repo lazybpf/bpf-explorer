@@ -47,7 +47,17 @@ type MapInfo struct {
 	// that inserts a program into the tail-call table and closes its fd leaves
 	// that program with no holder and no link, so the slot is the only thing
 	// naming it.
-	ProgIds       []uint32 `protobuf:"varint,13,rep,packed,name=prog_ids,json=progIds,proto3" json:"prog_ids,omitempty"`
+	ProgIds []uint32 `protobuf:"varint,13,rep,packed,name=prog_ids,json=progIds,proto3" json:"prog_ids,omitempty"`
+	// Whether BPF_MAP_FREEZE has been called on this map: userspace can no longer
+	// write to it, only read, and there is no unfreeze. libbpf freezes a .rodata
+	// map once it has written the initial values in, which is what lets the
+	// verifier read them as constants. The `frozen` bpftool map show prints.
+	//
+	// The kernel does not report it in map info; it is read from the agent's own
+	// /proc/<pid>/fdinfo entry for the map fd, as bpftool reads it. So false also
+	// covers "this kernel does not say" (before 5.2), exactly as it does for
+	// bpftool - neither can tell that case from a map that is simply not frozen.
+	Frozen        bool `protobuf:"varint,14,opt,name=frozen,proto3" json:"frozen,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -171,6 +181,13 @@ func (x *MapInfo) GetProgIds() []uint32 {
 		return x.ProgIds
 	}
 	return nil
+}
+
+func (x *MapInfo) GetFrozen() bool {
+	if x != nil {
+		return x.Frozen
+	}
+	return false
 }
 
 type ListMapsRequest struct {
@@ -2283,7 +2300,7 @@ var File_proto_bpfinspector_proto protoreflect.FileDescriptor
 
 const file_proto_bpfinspector_proto_rawDesc = "" +
 	"\n" +
-	"\x18proto/bpfinspector.proto\x12\x0fbpfinspector.v1\"\xfe\x02\n" +
+	"\x18proto/bpfinspector.proto\x12\x0fbpfinspector.v1\"\x96\x03\n" +
 	"\aMapInfo\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\rR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x12\n" +
@@ -2300,7 +2317,8 @@ const file_proto_bpfinspector_proto_rawDesc = "" +
 	" \x03(\v2\x1b.bpfinspector.v1.ProcessRefR\x04pids\x12\x1b\n" +
 	"\tdump_note\x18\v \x01(\tR\bdumpNote\x12\"\n" +
 	"\rinner_map_ids\x18\f \x03(\rR\vinnerMapIds\x12\x19\n" +
-	"\bprog_ids\x18\r \x03(\rR\aprogIds\"\x11\n" +
+	"\bprog_ids\x18\r \x03(\rR\aprogIds\x12\x16\n" +
+	"\x06frozen\x18\x0e \x01(\bR\x06frozen\"\x11\n" +
 	"\x0fListMapsRequest\"@\n" +
 	"\x10ListMapsResponse\x12,\n" +
 	"\x04maps\x18\x01 \x03(\v2\x18.bpfinspector.v1.MapInfoR\x04maps\"\xdc\x01\n" +
