@@ -6,18 +6,74 @@
      words around it are the page's own and are chrome like any heading. */}}
 {{$h := .GraphHeading}}
 <h2>{{$h.Prefix}}{{with $h.Name}} <span class="name">{{.}}</span>{{end}}{{with $h.Suffix}} {{.}}{{end}}</h2>
-<p class="muted">
-  links attach programs; programs reference maps; a tail call hands one program's
-  execution to another.
-  Shapes: [ programs ] &nbsp; ( maps ) &nbsp; &lt; links &gt;.
-  Lines: solid what one object holds or names &nbsp; thick a tail call &nbsp;
-  dotted only reachable through a program array's slot.
-  Click a program to zoom into it, or a map to open its details.
+{{/* A key, not a paragraph. The diagram labels its own edges, so this only has
+     to say what the shapes and the line weights are; the sentence each item
+     used to be is now its tooltip, as everywhere else on the site. */}}
+<p class="legend">
+  <span class="shape" title="a BPF program. Click one to zoom into its own diagram">[ program ]</span>
+  <span class="shape" title="a map. Click one to open its contents">( map )</span>
+  <span class="shape" title="a link: what attaches a program to the hook it runs on">&lt; link &gt;</span>
+  <span title="what one object holds or names: the program a link attaches, the maps a program references, the inner maps a map-of-maps holds in its slots"><span class="edge" aria-hidden="true"></span>holds or names</span>
+  <span title="a tail call the instructions themselves proved, labelled with the program array slot it goes through: execution passes from one program to the other and does not come back"><span class="edge thick" aria-hidden="true"></span>tail call</span>
+  <span title="reachable only through a program array's slot: something can tail call this program through that table, but nothing on the node says which program does"><span class="edge slot" aria-hidden="true"></span>via a slot</span>
+</p>
+
+{{/* The diagram as text, for wherever you were going to take it next - a
+     mermaid editor, an issue, a model. The button says what clicking it will
+     do, like the xlated listing's and the trace log's. */}}
+<p class="controls">
+  <button id="copy" type="button" title="this diagram's mermaid definition, exactly as the page renders it - paste it into mermaid.live or any editor. The click lines come with it: they are what makes a node here open its page, and any other renderer ignores them">copy diagram</button>
 </p>
 
 <pre class="mermaid">
 {{.Mermaid}}
 </pre>
+
+{{/* Where the definition goes when there is no clipboard to write it to - see
+     the script below. Empty until then, so a 900-edge diagram is not sent
+     twice. */}}
+<pre id="source" hidden></pre>
+
+{{/* A classic script, not a module: it runs while the page is parsed, so it
+     reads the definition before the deferred module below hands the <pre> to
+     mermaid and its text becomes an <svg>. It also asks nothing of the CDN, so
+     the diagram stays copyable on a machine that cannot reach it. */}}
+<script>
+(() => {
+  const source = document.querySelector('pre.mermaid').textContent.trim();
+  const copy = document.getElementById('copy');
+  // The button reports what happened and then goes back to naming what it does,
+  // the same way the xlated listing's does. One timer, so a second click
+  // restarts the message instead of having the first click's timer clear it.
+  let revert;
+  const say = (text) => {
+    copy.textContent = text;
+    clearTimeout(revert);
+    revert = setTimeout(() => { copy.textContent = 'copy diagram'; }, 1500);
+  };
+  copy.addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(source);
+      say('copied');
+    } catch {
+      // No clipboard to write to: it needs a secure context, which this page is
+      // only over https or through a port-forward to localhost. The diagram is a
+      // rendered <svg> by now and selecting that would copy nothing useful, so
+      // the definition goes back on the page and that is selected instead,
+      // leaving the copy one keystroke away.
+      const fallback = document.getElementById('source');
+      fallback.textContent = source;
+      fallback.hidden = false;
+      const range = document.createRange();
+      range.selectNodeContents(fallback);
+      const selection = getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+      say('selected - copy it');
+    }
+  });
+})();
+</script>
 
 <script type="module">
   // mermaid is loaded from a CDN, which the browser (not the cluster) fetches.

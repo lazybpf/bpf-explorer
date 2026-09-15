@@ -275,6 +275,32 @@
   }
   pre.mermaid { background: var(--bg-panel); text-align: center; }
   pre.mermaid svg { max-width: 100%; }
+  /* A node that navigates says so under the pointer. mermaid marks them
+     .clickable but styles no cursor for a flowchart, so this is ours. */
+  pre.mermaid .clickable { cursor: pointer; }
+  /* The diagram's key: one scannable row, wrapping to as many as it needs.
+     The line weights are drawn as borders rather than written as words or
+     box-drawing characters - the face has none, and a rule is what a mermaid
+     edge actually is. */
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .1rem 1.4rem;
+    margin: .2rem 0 .7rem;
+    color: var(--fg-dim);
+  }
+  .legend > span { white-space: nowrap; }
+  .legend .shape { color: var(--fg); }
+  .legend .edge {
+    display: inline-block;
+    width: 1.8em;
+    margin-right: .5em;
+    vertical-align: middle;
+    /* The colour mermaid draws its edges in - see lineColor on the graph page. */
+    border-top: 1px solid var(--accent);
+  }
+  .legend .edge.thick { border-top-width: 3px; }
+  .legend .edge.slot { border-top-style: dotted; }
   /* mermaid appends its tooltip to <body> and sets background:#ffffde and
      border:1px solid #333 as INLINE styles on the element, so a plain rule
      cannot reach them - hence important on each one. Text colour is left

@@ -286,6 +286,57 @@ func TestLoaderGraphRender(t *testing.T) {
 	if !strings.Contains(out, "mermaid.initialize") {
 		t.Errorf("expected mermaid renderer script\n%s", out)
 	}
+	// The key, with one swatch per line weight: the diagram draws three kinds of
+	// edge and they only tell each other apart by how they are drawn. A swatch
+	// whose class the stylesheet does not know renders as a plain line, which
+	// would make two of the three look alike, so the classes are asserted.
+	for _, want := range []string{`class="legend"`, `class="edge"`, `class="edge thick"`, `class="edge slot"`} {
+		if !strings.Contains(out, want) {
+			t.Errorf("diagram key missing %s\n%s", want, out)
+		}
+	}
+}
+
+// TestLoaderGraphCopyButton: the diagram can be taken off the page as text, to
+// be refined in a mermaid editor. The definition is read by a script that runs
+// before the renderer replaces the <pre> with an <svg>, which is what the
+// ordering assertion below stands for, and it is on the page once - the
+// fallback holder ships empty.
+func TestLoaderGraphCopyButton(t *testing.T) {
+	h, err := New(nil, nil)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	progs, maps, links := sampleGraphData()
+	groups, mapByID := groupByLoader(progs, maps, links, nil)
+	data := pageData{
+		Node: "node-a", Tab: "loaders",
+		GraphHeading: loaderGroupHeading("agent(1000)"),
+		Mermaid:      buildGroupMermaid(findGroup(groups, "sg_1000"), mapByID, "node-a"),
+	}
+	var buf strings.Builder
+	if err := h.pages["loader"].ExecuteTemplate(&buf, "layout", data); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	out := buf.String()
+
+	if !strings.Contains(out, ">copy diagram</button>") {
+		t.Errorf("expected a copy button on the diagram page\n%s", out)
+	}
+	if !strings.Contains(out, `<pre id="source" hidden></pre>`) {
+		t.Errorf("expected an empty holder for the no-clipboard fallback\n%s", out)
+	}
+	// Once on the page: the fallback holder is filled in the browser, not here.
+	if n := strings.Count(out, "graph LR"); n != 1 {
+		t.Errorf("definition sent %d times, want once\n%s", n, out)
+	}
+	// The reader must come before the renderer: mermaid replaces the <pre>'s
+	// text with an <svg>, and a definition read after that is gone.
+	reader := strings.Index(out, "pre.mermaid').textContent")
+	renderer := strings.Index(out, "import mermaid")
+	if reader < 0 || renderer < 0 || reader > renderer {
+		t.Errorf("the copy script must read the definition before mermaid renders it (reader %d, renderer %d)\n%s", reader, renderer, out)
+	}
 }
 
 // TestGraphHeadingSplit: a diagram heading keeps the name the node handed us
