@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"strconv"
 	"syscall"
+	"time"
 
 	"github.com/cilium/ebpf"
 )
@@ -75,6 +76,11 @@ type ProgramSummary struct {
 	Tag    string
 	MapIDs []uint32
 	PIDs   []ProcessRef
+	// When the program was loaded, the loaded_at `bpftool prog show` prints.
+	// Dated here rather than downstream: the kernel counts it from this node's
+	// boot, so only this node can say what time that was. Zero when the kernel
+	// reports no load time (before 4.15) or the boot clock cannot be read.
+	LoadedAt time.Time
 }
 
 // Inspector reads maps/programs/links from the host kernel.
@@ -207,6 +213,10 @@ func (i *Inspector) ListPrograms() ([]ProgramSummary, error) {
 	// Scan /proc once up front so we can attach holders to each program. A scan
 	// failure (e.g. no hostPID) just yields no PIDs; it never fails the listing.
 	pidsByProg := scanProgramPIDs("/proc")
+	// Read once too, and for the same reason: every program in this listing is
+	// dated against the same boot instant, so two loaded a second apart are a
+	// second apart here.
+	boot, bootOK := bootTime()
 
 	var out []ProgramSummary
 	var id ebpf.ProgramID
@@ -235,13 +245,18 @@ func (i *Inspector) ListPrograms() ([]ProgramSummary, error) {
 		for _, mid := range mapIDs {
 			ids = append(ids, uint32(mid))
 		}
+		var loadedAt time.Time
+		if since, ok := info.LoadTime(); ok && bootOK {
+			loadedAt = boot.Add(since)
+		}
 		out = append(out, ProgramSummary{
-			ID:     uint32(progID),
-			Name:   info.Name,
-			Type:   info.Type.String(),
-			Tag:    info.Tag,
-			MapIDs: ids,
-			PIDs:   pidsByProg[uint32(progID)],
+			ID:       uint32(progID),
+			Name:     info.Name,
+			Type:     info.Type.String(),
+			Tag:      info.Tag,
+			MapIDs:   ids,
+			PIDs:     pidsByProg[uint32(progID)],
+			LoadedAt: loadedAt,
 		})
 		p.Close()
 	}

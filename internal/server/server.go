@@ -87,13 +87,20 @@ func (s *Server) ListPrograms(_ context.Context, _ *pb.ListProgramsRequest) (*pb
 		for _, ref := range p.PIDs {
 			pids = append(pids, &pb.ProcessRef{Pid: ref.PID, Comm: ref.Comm})
 		}
+		// A zero LoadedAt is "the node could not date this one", which UnixNano
+		// would send as a date in 1754 rather than as nothing.
+		var loadedAt int64
+		if !p.LoadedAt.IsZero() {
+			loadedAt = p.LoadedAt.UnixNano()
+		}
 		resp.Programs = append(resp.Programs, &pb.ProgramInfo{
-			Id:     p.ID,
-			Name:   p.Name,
-			Type:   p.Type,
-			Tag:    p.Tag,
-			MapIds: p.MapIDs,
-			Pids:   pids,
+			Id:               p.ID,
+			Name:             p.Name,
+			Type:             p.Type,
+			Tag:              p.Tag,
+			MapIds:           p.MapIDs,
+			Pids:             pids,
+			LoadedAtUnixNano: loadedAt,
 		})
 	}
 	return resp, nil

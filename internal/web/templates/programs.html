@@ -36,11 +36,16 @@
        only the lowest-numbered holder names the group, so these rows are not
        one value repeated - a program held by its loader and by a second process
        says so here. */}}
-  <thead><tr><th title="the kernel's id for this program, what bpftool prog show lists it by. The kernel recycles ids, so one names this program only while it exists">ID</th><th>Name</th><th>Type</th><th>Tag</th><th>Maps</th><th title="processes holding an open fd to this program; the lowest-numbered one is treated as its loader. When none do, an inferred loader is shown instead - of the program array holding this program in a tail-call slot">Holders</th><th></th></tr></thead>
+  <thead><tr><th title="the kernel's id for this program, what bpftool prog show lists it by. The kernel recycles ids, so one names this program only while it exists">ID</th><th>Name</th><th>Type</th><th>Tag</th><th title="when the program was loaded - the loaded_at `bpftool prog show` prints, dated on the node: the kernel counts a load time from that node&#39;s boot, not in dates. Shown as an age, with the timestamp itself on hover">Loaded</th><th>Maps</th><th title="processes holding an open fd to this program; the lowest-numbered one is treated as its loader. When none do, an inferred loader is shown instead - of the program array holding this program in a tail-call slot">Holders</th><th></th></tr></thead>
   <tbody>
   {{range .Programs}}
     <tr>
       <td>{{.Id}}</td><td>{{.Name}}</td><td>{{.Type}}</td><td><code>{{.Tag}}</code></td>
+      {{/* An age rather than a date: what a reader is after here is which
+           programs came up with the node and which one appeared since - a
+           column of identical timestamps answers that far more slowly. The
+           timestamp is the tooltip, for matching a row against bpftool. */}}
+      <td>{{with loadedAt .LoadedAtUnixNano}}<span title="{{.At}}">{{.Ago}}</span>{{else}}<span class="muted" title="this node reported no load time: the kernel has only exposed one since 4.15">-</span>{{end}}</td>
       <td>
         {{range .MapIds}}{{$id := .}}{{$m := index $.MapsByID $id}}<a href="/nodes/{{$.Node}}/maps/{{$id}}" target="_blank" rel="noopener"{{with $m}} title="{{.Name}} ({{.Type}})"{{end}}>{{$id}}</a>{{" "}}{{else}}<span class="muted">-</span>{{end}}
       </td>
@@ -62,7 +67,7 @@
       </td>
     </tr>
   {{else}}
-    <tr><td colspan="7" class="muted">{{with .ProgFilter}}(no programs for {{.Label}}){{else}}(no programs){{end}}</td></tr>
+    <tr><td colspan="8" class="muted">{{with .ProgFilter}}(no programs for {{.Label}}){{else}}(no programs){{end}}</td></tr>
   {{end}}
   </tbody>
 </table>

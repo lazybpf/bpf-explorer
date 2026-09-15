@@ -95,6 +95,12 @@ message ProgramInfo {
   string tag = 4;
   repeated uint32 map_ids = 5;
   repeated ProcessRef pids = 6;
+  // When the program was loaded, in nanoseconds since the Unix epoch - the
+  // loaded_at `bpftool prog show` prints. The kernel reports this as a count of
+  // nanoseconds since boot, so only the node can turn it into a date; the agent
+  // adds its own boot time before sending it, as bpftool does before printing.
+  // 0 when the kernel does not report one (before 4.15).
+  int64 loaded_at_unix_nano = 7;
 }
 message ListProgramsRequest {}
 message ListProgramsResponse { repeated ProgramInfo programs = 1; }

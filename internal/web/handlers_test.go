@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	pb "github.com/lazybpf/bpf-explorer/gen/bpfinspectorv1"
 	"github.com/lazybpf/bpf-explorer/internal/discovery"
@@ -283,8 +284,8 @@ func TestProgramsLoaderFilterRender(t *testing.T) {
 	if !strings.Contains(out, ">Holders</th>") || !strings.Contains(out, "holder(4242)") {
 		t.Errorf("filtered programs page dropped the holders column\n%s", out)
 	}
-	if cols := strings.Count(out, "</th>"); cols != 7 {
-		t.Errorf("filtered table has %d columns, want the unfiltered 7\n%s", cols, out)
+	if cols := strings.Count(out, "</th>"); cols != 8 {
+		t.Errorf("filtered table has %d columns, want the unfiltered 8\n%s", cols, out)
 	}
 	// The way back to everything is the picker's first option.
 	if !strings.Contains(out, `<option value=""`) {
@@ -1845,4 +1846,47 @@ func TestMapLoadersThroughTailCallTarget(t *testing.T) {
 		}
 	}
 	t.Errorf("map 101 should be in the tail-call target's loader group, got %+v", groups)
+}
+
+// TestProgramsLoadedColumnRender checks the programs list dates each program the
+// way `bpftool prog show` does - an age in the cell, the timestamp on hover -
+// and says so plainly for a node whose kernel reports no load time.
+func TestProgramsLoadedColumnRender(t *testing.T) {
+	h, err := New(nil, nil)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	loaded := time.Now().Add(-3 * time.Hour)
+	data := pageData{
+		Node: "node-a",
+		Tab:  "programs",
+		Programs: []*pb.ProgramInfo{
+			{Id: 5, Name: "trace_conn", Type: "Tracing", LoadedAtUnixNano: loaded.UnixNano()},
+			// Pre-4.15, or a node whose boot clock could not be read: the agent
+			// sends nothing rather than a made-up date.
+			{Id: 6, Name: "undated", Type: "XDP"},
+		},
+	}
+
+	var buf bytes.Buffer
+	if err := h.pages["programs"].ExecuteTemplate(&buf, "layout", data); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	out := buf.String()
+
+	if !strings.Contains(out, ">Loaded</th>") {
+		t.Errorf("expected a Loaded column\n%s", out)
+	}
+	if !strings.Contains(out, ">3h<") {
+		t.Errorf("expected the age in the cell\n%s", out)
+	}
+	// Unescaped: html/template writes the offset's "+" as &#43; in an attribute.
+	if stamp := loaded.Format("2006-01-02T15:04:05-0700"); !strings.Contains(html.UnescapeString(out), `title="`+stamp+`"`) {
+		t.Errorf("expected %s on hover, for matching the row against bpftool\n%s", stamp, out)
+	}
+	// The undated row says why it is empty rather than leaving a blank cell.
+	if !strings.Contains(out, "since 4.15") {
+		t.Errorf("expected the undated row to explain itself\n%s", out)
+	}
 }

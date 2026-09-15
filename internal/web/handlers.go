@@ -43,7 +43,7 @@ func New(disc discovery.Discoverer, hiddenLoaders map[uint32]bool) (*Handlers, e
 		"hexASCII": hexASCII, "tabClass": tabClass,
 		"holders": holders, "comma": comma, "registers": registerSheet,
 		"nsHelp": namespaceHelp, "innerPIDs": innerPIDs, "cgroupHelp": cgroupHelp,
-		"nodeLinkTitle": nodeLinkTitle,
+		"nodeLinkTitle": nodeLinkTitle, "loadedAt": loadedAt,
 		// Exposed as a func so every page gets it without threading it through
 		// each handler's pageData.
 		"version": version.String,

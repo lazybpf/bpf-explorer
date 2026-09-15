@@ -528,15 +528,21 @@ func (x *ProcessRef) GetComm() string {
 }
 
 type ProgramInfo struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Id            uint32                 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
-	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
-	Type          string                 `protobuf:"bytes,3,opt,name=type,proto3" json:"type,omitempty"`
-	Tag           string                 `protobuf:"bytes,4,opt,name=tag,proto3" json:"tag,omitempty"`
-	MapIds        []uint32               `protobuf:"varint,5,rep,packed,name=map_ids,json=mapIds,proto3" json:"map_ids,omitempty"`
-	Pids          []*ProcessRef          `protobuf:"bytes,6,rep,name=pids,proto3" json:"pids,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	Id     uint32                 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
+	Name   string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	Type   string                 `protobuf:"bytes,3,opt,name=type,proto3" json:"type,omitempty"`
+	Tag    string                 `protobuf:"bytes,4,opt,name=tag,proto3" json:"tag,omitempty"`
+	MapIds []uint32               `protobuf:"varint,5,rep,packed,name=map_ids,json=mapIds,proto3" json:"map_ids,omitempty"`
+	Pids   []*ProcessRef          `protobuf:"bytes,6,rep,name=pids,proto3" json:"pids,omitempty"`
+	// When the program was loaded, in nanoseconds since the Unix epoch - the
+	// loaded_at `bpftool prog show` prints. The kernel reports this as a count of
+	// nanoseconds since boot, so only the node can turn it into a date; the agent
+	// adds its own boot time before sending it, as bpftool does before printing.
+	// 0 when the kernel does not report one (before 4.15).
+	LoadedAtUnixNano int64 `protobuf:"varint,7,opt,name=loaded_at_unix_nano,json=loadedAtUnixNano,proto3" json:"loaded_at_unix_nano,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *ProgramInfo) Reset() {
@@ -609,6 +615,13 @@ func (x *ProgramInfo) GetPids() []*ProcessRef {
 		return x.Pids
 	}
 	return nil
+}
+
+func (x *ProgramInfo) GetLoadedAtUnixNano() int64 {
+	if x != nil {
+		return x.LoadedAtUnixNano
+	}
+	return 0
 }
 
 type ListProgramsRequest struct {
@@ -2312,14 +2325,15 @@ const file_proto_bpfinspector_proto_rawDesc = "" +
 	"\n" +
 	"ProcessRef\x12\x10\n" +
 	"\x03pid\x18\x01 \x01(\rR\x03pid\x12\x12\n" +
-	"\x04comm\x18\x02 \x01(\tR\x04comm\"\xa1\x01\n" +
+	"\x04comm\x18\x02 \x01(\tR\x04comm\"\xd0\x01\n" +
 	"\vProgramInfo\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\rR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x12\n" +
 	"\x04type\x18\x03 \x01(\tR\x04type\x12\x10\n" +
 	"\x03tag\x18\x04 \x01(\tR\x03tag\x12\x17\n" +
 	"\amap_ids\x18\x05 \x03(\rR\x06mapIds\x12/\n" +
-	"\x04pids\x18\x06 \x03(\v2\x1b.bpfinspector.v1.ProcessRefR\x04pids\"\x15\n" +
+	"\x04pids\x18\x06 \x03(\v2\x1b.bpfinspector.v1.ProcessRefR\x04pids\x12-\n" +
+	"\x13loaded_at_unix_nano\x18\a \x01(\x03R\x10loadedAtUnixNano\"\x15\n" +
 	"\x13ListProgramsRequest\"P\n" +
 	"\x14ListProgramsResponse\x128\n" +
 	"\bprograms\x18\x01 \x03(\v2\x1c.bpfinspector.v1.ProgramInfoR\bprograms\"$\n" +
