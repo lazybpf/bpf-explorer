@@ -308,6 +308,10 @@ commit as the last candidate once it looks good.
   it lacks: more than one node, and any bytecode disassembly - both unchecked
   boxes on its roadmap - plus the trace log and `/proc` lookups.
 
+- [`Trac3X/eMAN`](https://github.com/Trac3X/eMAN) is a Rust TUI for browsing
+  eBPF maps and programs on a single local machine, no cluster. Pre-release:
+  only the map list/detail views work so far, no install path yet.
+
 ## License
 
 Apache License 2.0 - see [LICENSE](LICENSE).
