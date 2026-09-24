@@ -435,6 +435,14 @@
 
   /* ── status utilities ────────────────────────────────────────────────── */
   .muted { color: var(--fg-dim); }
+  /* A value whose tooltip holds the rest of it - a cgroup link's id and the
+     path that id names. Marked the way code[title] is, so the tooltip is found
+     by someone who was not already hovering. */
+  .hinted {
+    text-decoration: underline dotted var(--fg-dim);
+    text-underline-offset: .2em;
+    cursor: help;
+  }
   /* An action rendered in place but deliberately inert - the dump control for a
      map that cannot be dumped. Dotted underline marks that a tooltip explains
      why, the same signal code[title] uses. */

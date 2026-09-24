@@ -282,10 +282,11 @@ func (s *Server) ListLinks(_ context.Context, _ *pb.ListLinksRequest) (*pb.ListL
 	resp := &pb.ListLinksResponse{Links: make([]*pb.LinkInfo, 0, len(links))}
 	for _, l := range links {
 		resp.Links = append(resp.Links, &pb.LinkInfo{
-			Id:     l.ID,
-			Type:   l.Type,
-			ProgId: l.ProgID,
-			Attach: l.Attach,
+			Id:         l.ID,
+			Type:       l.Type,
+			ProgId:     l.ProgID,
+			Attach:     l.Attach,
+			CgroupPath: l.CgroupPath,
 		})
 	}
 	return resp, nil

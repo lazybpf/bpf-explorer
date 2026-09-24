@@ -151,6 +151,10 @@ message LinkInfo {
   string type = 2;
   uint32 prog_id = 3;
   string attach = 4;       // attach point / target, best-effort
+  // The cgroup path behind the cgroup_id in attach, for a cgroup link only -
+  // what an LSM program attached to a cgroup fd guards. Empty for every other
+  // link type, and when the id named no cgroup the agent could see.
+  string cgroup_path = 5;
 }
 message ListLinksRequest {}
 message ListLinksResponse { repeated LinkInfo links = 1; }

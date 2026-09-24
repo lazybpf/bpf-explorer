@@ -925,11 +925,15 @@ func (x *TailCall) GetProgId() uint32 {
 }
 
 type LinkInfo struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Id            uint32                 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
-	Type          string                 `protobuf:"bytes,2,opt,name=type,proto3" json:"type,omitempty"`
-	ProgId        uint32                 `protobuf:"varint,3,opt,name=prog_id,json=progId,proto3" json:"prog_id,omitempty"`
-	Attach        string                 `protobuf:"bytes,4,opt,name=attach,proto3" json:"attach,omitempty"` // attach point / target, best-effort
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	Id     uint32                 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
+	Type   string                 `protobuf:"bytes,2,opt,name=type,proto3" json:"type,omitempty"`
+	ProgId uint32                 `protobuf:"varint,3,opt,name=prog_id,json=progId,proto3" json:"prog_id,omitempty"`
+	Attach string                 `protobuf:"bytes,4,opt,name=attach,proto3" json:"attach,omitempty"` // attach point / target, best-effort
+	// The cgroup path behind the cgroup_id in attach, for a cgroup link only -
+	// what an LSM program attached to a cgroup fd guards. Empty for every other
+	// link type, and when the id named no cgroup the agent could see.
+	CgroupPath    string `protobuf:"bytes,5,opt,name=cgroup_path,json=cgroupPath,proto3" json:"cgroup_path,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -988,6 +992,13 @@ func (x *LinkInfo) GetProgId() uint32 {
 func (x *LinkInfo) GetAttach() string {
 	if x != nil {
 		return x.Attach
+	}
+	return ""
+}
+
+func (x *LinkInfo) GetCgroupPath() string {
+	if x != nil {
+		return x.CgroupPath
 	}
 	return ""
 }
@@ -2368,12 +2379,14 @@ const file_proto_bpfinspector_proto_rawDesc = "" +
 	"\x06map_id\x18\x02 \x01(\rR\x05mapId\x12\x14\n" +
 	"\x05index\x18\x03 \x01(\rR\x05index\x12\x1b\n" +
 	"\thas_index\x18\x04 \x01(\bR\bhasIndex\x12\x17\n" +
-	"\aprog_id\x18\x05 \x01(\rR\x06progId\"_\n" +
+	"\aprog_id\x18\x05 \x01(\rR\x06progId\"\x80\x01\n" +
 	"\bLinkInfo\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\rR\x02id\x12\x12\n" +
 	"\x04type\x18\x02 \x01(\tR\x04type\x12\x17\n" +
 	"\aprog_id\x18\x03 \x01(\rR\x06progId\x12\x16\n" +
-	"\x06attach\x18\x04 \x01(\tR\x06attach\"\x12\n" +
+	"\x06attach\x18\x04 \x01(\tR\x06attach\x12\x1f\n" +
+	"\vcgroup_path\x18\x05 \x01(\tR\n" +
+	"cgroupPath\"\x12\n" +
 	"\x10ListLinksRequest\"D\n" +
 	"\x11ListLinksResponse\x12/\n" +
 	"\x05links\x18\x01 \x03(\v2\x19.bpfinspector.v1.LinkInfoR\x05links\"\x11\n" +

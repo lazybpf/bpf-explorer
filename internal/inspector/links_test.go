@@ -14,6 +14,7 @@ func TestLinkTypeName(t *testing.T) {
 	cases := map[link.Type]string{
 		linkTypeRawTracepoint: "raw_tracepoint",
 		linkTypeTracing:       "tracing",
+		linkTypeCgroup:        "cgroup",
 		6:                     "xdp",
 		linkTypePerfEvent:     "perf_event",
 		8:                     "kprobe_multi",
@@ -40,19 +41,27 @@ func TestPerfEventSubNames(t *testing.T) {
 	}
 }
 
-// TestTracingAttachTypeName pins the attach-type numbering of the tracing link
-// family (uapi bpf_attach_type) - lsm_mac is what an LSM link reports - and the
-// fallback for an attach type outside it.
-func TestTracingAttachTypeName(t *testing.T) {
+// TestAttachTypeName pins the attach-type numbering (uapi bpf_attach_type)
+// against the names bpftool prints: lsm_mac is what an LSM program attached to a
+// hook reports on its tracing link, lsm_cgroup what one attached to a cgroup fd
+// reports on its cgroup link. Covers both ends of the enum and the fallback for
+// a value past it.
+func TestAttachTypeName(t *testing.T) {
 	cases := map[uint32]string{
+		0:  "cgroup_inet_ingress",
+		6:  "cgroup_device",
+		18: "cgroup_sysctl",
 		24: "trace_fentry",
 		25: "trace_fexit",
 		27: "lsm_mac",
-		41: "attach(41)", // perf_event: never on a tracing link
+		41: "perf_event",
+		43: "lsm_cgroup",
+		56: "trace_kprobe_session",
+		99: "attach(99)",
 	}
 	for typ, want := range cases {
-		if got := tracingAttachTypeName(typ); got != want {
-			t.Errorf("tracingAttachTypeName(%d) = %q, want %q", typ, got, want)
+		if got := attachTypeName(typ); got != want {
+			t.Errorf("attachTypeName(%d) = %q, want %q", typ, got, want)
 		}
 	}
 }

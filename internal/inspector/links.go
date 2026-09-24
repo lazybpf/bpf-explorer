@@ -33,23 +33,35 @@ func linkTypeName(t link.Type) string {
 const (
 	linkTypeRawTracepoint link.Type = 1
 	linkTypeTracing       link.Type = 2
+	linkTypeCgroup        link.Type = 3
 	linkTypePerfEvent     link.Type = 7
 )
 
+// linkAttachDetail is what a link's type-specific info comes to: the one line
+// the table prints, and - for a cgroup link - the path its cgroup id names,
+// which the table hangs in a tooltip rather than in the line.
+type linkAttachDetail struct {
+	Text       string
+	CgroupPath string
+}
+
 // linkAttach formats the best-effort attach detail for a link, à la the
-// type-specific second line of `bpftool link show`. raw_tracepoint, tracing (an
-// LSM program's link type) and perf_event are handled today; other types return
-// "" (rendered as "-") until enriched.
-func linkAttach(info *link.Info, res *linkResolver) string {
+// type-specific second line of `bpftool link show`. raw_tracepoint, tracing (the
+// link type of an LSM program attached to a hook), cgroup (the link type of one
+// attached to a cgroup fd instead) and perf_event are handled today; other types
+// return "" (rendered as "-") until enriched.
+func linkAttach(info *link.Info, res *linkResolver) linkAttachDetail {
 	switch info.Type {
 	case linkTypeRawTracepoint:
-		return rawTracepointAttach(info)
+		return linkAttachDetail{Text: rawTracepointAttach(info)}
 	case linkTypeTracing:
-		return tracingAttach(info, res)
+		return linkAttachDetail{Text: tracingAttach(info, res)}
+	case linkTypeCgroup:
+		return cgroupAttach(info, res)
 	case linkTypePerfEvent:
-		return perfEventAttach(info)
+		return linkAttachDetail{Text: perfEventAttach(info)}
 	default:
-		return ""
+		return linkAttachDetail{}
 	}
 }
 
@@ -122,17 +134,36 @@ func tracingProgTypeName(t ebpf.ProgramType) string {
 	return fmt.Sprintf("prog(%d)", uint32(t))
 }
 
-// tracingAttachTypeNames maps the bpf_attach_type values a tracing link can
-// carry to their bpftool names (attach_type_name[] in libbpf.c) - lsm_mac for an
-// LSM program, the rest the fentry/fexit family sharing the link type. The sys
-// package is internal, so we match on the uint32 value.
-var tracingAttachTypeNames = map[uint32]string{
-	23: "trace_raw_tp", 24: "trace_fentry", 25: "trace_fexit",
-	26: "modify_return", 27: "lsm_mac", 28: "trace_iter",
+// attachTypeNames maps bpf_attach_type values to the names bpftool prints for
+// them (attach_type_name[] in libbpf.c) - lsm_mac for an LSM program attached to
+// a hook, lsm_cgroup for one attached to a cgroup fd, trace_fentry and friends
+// for the family sharing the tracing link type, the cgroup_* set for the cgroup
+// program types that predate BPF LSM. The sys package is internal, so we match
+// on the uint32 value.
+var attachTypeNames = map[uint32]string{
+	0: "cgroup_inet_ingress", 1: "cgroup_inet_egress", 2: "cgroup_inet_sock_create",
+	3: "cgroup_sock_ops", 4: "sk_skb_stream_parser", 5: "sk_skb_stream_verdict",
+	6: "cgroup_device", 7: "sk_msg_verdict", 8: "cgroup_inet4_bind",
+	9: "cgroup_inet6_bind", 10: "cgroup_inet4_connect", 11: "cgroup_inet6_connect",
+	12: "cgroup_inet4_post_bind", 13: "cgroup_inet6_post_bind",
+	14: "cgroup_udp4_sendmsg", 15: "cgroup_udp6_sendmsg", 16: "lirc_mode2",
+	17: "flow_dissector", 18: "cgroup_sysctl", 19: "cgroup_udp4_recvmsg",
+	20: "cgroup_udp6_recvmsg", 21: "cgroup_getsockopt", 22: "cgroup_setsockopt",
+	23: "trace_raw_tp", 24: "trace_fentry", 25: "trace_fexit", 26: "modify_return",
+	27: "lsm_mac", 28: "trace_iter", 29: "cgroup_inet4_getpeername",
+	30: "cgroup_inet6_getpeername", 31: "cgroup_inet4_getsockname",
+	32: "cgroup_inet6_getsockname", 33: "xdp_devmap", 34: "cgroup_inet_sock_release",
+	35: "xdp_cpumap", 36: "sk_lookup", 37: "xdp", 38: "sk_skb_verdict",
+	39: "sk_reuseport_select", 40: "sk_reuseport_select_or_migrate",
+	41: "perf_event", 42: "trace_kprobe_multi", 43: "lsm_cgroup", 44: "struct_ops",
+	45: "netfilter", 46: "tcx_ingress", 47: "tcx_egress", 48: "trace_uprobe_multi",
+	49: "cgroup_unix_connect", 50: "cgroup_unix_sendmsg", 51: "cgroup_unix_recvmsg",
+	52: "cgroup_unix_getpeername", 53: "cgroup_unix_getsockname",
+	54: "netkit_primary", 55: "netkit_peer", 56: "trace_kprobe_session",
 }
 
-func tracingAttachTypeName(t uint32) string {
-	if name, ok := tracingAttachTypeNames[t]; ok {
+func attachTypeName(t uint32) string {
+	if name, ok := attachTypeNames[t]; ok {
 		return name
 	}
 	return fmt.Sprintf("attach(%d)", t)
@@ -155,7 +186,7 @@ func tracingAttach(info *link.Info, res *linkResolver) string {
 	if name := res.progTypeName(uint32(info.Program)); name != "" {
 		parts = append(parts, "prog_type "+name)
 	}
-	parts = append(parts, "attach_type "+tracingAttachTypeName(uint32(ti.AttachType)))
+	parts = append(parts, "attach_type "+attachTypeName(uint32(ti.AttachType)))
 	if ti.TargetObjectId != 0 || ti.TargetBtfId != 0 {
 		parts = append(parts, fmt.Sprintf("target_obj_id %d  target_btf_id %d",
 			ti.TargetObjectId, ti.TargetBtfId))
@@ -166,6 +197,28 @@ func tracingAttach(info *link.Info, res *linkResolver) string {
 	return strings.Join(parts, "  ")
 }
 
+// cgroupAttach formats the attach detail for a cgroup link - what an LSM program
+// attached to a cgroup fd gets, rather than the tracing link an LSM program
+// attached to a hook gets - à la the second line of `bpftool link show`:
+//
+//	cgroup_id 6423  attach_type lsm_cgroup
+//
+// The id is the inode number of the cgroup directory the program was attached
+// to, which bpftool leaves as a bare number; the path it names is resolved
+// alongside it, for the tooltip. Returns the zero detail when the kernel exposes
+// no cgroup info.
+func cgroupAttach(info *link.Info, res *linkResolver) linkAttachDetail {
+	cg := info.Cgroup()
+	if cg == nil {
+		return linkAttachDetail{}
+	}
+	return linkAttachDetail{
+		Text: fmt.Sprintf("cgroup_id %d  attach_type %s",
+			cg.CgroupId, attachTypeName(uint32(cg.AttachType))),
+		CgroupPath: res.cgroupPath(cg.CgroupId),
+	}
+}
+
 // linkResolver caches the lookups an attach detail needs beyond link.Info for
 // the span of one ListLinks call, so a node with many links loads the (large)
 // vmlinux BTF at most once, and only if a link has a target to name.
@@ -174,6 +227,8 @@ type linkResolver struct {
 	targetSpecs map[uint32]*btf.Spec // link target_obj_id -> its BTF, nil when not resolvable
 	kernelBTF   *btf.Spec
 	btfTried    bool
+	cgroupPaths map[uint64]string // cgroup id -> path, nil until a cgroup link asks
+	cgroupWalk  bool
 }
 
 func newLinkResolver() *linkResolver {
@@ -280,6 +335,24 @@ func (r *linkResolver) loadTargetSpec(objID uint32) *btf.Spec {
 	return spec
 }
 
+// cgroupPath names the cgroup a cgroup link's id points at. The hierarchy is
+// walked at most once per ListLinks, and only if a cgroup link is there to need
+// it - so a node with none pays nothing for this.
+//
+// Returns "" when the walk found no such cgroup: one that has gone away since
+// the link was made, or one outside the tree the agent can see. An agent in a
+// container without hostPID sees only its own subtree, and most ids in it will
+// be another pod's.
+func (r *linkResolver) cgroupPath(id uint64) string {
+	if !r.cgroupWalk {
+		r.cgroupWalk = true
+		if root := cgroupV2Root("/proc"); root != "" {
+			r.cgroupPaths = walkCgroupPaths(root)
+		}
+	}
+	return r.cgroupPaths[id]
+}
+
 // vmlinux loads the kernel's own BTF once per resolver, returning nil when the
 // kernel exposes none (CONFIG_DEBUG_INFO_BTF=n).
 func (r *linkResolver) vmlinux() *btf.Spec {
@@ -296,6 +369,11 @@ type LinkSummary struct {
 	Type   string
 	ProgID uint32
 	Attach string
+	// CgroupPath is set for a cgroup link only: the path of the cgroup whose id
+	// Attach names, as the node spells it ("/" for the root cgroup). Empty when
+	// the hierarchy could not be walked or holds no such id - see
+	// linkResolver.cgroupPath.
+	CgroupPath string
 }
 
 // ListLinks enumerates BPF links and returns each link's type and the program
@@ -324,11 +402,13 @@ func (i *Inspector) ListLinks() ([]LinkSummary, error) {
 		if err != nil {
 			continue
 		}
+		attach := linkAttach(info, res)
 		out = append(out, LinkSummary{
-			ID:     uint32(info.ID),
-			Type:   linkTypeName(info.Type),
-			ProgID: uint32(info.Program),
-			Attach: linkAttach(info, res),
+			ID:         uint32(info.ID),
+			Type:       linkTypeName(info.Type),
+			ProgID:     uint32(info.Program),
+			Attach:     attach.Text,
+			CgroupPath: attach.CgroupPath,
 		})
 	}
 	return out, nil

@@ -40,7 +40,7 @@
     {{/* Dropped under a filter: every row would carry the same value, which the
          heading and the picker have both already said. */}}
     {{if not .LinkFilter}}<th title="the process that loaded this link's program: the lowest-numbered process holding an fd to it. Blank for a program nothing holds - the programs page infers a loader for those from the program array holding them, this column states the fd fact only">Loader</th>{{end}}
-    <th title="what the link is attached to, as bpftool link show prints its type-specific line: a tracepoint name, a k(ret)probe's symbol, an LSM hook's target. Empty for the link types the agent does not read this detail from yet">Attach</th>
+    <th title="what the link is attached to, as bpftool link show prints its type-specific line: a tracepoint name, a k(ret)probe's symbol, an LSM hook's target, the cgroup id and attach type of a cgroup link, whose id carries the cgroup's path in a tooltip of its own. Empty for the link types the agent does not read this detail from yet">Attach</th>
     <th></th>
   </tr></thead>
   <tbody>
@@ -51,7 +51,11 @@
         {{if .ProgId}}{{$name := progName $.Programs .ProgId}}<a href="/nodes/{{$.Node}}/programs/{{.ProgId}}" target="_blank" rel="noopener"{{if $name}} title="{{$name}}"{{end}}>{{.ProgId}}</a>{{else}}<span class="muted">-</span>{{end}}
       </td>
       {{if not $.LinkFilter}}<td>{{if .ProgId}}{{with progLoader $.Programs .ProgId}}{{.}}{{else}}<span class="muted">-</span>{{end}}{{else}}<span class="muted">-</span>{{end}}</td>{{end}}
-      <td>{{with .Attach}}{{.}}{{else}}<span class="muted">-</span>{{end}}</td>
+      {{/* A cgroup link's id is an inode number and says nothing on its own, so
+           the path it names rides along in a tooltip rather than widening the
+           column. Absent when the agent could not walk the hierarchy or the
+           cgroup is gone, and then the id stands alone as bpftool leaves it. */}}
+      <td>{{if .CgroupPath}}<span class="hinted" title="the cgroup this id names on the node: {{.CgroupPath}}">{{.Attach}}</span>{{else}}{{with .Attach}}{{.}}{{else}}<span class="muted">-</span>{{end}}{{end}}</td>
       <td>
         {{if .ProgId}}<a href="/nodes/{{$.Node}}/loaders/prog/{{.ProgId}}" target="_blank" rel="noopener" title="graph: this link's program, its maps and the links attaching it (new tab)">graph</a>{{end}}
       </td>

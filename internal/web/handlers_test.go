@@ -588,6 +588,46 @@ func TestLinksColumnsExplained(t *testing.T) {
 	}
 }
 
+// TestLinksCgroupPathInTooltip checks what a cgroup link's id is worth on the
+// page: the attach line reads as bpftool prints it, and the path that id names -
+// the thing the number is standing in for - is on it as a tooltip. A link whose
+// cgroup could not be named keeps the bare line, with nothing to hover.
+func TestLinksCgroupPathInTooltip(t *testing.T) {
+	h, err := New(nil, nil)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	const attach = "cgroup_id 18236  attach_type lsm_cgroup"
+	const path = "/kubepods.slice/kubepods-besteffort.slice/pod83b.slice"
+
+	var named, bare bytes.Buffer
+	data := pageData{Node: "node-a", Tab: "links", Links: []*pb.LinkInfo{
+		{Id: 1, Type: "cgroup", ProgId: 5, Attach: attach, CgroupPath: path},
+	}}
+	if err := h.pages["links"].ExecuteTemplate(&named, "layout", data); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	data.Links = []*pb.LinkInfo{{Id: 1, Type: "cgroup", ProgId: 5, Attach: attach}}
+	if err := h.pages["links"].ExecuteTemplate(&bare, "layout", data); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+
+	out := named.String()
+	if !strings.Contains(out, attach) {
+		t.Errorf("attach line not printed as bpftool spells it\n%s", out)
+	}
+	if !strings.Contains(out, "title=\"the cgroup this id names on the node: "+path+"\"") {
+		t.Errorf("cgroup path is not on the attach line as a tooltip\n%s", out)
+	}
+	// Marked, or the tooltip is only found by whoever was already hovering.
+	if !strings.Contains(out, `class="hinted"`) {
+		t.Errorf("tooltip is not marked as one\n%s", out)
+	}
+	if got := bare.String(); strings.Contains(got, `class="hinted"`) {
+		t.Errorf("link with no resolved cgroup is marked as carrying a tooltip\n%s", got)
+	}
+}
+
 // TestListPagesExplainIDs keeps the id explanation from being something only
 // the links page says: the same recycling caveat applies to every kernel id.
 func TestListPagesExplainIDs(t *testing.T) {
