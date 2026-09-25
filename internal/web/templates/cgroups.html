@@ -1,0 +1,63 @@
+{{define "content"}}
+{{template "nodebar" .}}
+{{$look := .CgroupTree}}
+
+<h2>cgroups on <span class="name">{{.Node}}</span></h2>
+<p class="muted">
+  Cgroups with BPF programs attached. Click a path to show only that subtree,
+  or a program ID to open the program. Turn on effective to also see
+  programs inherited from parent cgroups.
+</p>
+
+{{/* GET, so a subtree can be linked to and reloaded. */}}
+<form class="controls" method="get" action="/nodes/{{.Node}}/cgroups">
+  <label>root
+    <input type="text" name="root" value="{{with $look}}{{.Root}}{{end}}" size="40"
+           placeholder="{{with $look}}{{with .Tree}}{{.MountPoint}}{{else}}/sys/fs/cgroup{{end}}{{end}} (optional)"
+           title="Start from this cgroup, e.g. /sys/fs/cgroup/kubepods.slice or /kubepods.slice. Leave empty to show all cgroups.">
+  </label>
+  <label title="Also show programs inherited from parent cgroups">
+    <input type="checkbox" name="effective" value="1"{{with $look}}{{if .Effective}} checked{{end}}{{end}}> effective
+  </label>
+  <button type="submit">show</button>
+</form>
+
+{{with $look}}{{with .Tree}}
+{{$eff := $look.Effective}}
+<p class="muted">
+  {{len .Cgroups}} cgroup{{if ne (len .Cgroups) 1}}s{{end}},
+  {{attachedCount .Cgroups}} program{{if ne (attachedCount .Cgroups) 1}}s{{end}} under <code>{{.Root}}</code>
+</p>
+<div class="scroll">
+<table>
+  <thead><tr>
+    <th title="Program ID. Click to open the program.">ID</th>
+    <th title="The cgroup event the program runs on">AttachType</th>
+    {{if not $eff}}<th title="multi: programs in child cgroups run too. override: a program in a child cgroup replaces this one. Blank: no other program can be attached below.">AttachFlags</th>{{end}}
+    <th>Name</th>
+    <th title="The LSM hook an lsm_cgroup program is attached to">Hook</th>
+  </tr></thead>
+  {{range .Cgroups}}
+  <tbody>
+    {{/* The path opens the tree from there, so a subtree is one click. */}}
+    <tr class="cgroup"><td colspan="{{if $eff}}4{{else}}5{{end}}">
+      <a href="/nodes/{{$.Node}}/cgroups?root={{.Path}}{{if $eff}}&amp;effective=1{{end}}" title="Show only this subtree"><code>{{.Path}}</code></a>
+      <span class="muted hinted" title="Cgroup ID, as shown in the Attach column on the links page">id {{.Id}}</span>
+    </td></tr>
+    {{range .Programs}}
+    <tr>
+      <td><a href="/nodes/{{$.Node}}/programs/{{.Id}}" target="_blank" rel="noopener"{{with .Name}} title="{{.}}"{{end}}>{{.Id}}</a></td>
+      <td>{{.AttachType}}</td>
+      {{if not $eff}}<td>{{.AttachFlags}}</td>{{end}}
+      <td>{{with .Name}}{{.}}{{else}}<span class="muted">-</span>{{end}}</td>
+      <td>{{with .AttachBtfName}}{{.}}{{else}}{{if .AttachBtfId}}attach_btf_obj_id={{.AttachBtfObjId}} attach_btf_id={{.AttachBtfId}}{{end}}{{end}}</td>
+    </tr>
+    {{end}}
+  </tbody>
+  {{else}}
+  <tbody><tr><td colspan="{{if $eff}}4{{else}}5{{end}}" class="muted">No cgroups under {{.Root}} have programs {{if $eff}}in effect{{else}}attached{{end}}.</td></tr></tbody>
+  {{end}}
+</table>
+</div>
+{{end}}{{end}}
+{{end}}

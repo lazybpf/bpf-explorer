@@ -2650,6 +2650,287 @@ func (x *FeatureProbe) GetNote() string {
 	return ""
 }
 
+// CgroupTree is `bpftool cgroup tree [CGROUP_ROOT] [effective]`: the cgroups
+// under a root that have BPF programs attached, and the programs. Cgroups with
+// none are left out, as bpftool leaves them out. Needs CAP_NET_ADMIN.
+type CgroupTreeRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Where to start, as the node spells it (/sys/fs/cgroup/kubepods.slice) or
+	// relative to the hierarchy as /proc/<pid>/cgroup does (/kubepods.slice).
+	// Empty is the whole hierarchy.
+	Root string `protobuf:"bytes,1,opt,name=root,proto3" json:"root,omitempty"`
+	// The programs that apply to each cgroup, those inherited from its ancestors
+	// included, rather than those attached to it. The kernel reports no attach
+	// flags for these.
+	Effective     bool `protobuf:"varint,2,opt,name=effective,proto3" json:"effective,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CgroupTreeRequest) Reset() {
+	*x = CgroupTreeRequest{}
+	mi := &file_proto_bpfinspector_proto_msgTypes[36]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CgroupTreeRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CgroupTreeRequest) ProtoMessage() {}
+
+func (x *CgroupTreeRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_bpfinspector_proto_msgTypes[36]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CgroupTreeRequest.ProtoReflect.Descriptor instead.
+func (*CgroupTreeRequest) Descriptor() ([]byte, []int) {
+	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{36}
+}
+
+func (x *CgroupTreeRequest) GetRoot() string {
+	if x != nil {
+		return x.Root
+	}
+	return ""
+}
+
+func (x *CgroupTreeRequest) GetEffective() bool {
+	if x != nil {
+		return x.Effective
+	}
+	return false
+}
+
+type CgroupTreeResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Where the node mounts cgroup v2, e.g. /sys/fs/cgroup.
+	MountPoint string `protobuf:"bytes,1,opt,name=mount_point,json=mountPoint,proto3" json:"mount_point,omitempty"`
+	// Where the walk started, as the node spells it.
+	Root          string               `protobuf:"bytes,2,opt,name=root,proto3" json:"root,omitempty"`
+	Cgroups       []*CgroupAttachments `protobuf:"bytes,3,rep,name=cgroups,proto3" json:"cgroups,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CgroupTreeResponse) Reset() {
+	*x = CgroupTreeResponse{}
+	mi := &file_proto_bpfinspector_proto_msgTypes[37]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CgroupTreeResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CgroupTreeResponse) ProtoMessage() {}
+
+func (x *CgroupTreeResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_bpfinspector_proto_msgTypes[37]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CgroupTreeResponse.ProtoReflect.Descriptor instead.
+func (*CgroupTreeResponse) Descriptor() ([]byte, []int) {
+	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{37}
+}
+
+func (x *CgroupTreeResponse) GetMountPoint() string {
+	if x != nil {
+		return x.MountPoint
+	}
+	return ""
+}
+
+func (x *CgroupTreeResponse) GetRoot() string {
+	if x != nil {
+		return x.Root
+	}
+	return ""
+}
+
+func (x *CgroupTreeResponse) GetCgroups() []*CgroupAttachments {
+	if x != nil {
+		return x.Cgroups
+	}
+	return nil
+}
+
+type CgroupAttachments struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The cgroup's directory as the node spells it, under mount_point.
+	Path string `protobuf:"bytes,1,opt,name=path,proto3" json:"path,omitempty"`
+	// The cgroup id: the directory's inode number, which a cgroup link names.
+	Id            uint64           `protobuf:"varint,2,opt,name=id,proto3" json:"id,omitempty"`
+	Programs      []*CgroupProgram `protobuf:"bytes,3,rep,name=programs,proto3" json:"programs,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CgroupAttachments) Reset() {
+	*x = CgroupAttachments{}
+	mi := &file_proto_bpfinspector_proto_msgTypes[38]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CgroupAttachments) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CgroupAttachments) ProtoMessage() {}
+
+func (x *CgroupAttachments) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_bpfinspector_proto_msgTypes[38]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CgroupAttachments.ProtoReflect.Descriptor instead.
+func (*CgroupAttachments) Descriptor() ([]byte, []int) {
+	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{38}
+}
+
+func (x *CgroupAttachments) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
+}
+
+func (x *CgroupAttachments) GetId() uint64 {
+	if x != nil {
+		return x.Id
+	}
+	return 0
+}
+
+func (x *CgroupAttachments) GetPrograms() []*CgroupProgram {
+	if x != nil {
+		return x.Programs
+	}
+	return nil
+}
+
+// CgroupProgram is one row of bpftool's ID / AttachType / AttachFlags / Name
+// table.
+type CgroupProgram struct {
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	Id          uint32                 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
+	AttachType  string                 `protobuf:"bytes,2,opt,name=attach_type,json=attachType,proto3" json:"attach_type,omitempty"`    // bpftool's name, e.g. "cgroup_device"
+	AttachFlags string                 `protobuf:"bytes,3,opt,name=attach_flags,json=attachFlags,proto3" json:"attach_flags,omitempty"` // "multi", "override", "" for neither; "" when effective
+	Name        string                 `protobuf:"bytes,4,opt,name=name,proto3" json:"name,omitempty"`
+	// The hook an lsm_cgroup program is attached at, e.g. "bpf_lsm_socket_bind".
+	// When it cannot be named, the ids it would be named from are set instead.
+	AttachBtfName  string `protobuf:"bytes,5,opt,name=attach_btf_name,json=attachBtfName,proto3" json:"attach_btf_name,omitempty"`
+	AttachBtfObjId uint32 `protobuf:"varint,6,opt,name=attach_btf_obj_id,json=attachBtfObjId,proto3" json:"attach_btf_obj_id,omitempty"`
+	AttachBtfId    uint32 `protobuf:"varint,7,opt,name=attach_btf_id,json=attachBtfId,proto3" json:"attach_btf_id,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *CgroupProgram) Reset() {
+	*x = CgroupProgram{}
+	mi := &file_proto_bpfinspector_proto_msgTypes[39]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CgroupProgram) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CgroupProgram) ProtoMessage() {}
+
+func (x *CgroupProgram) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_bpfinspector_proto_msgTypes[39]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CgroupProgram.ProtoReflect.Descriptor instead.
+func (*CgroupProgram) Descriptor() ([]byte, []int) {
+	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{39}
+}
+
+func (x *CgroupProgram) GetId() uint32 {
+	if x != nil {
+		return x.Id
+	}
+	return 0
+}
+
+func (x *CgroupProgram) GetAttachType() string {
+	if x != nil {
+		return x.AttachType
+	}
+	return ""
+}
+
+func (x *CgroupProgram) GetAttachFlags() string {
+	if x != nil {
+		return x.AttachFlags
+	}
+	return ""
+}
+
+func (x *CgroupProgram) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *CgroupProgram) GetAttachBtfName() string {
+	if x != nil {
+		return x.AttachBtfName
+	}
+	return ""
+}
+
+func (x *CgroupProgram) GetAttachBtfObjId() uint32 {
+	if x != nil {
+		return x.AttachBtfObjId
+	}
+	return 0
+}
+
+func (x *CgroupProgram) GetAttachBtfId() uint32 {
+	if x != nil {
+		return x.AttachBtfId
+	}
+	return 0
+}
+
 var File_proto_bpfinspector_proto protoreflect.FileDescriptor
 
 const file_proto_bpfinspector_proto_rawDesc = "" +
@@ -2858,7 +3139,28 @@ const file_proto_bpfinspector_proto_rawDesc = "" +
 	"\fFeatureProbe\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1c\n" +
 	"\tavailable\x18\x02 \x01(\bR\tavailable\x12\x12\n" +
-	"\x04note\x18\x03 \x01(\tR\x04note2\x88\a\n" +
+	"\x04note\x18\x03 \x01(\tR\x04note\"E\n" +
+	"\x11CgroupTreeRequest\x12\x12\n" +
+	"\x04root\x18\x01 \x01(\tR\x04root\x12\x1c\n" +
+	"\teffective\x18\x02 \x01(\bR\teffective\"\x87\x01\n" +
+	"\x12CgroupTreeResponse\x12\x1f\n" +
+	"\vmount_point\x18\x01 \x01(\tR\n" +
+	"mountPoint\x12\x12\n" +
+	"\x04root\x18\x02 \x01(\tR\x04root\x12<\n" +
+	"\acgroups\x18\x03 \x03(\v2\".bpfinspector.v1.CgroupAttachmentsR\acgroups\"s\n" +
+	"\x11CgroupAttachments\x12\x12\n" +
+	"\x04path\x18\x01 \x01(\tR\x04path\x12\x0e\n" +
+	"\x02id\x18\x02 \x01(\x04R\x02id\x12:\n" +
+	"\bprograms\x18\x03 \x03(\v2\x1e.bpfinspector.v1.CgroupProgramR\bprograms\"\xee\x01\n" +
+	"\rCgroupProgram\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\rR\x02id\x12\x1f\n" +
+	"\vattach_type\x18\x02 \x01(\tR\n" +
+	"attachType\x12!\n" +
+	"\fattach_flags\x18\x03 \x01(\tR\vattachFlags\x12\x12\n" +
+	"\x04name\x18\x04 \x01(\tR\x04name\x12&\n" +
+	"\x0fattach_btf_name\x18\x05 \x01(\tR\rattachBtfName\x12)\n" +
+	"\x11attach_btf_obj_id\x18\x06 \x01(\rR\x0eattachBtfObjId\x12\"\n" +
+	"\rattach_btf_id\x18\a \x01(\rR\vattachBtfId2\xdf\a\n" +
 	"\fBpfInspector\x12O\n" +
 	"\bListMaps\x12 .bpfinspector.v1.ListMapsRequest\x1a!.bpfinspector.v1.ListMapsResponse\x12L\n" +
 	"\aDumpMap\x12\x1f.bpfinspector.v1.DumpMapRequest\x1a .bpfinspector.v1.DumpMapResponse\x12[\n" +
@@ -2869,7 +3171,9 @@ const file_proto_bpfinspector_proto_rawDesc = "" +
 	"\fResolveInode\x12$.bpfinspector.v1.ResolveInodeRequest\x1a%.bpfinspector.v1.ResolveInodeResponse\x12d\n" +
 	"\x0fDescribeProcess\x12'.bpfinspector.v1.DescribeProcessRequest\x1a(.bpfinspector.v1.DescribeProcessResponse\x12[\n" +
 	"\fDescribeNode\x12$.bpfinspector.v1.DescribeNodeRequest\x1a%.bpfinspector.v1.DescribeNodeResponse\x12^\n" +
-	"\rProbeFeatures\x12%.bpfinspector.v1.ProbeFeaturesRequest\x1a&.bpfinspector.v1.ProbeFeaturesResponseBCZAgithub.com/lazybpf/bpf-explorer/gen/bpfinspectorv1;bpfinspectorv1b\x06proto3"
+	"\rProbeFeatures\x12%.bpfinspector.v1.ProbeFeaturesRequest\x1a&.bpfinspector.v1.ProbeFeaturesResponse\x12U\n" +
+	"\n" +
+	"CgroupTree\x12\".bpfinspector.v1.CgroupTreeRequest\x1a#.bpfinspector.v1.CgroupTreeResponseBCZAgithub.com/lazybpf/bpf-explorer/gen/bpfinspectorv1;bpfinspectorv1b\x06proto3"
 
 var (
 	file_proto_bpfinspector_proto_rawDescOnce sync.Once
@@ -2883,7 +3187,7 @@ func file_proto_bpfinspector_proto_rawDescGZIP() []byte {
 	return file_proto_bpfinspector_proto_rawDescData
 }
 
-var file_proto_bpfinspector_proto_msgTypes = make([]protoimpl.MessageInfo, 36)
+var file_proto_bpfinspector_proto_msgTypes = make([]protoimpl.MessageInfo, 40)
 var file_proto_bpfinspector_proto_goTypes = []any{
 	(*MapInfo)(nil),                 // 0: bpfinspector.v1.MapInfo
 	(*ListMapsRequest)(nil),         // 1: bpfinspector.v1.ListMapsRequest
@@ -2921,6 +3225,10 @@ var file_proto_bpfinspector_proto_goTypes = []any{
 	(*Sysctl)(nil),                  // 33: bpfinspector.v1.Sysctl
 	(*KernelConfigOption)(nil),      // 34: bpfinspector.v1.KernelConfigOption
 	(*FeatureProbe)(nil),            // 35: bpfinspector.v1.FeatureProbe
+	(*CgroupTreeRequest)(nil),       // 36: bpfinspector.v1.CgroupTreeRequest
+	(*CgroupTreeResponse)(nil),      // 37: bpfinspector.v1.CgroupTreeResponse
+	(*CgroupAttachments)(nil),       // 38: bpfinspector.v1.CgroupAttachments
+	(*CgroupProgram)(nil),           // 39: bpfinspector.v1.CgroupProgram
 }
 var file_proto_bpfinspector_proto_depIdxs = []int32{
 	6,  // 0: bpfinspector.v1.MapInfo.pids:type_name -> bpfinspector.v1.ProcessRef
@@ -2942,31 +3250,35 @@ var file_proto_bpfinspector_proto_depIdxs = []int32{
 	35, // 16: bpfinspector.v1.ProbeFeaturesResponse.program_types:type_name -> bpfinspector.v1.FeatureProbe
 	35, // 17: bpfinspector.v1.ProbeFeaturesResponse.map_types:type_name -> bpfinspector.v1.FeatureProbe
 	35, // 18: bpfinspector.v1.ProbeFeaturesResponse.misc:type_name -> bpfinspector.v1.FeatureProbe
-	1,  // 19: bpfinspector.v1.BpfInspector.ListMaps:input_type -> bpfinspector.v1.ListMapsRequest
-	4,  // 20: bpfinspector.v1.BpfInspector.DumpMap:input_type -> bpfinspector.v1.DumpMapRequest
-	8,  // 21: bpfinspector.v1.BpfInspector.ListPrograms:input_type -> bpfinspector.v1.ListProgramsRequest
-	10, // 22: bpfinspector.v1.BpfInspector.DumpProgram:input_type -> bpfinspector.v1.DumpProgramRequest
-	14, // 23: bpfinspector.v1.BpfInspector.ListLinks:input_type -> bpfinspector.v1.ListLinksRequest
-	16, // 24: bpfinspector.v1.BpfInspector.TraceLog:input_type -> bpfinspector.v1.TraceLogRequest
-	18, // 25: bpfinspector.v1.BpfInspector.ResolveInode:input_type -> bpfinspector.v1.ResolveInodeRequest
-	23, // 26: bpfinspector.v1.BpfInspector.DescribeProcess:input_type -> bpfinspector.v1.DescribeProcessRequest
-	25, // 27: bpfinspector.v1.BpfInspector.DescribeNode:input_type -> bpfinspector.v1.DescribeNodeRequest
-	31, // 28: bpfinspector.v1.BpfInspector.ProbeFeatures:input_type -> bpfinspector.v1.ProbeFeaturesRequest
-	2,  // 29: bpfinspector.v1.BpfInspector.ListMaps:output_type -> bpfinspector.v1.ListMapsResponse
-	5,  // 30: bpfinspector.v1.BpfInspector.DumpMap:output_type -> bpfinspector.v1.DumpMapResponse
-	9,  // 31: bpfinspector.v1.BpfInspector.ListPrograms:output_type -> bpfinspector.v1.ListProgramsResponse
-	11, // 32: bpfinspector.v1.BpfInspector.DumpProgram:output_type -> bpfinspector.v1.DumpProgramResponse
-	15, // 33: bpfinspector.v1.BpfInspector.ListLinks:output_type -> bpfinspector.v1.ListLinksResponse
-	17, // 34: bpfinspector.v1.BpfInspector.TraceLog:output_type -> bpfinspector.v1.TraceLogEvent
-	22, // 35: bpfinspector.v1.BpfInspector.ResolveInode:output_type -> bpfinspector.v1.ResolveInodeResponse
-	24, // 36: bpfinspector.v1.BpfInspector.DescribeProcess:output_type -> bpfinspector.v1.DescribeProcessResponse
-	26, // 37: bpfinspector.v1.BpfInspector.DescribeNode:output_type -> bpfinspector.v1.DescribeNodeResponse
-	32, // 38: bpfinspector.v1.BpfInspector.ProbeFeatures:output_type -> bpfinspector.v1.ProbeFeaturesResponse
-	29, // [29:39] is the sub-list for method output_type
-	19, // [19:29] is the sub-list for method input_type
-	19, // [19:19] is the sub-list for extension type_name
-	19, // [19:19] is the sub-list for extension extendee
-	0,  // [0:19] is the sub-list for field type_name
+	38, // 19: bpfinspector.v1.CgroupTreeResponse.cgroups:type_name -> bpfinspector.v1.CgroupAttachments
+	39, // 20: bpfinspector.v1.CgroupAttachments.programs:type_name -> bpfinspector.v1.CgroupProgram
+	1,  // 21: bpfinspector.v1.BpfInspector.ListMaps:input_type -> bpfinspector.v1.ListMapsRequest
+	4,  // 22: bpfinspector.v1.BpfInspector.DumpMap:input_type -> bpfinspector.v1.DumpMapRequest
+	8,  // 23: bpfinspector.v1.BpfInspector.ListPrograms:input_type -> bpfinspector.v1.ListProgramsRequest
+	10, // 24: bpfinspector.v1.BpfInspector.DumpProgram:input_type -> bpfinspector.v1.DumpProgramRequest
+	14, // 25: bpfinspector.v1.BpfInspector.ListLinks:input_type -> bpfinspector.v1.ListLinksRequest
+	16, // 26: bpfinspector.v1.BpfInspector.TraceLog:input_type -> bpfinspector.v1.TraceLogRequest
+	18, // 27: bpfinspector.v1.BpfInspector.ResolveInode:input_type -> bpfinspector.v1.ResolveInodeRequest
+	23, // 28: bpfinspector.v1.BpfInspector.DescribeProcess:input_type -> bpfinspector.v1.DescribeProcessRequest
+	25, // 29: bpfinspector.v1.BpfInspector.DescribeNode:input_type -> bpfinspector.v1.DescribeNodeRequest
+	31, // 30: bpfinspector.v1.BpfInspector.ProbeFeatures:input_type -> bpfinspector.v1.ProbeFeaturesRequest
+	36, // 31: bpfinspector.v1.BpfInspector.CgroupTree:input_type -> bpfinspector.v1.CgroupTreeRequest
+	2,  // 32: bpfinspector.v1.BpfInspector.ListMaps:output_type -> bpfinspector.v1.ListMapsResponse
+	5,  // 33: bpfinspector.v1.BpfInspector.DumpMap:output_type -> bpfinspector.v1.DumpMapResponse
+	9,  // 34: bpfinspector.v1.BpfInspector.ListPrograms:output_type -> bpfinspector.v1.ListProgramsResponse
+	11, // 35: bpfinspector.v1.BpfInspector.DumpProgram:output_type -> bpfinspector.v1.DumpProgramResponse
+	15, // 36: bpfinspector.v1.BpfInspector.ListLinks:output_type -> bpfinspector.v1.ListLinksResponse
+	17, // 37: bpfinspector.v1.BpfInspector.TraceLog:output_type -> bpfinspector.v1.TraceLogEvent
+	22, // 38: bpfinspector.v1.BpfInspector.ResolveInode:output_type -> bpfinspector.v1.ResolveInodeResponse
+	24, // 39: bpfinspector.v1.BpfInspector.DescribeProcess:output_type -> bpfinspector.v1.DescribeProcessResponse
+	26, // 40: bpfinspector.v1.BpfInspector.DescribeNode:output_type -> bpfinspector.v1.DescribeNodeResponse
+	32, // 41: bpfinspector.v1.BpfInspector.ProbeFeatures:output_type -> bpfinspector.v1.ProbeFeaturesResponse
+	37, // 42: bpfinspector.v1.BpfInspector.CgroupTree:output_type -> bpfinspector.v1.CgroupTreeResponse
+	32, // [32:43] is the sub-list for method output_type
+	21, // [21:32] is the sub-list for method input_type
+	21, // [21:21] is the sub-list for extension type_name
+	21, // [21:21] is the sub-list for extension extendee
+	0,  // [0:21] is the sub-list for field type_name
 }
 
 func init() { file_proto_bpfinspector_proto_init() }
@@ -2980,7 +3292,7 @@ func file_proto_bpfinspector_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_bpfinspector_proto_rawDesc), len(file_proto_bpfinspector_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   36,
+			NumMessages:   40,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

@@ -297,6 +297,32 @@ func (s *Server) ProbeFeatures(_ context.Context, _ *pb.ProbeFeaturesRequest) (*
 	return resp, nil
 }
 
+// CgroupTree lists the cgroups with BPF programs attached, as bpftool cgroup
+// tree does.
+func (s *Server) CgroupTree(_ context.Context, req *pb.CgroupTreeRequest) (*pb.CgroupTreeResponse, error) {
+	tree, err := s.insp.CgroupTree(req.GetRoot(), req.GetEffective())
+	if err != nil {
+		return nil, err
+	}
+	resp := &pb.CgroupTreeResponse{MountPoint: tree.MountPoint, Root: tree.Root}
+	for _, c := range tree.Cgroups {
+		cg := &pb.CgroupAttachments{Path: c.Path, Id: c.ID}
+		for _, p := range c.Programs {
+			cg.Programs = append(cg.Programs, &pb.CgroupProgram{
+				Id:             p.ID,
+				AttachType:     p.AttachType,
+				AttachFlags:    p.AttachFlags,
+				Name:           p.Name,
+				AttachBtfName:  p.AttachBTFName,
+				AttachBtfObjId: p.AttachBTFObjID,
+				AttachBtfId:    p.AttachBTFID,
+			})
+		}
+		resp.Cgroups = append(resp.Cgroups, cg)
+	}
+	return resp, nil
+}
+
 func featureProbes(probes []inspector.Probe) []*pb.FeatureProbe {
 	out := make([]*pb.FeatureProbe, 0, len(probes))
 	for _, p := range probes {

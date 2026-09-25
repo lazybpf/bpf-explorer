@@ -20,6 +20,7 @@ service BpfInspector {
   rpc DescribeProcess(DescribeProcessRequest) returns (DescribeProcessResponse);
   rpc DescribeNode(DescribeNodeRequest) returns (DescribeNodeResponse);
   rpc ProbeFeatures(ProbeFeaturesRequest) returns (ProbeFeaturesResponse);
+  rpc CgroupTree(CgroupTreeRequest) returns (CgroupTreeResponse);
 }
 
 message MapInfo {
@@ -431,4 +432,48 @@ message FeatureProbe {
   string name = 1;     // bpftool's spelling, e.g. "sched_cls", "lru_percpu_hash"
   bool available = 2;
   string note = 3;
+}
+
+// CgroupTree is `bpftool cgroup tree [CGROUP_ROOT] [effective]`: the cgroups
+// under a root that have BPF programs attached, and the programs. Cgroups with
+// none are left out, as bpftool leaves them out. Needs CAP_NET_ADMIN.
+message CgroupTreeRequest {
+  // Where to start, as the node spells it (/sys/fs/cgroup/kubepods.slice) or
+  // relative to the hierarchy as /proc/<pid>/cgroup does (/kubepods.slice).
+  // Empty is the whole hierarchy.
+  string root = 1;
+  // The programs that apply to each cgroup, those inherited from its ancestors
+  // included, rather than those attached to it. The kernel reports no attach
+  // flags for these.
+  bool effective = 2;
+}
+
+message CgroupTreeResponse {
+  // Where the node mounts cgroup v2, e.g. /sys/fs/cgroup.
+  string mount_point = 1;
+  // Where the walk started, as the node spells it.
+  string root = 2;
+  repeated CgroupAttachments cgroups = 3;
+}
+
+message CgroupAttachments {
+  // The cgroup's directory as the node spells it, under mount_point.
+  string path = 1;
+  // The cgroup id: the directory's inode number, which a cgroup link names.
+  uint64 id = 2;
+  repeated CgroupProgram programs = 3;
+}
+
+// CgroupProgram is one row of bpftool's ID / AttachType / AttachFlags / Name
+// table.
+message CgroupProgram {
+  uint32 id = 1;
+  string attach_type = 2;  // bpftool's name, e.g. "cgroup_device"
+  string attach_flags = 3; // "multi", "override", "" for neither; "" when effective
+  string name = 4;
+  // The hook an lsm_cgroup program is attached at, e.g. "bpf_lsm_socket_bind".
+  // When it cannot be named, the ids it would be named from are set instead.
+  string attach_btf_name = 5;
+  uint32 attach_btf_obj_id = 6;
+  uint32 attach_btf_id = 7;
 }

@@ -28,11 +28,13 @@
        view - the three lists after it are that view taken apart by object.
        They follow the attachment chain rather than the alphabet: a link is what
        holds a program to a hook, and a map is what a program reads and writes,
-       so the bar reads outside in. */}}
+       so the bar reads outside in. cgroups comes after them: the same programs
+       again, seen from where they are attached. */}}
   <a class="{{tabClass .Tab .Sub "loaders"}}" href="/nodes/{{.Node}}/loaders">loaders</a>
   <a class="{{tabClass .Tab .Sub "links"}}" href="/nodes/{{.Node}}/links">links</a>
   <a class="{{tabClass .Tab .Sub "programs"}}" href="/nodes/{{.Node}}/programs">programs</a>
   <a class="{{tabClass .Tab .Sub "maps"}}" href="/nodes/{{.Node}}/maps">maps</a>
+  <a class="{{tabClass .Tab .Sub "cgroups"}}" href="/nodes/{{.Node}}/cgroups">cgroups</a>
   <a class="{{tabClass .Tab .Sub "tracelog"}}" href="/nodes/{{.Node}}/tracelog">tracelog</a>
   <a class="{{tabClass .Tab .Sub "utils"}}" href="/nodes/{{.Node}}/utils">utils</a>
 </p>

@@ -45,13 +45,14 @@ func New(disc discovery.Discoverer, hiddenLoaders map[uint32]bool) (*Handlers, e
 		"nsHelp": namespaceHelp, "innerPIDs": innerPIDs, "cgroupHelp": cgroupHelp,
 		"nodeLinkTitle": nodeLinkTitle, "loadedAt": loadedAt,
 		"sysctlText": sysctlText, "availableCount": availableCount, "featureHelp": featureHelp,
+		"attachedCount": attachedCount,
 		// Exposed as a func so every page gets it without threading it through
 		// each handler's pageData.
 		"version": version.String,
 	}
 	pages := map[string]*template.Template{}
 	for _, name := range []string{"index", "node", "maps", "mapdump", "programs", "progdump",
-		"links", "loaders", "loader", "tracelog", "utilpid", "utilinode", "features"} {
+		"links", "loaders", "loader", "tracelog", "utilpid", "utilinode", "features", "cgroups"} {
 		t, err := template.New(name).Funcs(funcs).ParseFS(templatesFS,
 			"templates/layout.html", "templates/partials.html", "templates/"+name+".html")
 		if err != nil {
@@ -78,6 +79,7 @@ func (h *Handlers) Router() http.Handler {
 	mux.HandleFunc("GET /nodes/{node}/loaders/prog/{id}", h.programGraph)
 	mux.HandleFunc("GET /nodes/{node}/loaders/map/{id}", h.mapGraph)
 	mux.HandleFunc("GET /nodes/{node}/loaders/{group}", h.loaderGraph)
+	mux.HandleFunc("GET /nodes/{node}/cgroups", h.cgroups)
 	mux.HandleFunc("GET /nodes/{node}/tracelog", h.tracelog)
 	mux.HandleFunc("GET /nodes/{node}/tracelog/stream", h.tracelogStream)
 	// One route per utility, under a tab that is a section rather than a page.
@@ -147,6 +149,9 @@ type pageData struct {
 	// Features is what the node's kernel supports for BPF, for the features
 	// page under utils: bpftool feature probe.
 	Features *pb.ProbeFeaturesResponse
+	// CgroupTree is the cgroups with BPF programs attached, for the cgroups
+	// tab: bpftool cgroup tree.
+	CgroupTree *cgroupTree
 	// One field per utility under the utils tab, each set only by its own
 	// handler: the utilities share the tab, not a model.
 	PIDLookup   *pidLookup

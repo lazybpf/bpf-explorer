@@ -247,6 +247,10 @@
     background: var(--bg-inset);
   }
   tbody tr.residual:hover > td { background: none; }
+  /* A cgroup's own row on the cgroups page, heading the programs attached to
+     it: the path bpftool prints on a line of its own, above its table rows. */
+  tbody tr.cgroup > td { background: var(--bg-inset); }
+  tbody tr.cgroup:hover > td { background: var(--bg-inset); }
   /* One record read down instead of across: field names in the left column,
      values in the right. Not wrapped in .scroll - there is no third column to
      push anything sideways. */
@@ -261,6 +265,9 @@
 
   /* ── code and dumps ──────────────────────────────────────────────────── */
   code { color: var(--accent); word-break: break-all; }
+  /* Code is cyan and so is a hovered link's ground: inside a link, take the
+     link's colour so the text inverts with it rather than vanishing. */
+  a:hover code { color: inherit; }
   code[title] {
     text-decoration: underline dotted var(--warn);
     text-underline-offset: .2em;

@@ -25,8 +25,17 @@ const cgroupWalkLimit = 50000
 // they are reached through its root - the agent's own /sys/fs/cgroup is a
 // different mount, showing only the container's own cgroup.
 func cgroupV2Root(procRoot string) string {
+	reach, _ := cgroupV2Mount(procRoot)
+	return reach
+}
+
+// cgroupV2Mount is cgroupV2Root with the mount point also as the node spells it:
+// reach is the path the agent opens (/proc/1/root/sys/fs/cgroup from a
+// container), point the one pid 1 mounted it at (/sys/fs/cgroup) - the path a
+// person on the node would type, and what bpftool prints. Both are "" when no
+// cgroup2 is mounted.
+func cgroupV2Mount(procRoot string) (reach, point string) {
 	for _, pid := range []string{"1", "self"} {
-		var point string
 		eachMount(procRoot, pid, func(e mountEntry) bool {
 			if e.FSType == "cgroup2" {
 				point = e.Point
@@ -38,14 +47,14 @@ func cgroupV2Root(procRoot string) string {
 		case point == "":
 			continue
 		case pid == "1":
-			return filepath.Join(hostPrefix(procRoot), point)
+			return filepath.Join(hostPrefix(procRoot), point), point
 		default:
 			// Read from the agent's own table, so it is already a path the
 			// agent can open, and prefixing it would break it.
-			return point
+			return point, point
 		}
 	}
-	return ""
+	return "", ""
 }
 
 // walkCgroupPaths maps every cgroup under root to the path that names it,
@@ -61,9 +70,28 @@ func cgroupV2Root(procRoot string) string {
 // failing the walk, since a partial index still names most links.
 func walkCgroupPaths(root string) map[uint64]string {
 	index := map[uint64]string{}
+	eachCgroup(root, func(rel string, id uint64) error {
+		if rel == "" {
+			rel = "/"
+		}
+		index[id] = rel
+		return nil
+	})
+	return index
+}
+
+// eachCgroup calls fn for root and every cgroup under it, parents before their
+// children and siblings in lexical order, with the cgroup's path relative to
+// root ("" for root itself, "/a/b" below it) and its id - the directory's inode
+// number. It stays on root's filesystem and stops after cgroupWalkLimit
+// directories.
+//
+// A subtree that cannot be read is skipped rather than failing the walk. An
+// error from fn ends the walk and is returned.
+func eachCgroup(root string, fn func(rel string, id uint64) error) error {
 	var dev uint64
 	visited := 0
-	filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+	return filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil || !d.IsDir() {
 			return nil //nolint:nilerr // an unreadable corner is not a failed walk
 		}
@@ -85,12 +113,6 @@ func walkCgroupPaths(root string) map[uint64]string {
 		} else if uint64(st.Dev) != dev {
 			return fs.SkipDir
 		}
-		rel := strings.TrimPrefix(path, root)
-		if rel == "" {
-			rel = "/"
-		}
-		index[uint64(st.Ino)] = rel
-		return nil
+		return fn(strings.TrimPrefix(path, root), uint64(st.Ino))
 	})
-	return index
 }

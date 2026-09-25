@@ -29,6 +29,7 @@ const (
 	BpfInspector_DescribeProcess_FullMethodName = "/bpfinspector.v1.BpfInspector/DescribeProcess"
 	BpfInspector_DescribeNode_FullMethodName    = "/bpfinspector.v1.BpfInspector/DescribeNode"
 	BpfInspector_ProbeFeatures_FullMethodName   = "/bpfinspector.v1.BpfInspector/ProbeFeatures"
+	BpfInspector_CgroupTree_FullMethodName      = "/bpfinspector.v1.BpfInspector/CgroupTree"
 )
 
 // BpfInspectorClient is the client API for BpfInspector service.
@@ -51,6 +52,7 @@ type BpfInspectorClient interface {
 	DescribeProcess(ctx context.Context, in *DescribeProcessRequest, opts ...grpc.CallOption) (*DescribeProcessResponse, error)
 	DescribeNode(ctx context.Context, in *DescribeNodeRequest, opts ...grpc.CallOption) (*DescribeNodeResponse, error)
 	ProbeFeatures(ctx context.Context, in *ProbeFeaturesRequest, opts ...grpc.CallOption) (*ProbeFeaturesResponse, error)
+	CgroupTree(ctx context.Context, in *CgroupTreeRequest, opts ...grpc.CallOption) (*CgroupTreeResponse, error)
 }
 
 type bpfInspectorClient struct {
@@ -170,6 +172,16 @@ func (c *bpfInspectorClient) ProbeFeatures(ctx context.Context, in *ProbeFeature
 	return out, nil
 }
 
+func (c *bpfInspectorClient) CgroupTree(ctx context.Context, in *CgroupTreeRequest, opts ...grpc.CallOption) (*CgroupTreeResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CgroupTreeResponse)
+	err := c.cc.Invoke(ctx, BpfInspector_CgroupTree_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // BpfInspectorServer is the server API for BpfInspector service.
 // All implementations must embed UnimplementedBpfInspectorServer
 // for forward compatibility.
@@ -190,6 +202,7 @@ type BpfInspectorServer interface {
 	DescribeProcess(context.Context, *DescribeProcessRequest) (*DescribeProcessResponse, error)
 	DescribeNode(context.Context, *DescribeNodeRequest) (*DescribeNodeResponse, error)
 	ProbeFeatures(context.Context, *ProbeFeaturesRequest) (*ProbeFeaturesResponse, error)
+	CgroupTree(context.Context, *CgroupTreeRequest) (*CgroupTreeResponse, error)
 	mustEmbedUnimplementedBpfInspectorServer()
 }
 
@@ -229,6 +242,9 @@ func (UnimplementedBpfInspectorServer) DescribeNode(context.Context, *DescribeNo
 }
 func (UnimplementedBpfInspectorServer) ProbeFeatures(context.Context, *ProbeFeaturesRequest) (*ProbeFeaturesResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ProbeFeatures not implemented")
+}
+func (UnimplementedBpfInspectorServer) CgroupTree(context.Context, *CgroupTreeRequest) (*CgroupTreeResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method CgroupTree not implemented")
 }
 func (UnimplementedBpfInspectorServer) mustEmbedUnimplementedBpfInspectorServer() {}
 func (UnimplementedBpfInspectorServer) testEmbeddedByValue()                      {}
@@ -424,6 +440,24 @@ func _BpfInspector_ProbeFeatures_Handler(srv interface{}, ctx context.Context, d
 	return interceptor(ctx, in, info, handler)
 }
 
+func _BpfInspector_CgroupTree_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CgroupTreeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BpfInspectorServer).CgroupTree(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: BpfInspector_CgroupTree_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BpfInspectorServer).CgroupTree(ctx, req.(*CgroupTreeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // BpfInspector_ServiceDesc is the grpc.ServiceDesc for BpfInspector service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -466,6 +500,10 @@ var BpfInspector_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ProbeFeatures",
 			Handler:    _BpfInspector_ProbeFeatures_Handler,
+		},
+		{
+			MethodName: "CgroupTree",
+			Handler:    _BpfInspector_CgroupTree_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{
