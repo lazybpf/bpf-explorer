@@ -2307,6 +2307,349 @@ func (x *Namespace) GetPid1Inode() uint64 {
 	return 0
 }
 
+// ProbeFeatures is `bpftool feature probe`: the system configuration, whether
+// there is a bpf() syscall, and which program types, map types and verifier
+// features the kernel has. The per-program-type helper lists are not probed yet.
+//
+// The type probes are the one thing on the agent that loads anything: each
+// loads a trivial program or creates a one-entry map and closes it at once,
+// exactly as bpftool does. Nothing is attached, pinned or left behind, and the
+// agent caches every answer, since a kernel gains no features without a reboot.
+type ProbeFeaturesRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ProbeFeaturesRequest) Reset() {
+	*x = ProbeFeaturesRequest{}
+	mi := &file_proto_bpfinspector_proto_msgTypes[31]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ProbeFeaturesRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ProbeFeaturesRequest) ProtoMessage() {}
+
+func (x *ProbeFeaturesRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_bpfinspector_proto_msgTypes[31]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ProbeFeaturesRequest.ProtoReflect.Descriptor instead.
+func (*ProbeFeaturesRequest) Descriptor() ([]byte, []int) {
+	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{31}
+}
+
+type ProbeFeaturesResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// unprivileged_bpf_disabled and the bpf_jit_* sysctls, in bpftool's order.
+	Sysctls []*Sysctl `protobuf:"bytes,1,rep,name=sysctls,proto3" json:"sysctls,omitempty"`
+	// Why the bpf_jit_* values are missing: they exist only in the node's initial
+	// network namespace, which the agent joins to read them, and joining it needs
+	// CAP_SYS_ADMIN. Empty when nothing stood in the way.
+	SysctlNote string `protobuf:"bytes,2,opt,name=sysctl_note,json=sysctlNote,proto3" json:"sysctl_note,omitempty"`
+	// The options bpftool prints, from the kernel's build config.
+	KernelConfig []*KernelConfigOption `protobuf:"bytes,3,rep,name=kernel_config,json=kernelConfig,proto3" json:"kernel_config,omitempty"`
+	// The file kernel_config was read from; empty when none could be, and
+	// kernel_config_note then says what was tried.
+	KernelConfigSource string          `protobuf:"bytes,4,opt,name=kernel_config_source,json=kernelConfigSource,proto3" json:"kernel_config_source,omitempty"`
+	KernelConfigNote   string          `protobuf:"bytes,5,opt,name=kernel_config_note,json=kernelConfigNote,proto3" json:"kernel_config_note,omitempty"`
+	BpfSyscall         bool            `protobuf:"varint,6,opt,name=bpf_syscall,json=bpfSyscall,proto3" json:"bpf_syscall,omitempty"`
+	ProgramTypes       []*FeatureProbe `protobuf:"bytes,7,rep,name=program_types,json=programTypes,proto3" json:"program_types,omitempty"`
+	MapTypes           []*FeatureProbe `protobuf:"bytes,8,rep,name=map_types,json=mapTypes,proto3" json:"map_types,omitempty"`
+	// bpftool's "miscellaneous eBPF features", plus ISA extension v4.
+	Misc          []*FeatureProbe `protobuf:"bytes,9,rep,name=misc,proto3" json:"misc,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ProbeFeaturesResponse) Reset() {
+	*x = ProbeFeaturesResponse{}
+	mi := &file_proto_bpfinspector_proto_msgTypes[32]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ProbeFeaturesResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ProbeFeaturesResponse) ProtoMessage() {}
+
+func (x *ProbeFeaturesResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_bpfinspector_proto_msgTypes[32]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ProbeFeaturesResponse.ProtoReflect.Descriptor instead.
+func (*ProbeFeaturesResponse) Descriptor() ([]byte, []int) {
+	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{32}
+}
+
+func (x *ProbeFeaturesResponse) GetSysctls() []*Sysctl {
+	if x != nil {
+		return x.Sysctls
+	}
+	return nil
+}
+
+func (x *ProbeFeaturesResponse) GetSysctlNote() string {
+	if x != nil {
+		return x.SysctlNote
+	}
+	return ""
+}
+
+func (x *ProbeFeaturesResponse) GetKernelConfig() []*KernelConfigOption {
+	if x != nil {
+		return x.KernelConfig
+	}
+	return nil
+}
+
+func (x *ProbeFeaturesResponse) GetKernelConfigSource() string {
+	if x != nil {
+		return x.KernelConfigSource
+	}
+	return ""
+}
+
+func (x *ProbeFeaturesResponse) GetKernelConfigNote() string {
+	if x != nil {
+		return x.KernelConfigNote
+	}
+	return ""
+}
+
+func (x *ProbeFeaturesResponse) GetBpfSyscall() bool {
+	if x != nil {
+		return x.BpfSyscall
+	}
+	return false
+}
+
+func (x *ProbeFeaturesResponse) GetProgramTypes() []*FeatureProbe {
+	if x != nil {
+		return x.ProgramTypes
+	}
+	return nil
+}
+
+func (x *ProbeFeaturesResponse) GetMapTypes() []*FeatureProbe {
+	if x != nil {
+		return x.MapTypes
+	}
+	return nil
+}
+
+func (x *ProbeFeaturesResponse) GetMisc() []*FeatureProbe {
+	if x != nil {
+		return x.Misc
+	}
+	return nil
+}
+
+type Sysctl struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`    // bpftool's key, e.g. "bpf_jit_enable"
+	Value         int64                  `protobuf:"varint,2,opt,name=value,proto3" json:"value,omitempty"` // meaningful only when readable
+	Readable      bool                   `protobuf:"varint,3,opt,name=readable,proto3" json:"readable,omitempty"`
+	Note          string                 `protobuf:"bytes,4,opt,name=note,proto3" json:"note,omitempty"` // why it is not
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Sysctl) Reset() {
+	*x = Sysctl{}
+	mi := &file_proto_bpfinspector_proto_msgTypes[33]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Sysctl) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Sysctl) ProtoMessage() {}
+
+func (x *Sysctl) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_bpfinspector_proto_msgTypes[33]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Sysctl.ProtoReflect.Descriptor instead.
+func (*Sysctl) Descriptor() ([]byte, []int) {
+	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{33}
+}
+
+func (x *Sysctl) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *Sysctl) GetValue() int64 {
+	if x != nil {
+		return x.Value
+	}
+	return 0
+}
+
+func (x *Sysctl) GetReadable() bool {
+	if x != nil {
+		return x.Readable
+	}
+	return false
+}
+
+func (x *Sysctl) GetNote() string {
+	if x != nil {
+		return x.Note
+	}
+	return ""
+}
+
+type KernelConfigOption struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`   // e.g. "CONFIG_BPF_SYSCALL"
+	Value         string                 `protobuf:"bytes,2,opt,name=value,proto3" json:"value,omitempty"` // "y", "m", "250", ...; empty when not set
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *KernelConfigOption) Reset() {
+	*x = KernelConfigOption{}
+	mi := &file_proto_bpfinspector_proto_msgTypes[34]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *KernelConfigOption) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*KernelConfigOption) ProtoMessage() {}
+
+func (x *KernelConfigOption) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_bpfinspector_proto_msgTypes[34]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use KernelConfigOption.ProtoReflect.Descriptor instead.
+func (*KernelConfigOption) Descriptor() ([]byte, []int) {
+	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{34}
+}
+
+func (x *KernelConfigOption) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *KernelConfigOption) GetValue() string {
+	if x != nil {
+		return x.Value
+	}
+	return ""
+}
+
+// FeatureProbe is the outcome of one probe. A probe that could not be run - an
+// EPERM for want of CAP_BPF, say - is neither available nor not, and note says
+// what went wrong. bpftool prints that case as "NOT available".
+type FeatureProbe struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"` // bpftool's spelling, e.g. "sched_cls", "lru_percpu_hash"
+	Available     bool                   `protobuf:"varint,2,opt,name=available,proto3" json:"available,omitempty"`
+	Note          string                 `protobuf:"bytes,3,opt,name=note,proto3" json:"note,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *FeatureProbe) Reset() {
+	*x = FeatureProbe{}
+	mi := &file_proto_bpfinspector_proto_msgTypes[35]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *FeatureProbe) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*FeatureProbe) ProtoMessage() {}
+
+func (x *FeatureProbe) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_bpfinspector_proto_msgTypes[35]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use FeatureProbe.ProtoReflect.Descriptor instead.
+func (*FeatureProbe) Descriptor() ([]byte, []int) {
+	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{35}
+}
+
+func (x *FeatureProbe) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *FeatureProbe) GetAvailable() bool {
+	if x != nil {
+		return x.Available
+	}
+	return false
+}
+
+func (x *FeatureProbe) GetNote() string {
+	if x != nil {
+		return x.Note
+	}
+	return ""
+}
+
 var File_proto_bpfinspector_proto protoreflect.FileDescriptor
 
 const file_proto_bpfinspector_proto_rawDesc = "" +
@@ -2490,7 +2833,32 @@ const file_proto_bpfinspector_proto_rawDesc = "" +
 	"\x04kind\x18\x01 \x01(\tR\x04kind\x12\x14\n" +
 	"\x05inode\x18\x02 \x01(\x04R\x05inode\x12\x1d\n" +
 	"\n" +
-	"pid1_inode\x18\x03 \x01(\x04R\tpid1Inode2\xa8\x06\n" +
+	"pid1_inode\x18\x03 \x01(\x04R\tpid1Inode\"\x16\n" +
+	"\x14ProbeFeaturesRequest\"\xe9\x03\n" +
+	"\x15ProbeFeaturesResponse\x121\n" +
+	"\asysctls\x18\x01 \x03(\v2\x17.bpfinspector.v1.SysctlR\asysctls\x12\x1f\n" +
+	"\vsysctl_note\x18\x02 \x01(\tR\n" +
+	"sysctlNote\x12H\n" +
+	"\rkernel_config\x18\x03 \x03(\v2#.bpfinspector.v1.KernelConfigOptionR\fkernelConfig\x120\n" +
+	"\x14kernel_config_source\x18\x04 \x01(\tR\x12kernelConfigSource\x12,\n" +
+	"\x12kernel_config_note\x18\x05 \x01(\tR\x10kernelConfigNote\x12\x1f\n" +
+	"\vbpf_syscall\x18\x06 \x01(\bR\n" +
+	"bpfSyscall\x12B\n" +
+	"\rprogram_types\x18\a \x03(\v2\x1d.bpfinspector.v1.FeatureProbeR\fprogramTypes\x12:\n" +
+	"\tmap_types\x18\b \x03(\v2\x1d.bpfinspector.v1.FeatureProbeR\bmapTypes\x121\n" +
+	"\x04misc\x18\t \x03(\v2\x1d.bpfinspector.v1.FeatureProbeR\x04misc\"b\n" +
+	"\x06Sysctl\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\x03R\x05value\x12\x1a\n" +
+	"\breadable\x18\x03 \x01(\bR\breadable\x12\x12\n" +
+	"\x04note\x18\x04 \x01(\tR\x04note\">\n" +
+	"\x12KernelConfigOption\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value\"T\n" +
+	"\fFeatureProbe\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1c\n" +
+	"\tavailable\x18\x02 \x01(\bR\tavailable\x12\x12\n" +
+	"\x04note\x18\x03 \x01(\tR\x04note2\x88\a\n" +
 	"\fBpfInspector\x12O\n" +
 	"\bListMaps\x12 .bpfinspector.v1.ListMapsRequest\x1a!.bpfinspector.v1.ListMapsResponse\x12L\n" +
 	"\aDumpMap\x12\x1f.bpfinspector.v1.DumpMapRequest\x1a .bpfinspector.v1.DumpMapResponse\x12[\n" +
@@ -2500,7 +2868,8 @@ const file_proto_bpfinspector_proto_rawDesc = "" +
 	"\bTraceLog\x12 .bpfinspector.v1.TraceLogRequest\x1a\x1e.bpfinspector.v1.TraceLogEvent0\x01\x12[\n" +
 	"\fResolveInode\x12$.bpfinspector.v1.ResolveInodeRequest\x1a%.bpfinspector.v1.ResolveInodeResponse\x12d\n" +
 	"\x0fDescribeProcess\x12'.bpfinspector.v1.DescribeProcessRequest\x1a(.bpfinspector.v1.DescribeProcessResponse\x12[\n" +
-	"\fDescribeNode\x12$.bpfinspector.v1.DescribeNodeRequest\x1a%.bpfinspector.v1.DescribeNodeResponseBCZAgithub.com/lazybpf/bpf-explorer/gen/bpfinspectorv1;bpfinspectorv1b\x06proto3"
+	"\fDescribeNode\x12$.bpfinspector.v1.DescribeNodeRequest\x1a%.bpfinspector.v1.DescribeNodeResponse\x12^\n" +
+	"\rProbeFeatures\x12%.bpfinspector.v1.ProbeFeaturesRequest\x1a&.bpfinspector.v1.ProbeFeaturesResponseBCZAgithub.com/lazybpf/bpf-explorer/gen/bpfinspectorv1;bpfinspectorv1b\x06proto3"
 
 var (
 	file_proto_bpfinspector_proto_rawDescOnce sync.Once
@@ -2514,7 +2883,7 @@ func file_proto_bpfinspector_proto_rawDescGZIP() []byte {
 	return file_proto_bpfinspector_proto_rawDescData
 }
 
-var file_proto_bpfinspector_proto_msgTypes = make([]protoimpl.MessageInfo, 31)
+var file_proto_bpfinspector_proto_msgTypes = make([]protoimpl.MessageInfo, 36)
 var file_proto_bpfinspector_proto_goTypes = []any{
 	(*MapInfo)(nil),                 // 0: bpfinspector.v1.MapInfo
 	(*ListMapsRequest)(nil),         // 1: bpfinspector.v1.ListMapsRequest
@@ -2547,6 +2916,11 @@ var file_proto_bpfinspector_proto_goTypes = []any{
 	(*Cgroups)(nil),                 // 28: bpfinspector.v1.Cgroups
 	(*Component)(nil),               // 29: bpfinspector.v1.Component
 	(*Namespace)(nil),               // 30: bpfinspector.v1.Namespace
+	(*ProbeFeaturesRequest)(nil),    // 31: bpfinspector.v1.ProbeFeaturesRequest
+	(*ProbeFeaturesResponse)(nil),   // 32: bpfinspector.v1.ProbeFeaturesResponse
+	(*Sysctl)(nil),                  // 33: bpfinspector.v1.Sysctl
+	(*KernelConfigOption)(nil),      // 34: bpfinspector.v1.KernelConfigOption
+	(*FeatureProbe)(nil),            // 35: bpfinspector.v1.FeatureProbe
 }
 var file_proto_bpfinspector_proto_depIdxs = []int32{
 	6,  // 0: bpfinspector.v1.MapInfo.pids:type_name -> bpfinspector.v1.ProcessRef
@@ -2563,29 +2937,36 @@ var file_proto_bpfinspector_proto_depIdxs = []int32{
 	27, // 11: bpfinspector.v1.DescribeNodeResponse.kernel:type_name -> bpfinspector.v1.Kernel
 	28, // 12: bpfinspector.v1.DescribeNodeResponse.cgroups:type_name -> bpfinspector.v1.Cgroups
 	29, // 13: bpfinspector.v1.DescribeNodeResponse.components:type_name -> bpfinspector.v1.Component
-	1,  // 14: bpfinspector.v1.BpfInspector.ListMaps:input_type -> bpfinspector.v1.ListMapsRequest
-	4,  // 15: bpfinspector.v1.BpfInspector.DumpMap:input_type -> bpfinspector.v1.DumpMapRequest
-	8,  // 16: bpfinspector.v1.BpfInspector.ListPrograms:input_type -> bpfinspector.v1.ListProgramsRequest
-	10, // 17: bpfinspector.v1.BpfInspector.DumpProgram:input_type -> bpfinspector.v1.DumpProgramRequest
-	14, // 18: bpfinspector.v1.BpfInspector.ListLinks:input_type -> bpfinspector.v1.ListLinksRequest
-	16, // 19: bpfinspector.v1.BpfInspector.TraceLog:input_type -> bpfinspector.v1.TraceLogRequest
-	18, // 20: bpfinspector.v1.BpfInspector.ResolveInode:input_type -> bpfinspector.v1.ResolveInodeRequest
-	23, // 21: bpfinspector.v1.BpfInspector.DescribeProcess:input_type -> bpfinspector.v1.DescribeProcessRequest
-	25, // 22: bpfinspector.v1.BpfInspector.DescribeNode:input_type -> bpfinspector.v1.DescribeNodeRequest
-	2,  // 23: bpfinspector.v1.BpfInspector.ListMaps:output_type -> bpfinspector.v1.ListMapsResponse
-	5,  // 24: bpfinspector.v1.BpfInspector.DumpMap:output_type -> bpfinspector.v1.DumpMapResponse
-	9,  // 25: bpfinspector.v1.BpfInspector.ListPrograms:output_type -> bpfinspector.v1.ListProgramsResponse
-	11, // 26: bpfinspector.v1.BpfInspector.DumpProgram:output_type -> bpfinspector.v1.DumpProgramResponse
-	15, // 27: bpfinspector.v1.BpfInspector.ListLinks:output_type -> bpfinspector.v1.ListLinksResponse
-	17, // 28: bpfinspector.v1.BpfInspector.TraceLog:output_type -> bpfinspector.v1.TraceLogEvent
-	22, // 29: bpfinspector.v1.BpfInspector.ResolveInode:output_type -> bpfinspector.v1.ResolveInodeResponse
-	24, // 30: bpfinspector.v1.BpfInspector.DescribeProcess:output_type -> bpfinspector.v1.DescribeProcessResponse
-	26, // 31: bpfinspector.v1.BpfInspector.DescribeNode:output_type -> bpfinspector.v1.DescribeNodeResponse
-	23, // [23:32] is the sub-list for method output_type
-	14, // [14:23] is the sub-list for method input_type
-	14, // [14:14] is the sub-list for extension type_name
-	14, // [14:14] is the sub-list for extension extendee
-	0,  // [0:14] is the sub-list for field type_name
+	33, // 14: bpfinspector.v1.ProbeFeaturesResponse.sysctls:type_name -> bpfinspector.v1.Sysctl
+	34, // 15: bpfinspector.v1.ProbeFeaturesResponse.kernel_config:type_name -> bpfinspector.v1.KernelConfigOption
+	35, // 16: bpfinspector.v1.ProbeFeaturesResponse.program_types:type_name -> bpfinspector.v1.FeatureProbe
+	35, // 17: bpfinspector.v1.ProbeFeaturesResponse.map_types:type_name -> bpfinspector.v1.FeatureProbe
+	35, // 18: bpfinspector.v1.ProbeFeaturesResponse.misc:type_name -> bpfinspector.v1.FeatureProbe
+	1,  // 19: bpfinspector.v1.BpfInspector.ListMaps:input_type -> bpfinspector.v1.ListMapsRequest
+	4,  // 20: bpfinspector.v1.BpfInspector.DumpMap:input_type -> bpfinspector.v1.DumpMapRequest
+	8,  // 21: bpfinspector.v1.BpfInspector.ListPrograms:input_type -> bpfinspector.v1.ListProgramsRequest
+	10, // 22: bpfinspector.v1.BpfInspector.DumpProgram:input_type -> bpfinspector.v1.DumpProgramRequest
+	14, // 23: bpfinspector.v1.BpfInspector.ListLinks:input_type -> bpfinspector.v1.ListLinksRequest
+	16, // 24: bpfinspector.v1.BpfInspector.TraceLog:input_type -> bpfinspector.v1.TraceLogRequest
+	18, // 25: bpfinspector.v1.BpfInspector.ResolveInode:input_type -> bpfinspector.v1.ResolveInodeRequest
+	23, // 26: bpfinspector.v1.BpfInspector.DescribeProcess:input_type -> bpfinspector.v1.DescribeProcessRequest
+	25, // 27: bpfinspector.v1.BpfInspector.DescribeNode:input_type -> bpfinspector.v1.DescribeNodeRequest
+	31, // 28: bpfinspector.v1.BpfInspector.ProbeFeatures:input_type -> bpfinspector.v1.ProbeFeaturesRequest
+	2,  // 29: bpfinspector.v1.BpfInspector.ListMaps:output_type -> bpfinspector.v1.ListMapsResponse
+	5,  // 30: bpfinspector.v1.BpfInspector.DumpMap:output_type -> bpfinspector.v1.DumpMapResponse
+	9,  // 31: bpfinspector.v1.BpfInspector.ListPrograms:output_type -> bpfinspector.v1.ListProgramsResponse
+	11, // 32: bpfinspector.v1.BpfInspector.DumpProgram:output_type -> bpfinspector.v1.DumpProgramResponse
+	15, // 33: bpfinspector.v1.BpfInspector.ListLinks:output_type -> bpfinspector.v1.ListLinksResponse
+	17, // 34: bpfinspector.v1.BpfInspector.TraceLog:output_type -> bpfinspector.v1.TraceLogEvent
+	22, // 35: bpfinspector.v1.BpfInspector.ResolveInode:output_type -> bpfinspector.v1.ResolveInodeResponse
+	24, // 36: bpfinspector.v1.BpfInspector.DescribeProcess:output_type -> bpfinspector.v1.DescribeProcessResponse
+	26, // 37: bpfinspector.v1.BpfInspector.DescribeNode:output_type -> bpfinspector.v1.DescribeNodeResponse
+	32, // 38: bpfinspector.v1.BpfInspector.ProbeFeatures:output_type -> bpfinspector.v1.ProbeFeaturesResponse
+	29, // [29:39] is the sub-list for method output_type
+	19, // [19:29] is the sub-list for method input_type
+	19, // [19:19] is the sub-list for extension type_name
+	19, // [19:19] is the sub-list for extension extendee
+	0,  // [0:19] is the sub-list for field type_name
 }
 
 func init() { file_proto_bpfinspector_proto_init() }
@@ -2599,7 +2980,7 @@ func file_proto_bpfinspector_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_bpfinspector_proto_rawDesc), len(file_proto_bpfinspector_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   31,
+			NumMessages:   36,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

@@ -44,13 +44,14 @@ func New(disc discovery.Discoverer, hiddenLoaders map[uint32]bool) (*Handlers, e
 		"holders": holders, "comma": comma, "registers": registerSheet,
 		"nsHelp": namespaceHelp, "innerPIDs": innerPIDs, "cgroupHelp": cgroupHelp,
 		"nodeLinkTitle": nodeLinkTitle, "loadedAt": loadedAt,
+		"sysctlText": sysctlText, "availableCount": availableCount, "featureHelp": featureHelp,
 		// Exposed as a func so every page gets it without threading it through
 		// each handler's pageData.
 		"version": version.String,
 	}
 	pages := map[string]*template.Template{}
 	for _, name := range []string{"index", "node", "maps", "mapdump", "programs", "progdump",
-		"links", "loaders", "loader", "tracelog", "utilpid", "utilinode"} {
+		"links", "loaders", "loader", "tracelog", "utilpid", "utilinode", "features"} {
 		t, err := template.New(name).Funcs(funcs).ParseFS(templatesFS,
 			"templates/layout.html", "templates/partials.html", "templates/"+name+".html")
 		if err != nil {
@@ -86,6 +87,7 @@ func (h *Handlers) Router() http.Handler {
 	// is a question about the node rather than a list of what is loaded on it.
 	mux.HandleFunc("GET /nodes/{node}/utils", h.utils)
 	mux.HandleFunc("GET /nodes/{node}/utils/node", h.nodeDetails)
+	mux.HandleFunc("GET /nodes/{node}/utils/features", h.features)
 	mux.HandleFunc("GET /nodes/{node}/utils/pid", h.utilPID)
 	mux.HandleFunc("GET /nodes/{node}/utils/inode", h.utilInode)
 	// That page had a tab of its own until it moved in beside the lookups, and
@@ -106,7 +108,7 @@ type pageData struct {
 	Node  string
 	Tab   string
 	// Util names the utility within the utils tab the way Tab names the tab:
-	// "node", "pid", "inode". Empty on every page outside that section.
+	// "node", "features", "pid", "inode". Empty on every page outside that section.
 	Util     string
 	Err      string
 	Maps     []*pb.MapInfo
@@ -142,6 +144,9 @@ type pageData struct {
 	// runtime - for the node page under utils. Node above is the name; this is
 	// the machine.
 	NodeInfo *pb.DescribeNodeResponse
+	// Features is what the node's kernel supports for BPF, for the features
+	// page under utils: bpftool feature probe.
+	Features *pb.ProbeFeaturesResponse
 	// One field per utility under the utils tab, each set only by its own
 	// handler: the utilities share the tab, not a model.
 	PIDLookup   *pidLookup

@@ -274,6 +274,37 @@ func (s *Server) DescribeNode(_ context.Context, _ *pb.DescribeNodeRequest) (*pb
 	}, nil
 }
 
+// ProbeFeatures reports what the kernel supports for BPF, as bpftool feature
+// probe does. It never fails either: a probe the agent could not run comes back
+// with the reason in place of an answer.
+func (s *Server) ProbeFeatures(_ context.Context, _ *pb.ProbeFeaturesRequest) (*pb.ProbeFeaturesResponse, error) {
+	f := s.insp.ProbeFeatures()
+	resp := &pb.ProbeFeaturesResponse{
+		SysctlNote:         f.SysctlNote,
+		KernelConfigSource: f.KernelConfigSource,
+		KernelConfigNote:   f.KernelConfigNote,
+		BpfSyscall:         f.BPFSyscall,
+		ProgramTypes:       featureProbes(f.ProgramTypes),
+		MapTypes:           featureProbes(f.MapTypes),
+		Misc:               featureProbes(f.Misc),
+	}
+	for _, c := range f.Sysctls {
+		resp.Sysctls = append(resp.Sysctls, &pb.Sysctl{Name: c.Name, Value: c.Value, Readable: c.Readable, Note: c.Note})
+	}
+	for _, o := range f.KernelConfig {
+		resp.KernelConfig = append(resp.KernelConfig, &pb.KernelConfigOption{Name: o.Name, Value: o.Value})
+	}
+	return resp, nil
+}
+
+func featureProbes(probes []inspector.Probe) []*pb.FeatureProbe {
+	out := make([]*pb.FeatureProbe, 0, len(probes))
+	for _, p := range probes {
+		out = append(out, &pb.FeatureProbe{Name: p.Name, Available: p.Available, Note: p.Note})
+	}
+	return out
+}
+
 func (s *Server) ListLinks(_ context.Context, _ *pb.ListLinksRequest) (*pb.ListLinksResponse, error) {
 	links, err := s.insp.ListLinks()
 	if err != nil {

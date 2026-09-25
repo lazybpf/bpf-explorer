@@ -1,0 +1,62 @@
+{{define "content"}}
+{{template "nodebar" .}}
+{{template "utilnav" .}}
+
+<h2>features <span class="name">{{.Node}}</span></h2>
+<p class="muted">What this node's kernel supports for BPF.</p>
+
+{{with .Features}}
+  <h2>system configuration</h2>
+  <table class="kv">
+    {{range .Sysctls}}
+      <tr><th>{{.Name}}</th>
+          <td>
+            {{sysctlText .}}
+            {{if .Readable}}<span class="muted">({{.Value}})</span>{{else}}{{with .Note}}<div class="muted">{{.}}</div>{{end}}{{end}}
+          </td></tr>
+    {{end}}
+  </table>
+  {{with .SysctlNote}}<p class="warn">{{.}}</p>{{end}}
+
+  <h2>kernel config</h2>
+  {{if .KernelConfigSource}}
+    <p class="muted">read from <code>{{.KernelConfigSource}}</code></p>
+    <table class="kv">
+      {{range .KernelConfig}}
+        <tr><th><code>{{.Name}}</code></th>
+            <td>{{if .Value}}is set to <code>{{.Value}}</code>{{else}}<span class="muted">is not set</span>{{end}}</td></tr>
+      {{end}}
+    </table>
+  {{else}}
+    <p class="warn">No kernel config found{{with .KernelConfigNote}} ({{.}}){{end}}.</p>
+  {{end}}
+
+  <h2>system call availability</h2>
+  <p>{{if .BpfSyscall}}bpf() syscall is available{{else}}<span class="badge">bpf() syscall is NOT available</span>{{end}}</p>
+
+  <h2>program types <span class="muted">{{availableCount .ProgramTypes}} available</span></h2>
+  {{template "probes" .ProgramTypes}}
+
+  <h2>map types <span class="muted">{{availableCount .MapTypes}} available</span></h2>
+  {{template "probes" .MapTypes}}
+
+  <h2>miscellaneous</h2>
+  {{template "probes" .Misc}}
+{{end}}
+{{end}}
+
+{{/* One section's probes. A probe that could not be run is said apart from
+     one that ran and failed: an EPERM says nothing about the kernel. */}}
+{{define "probes"}}
+<table class="kv">
+  {{range .}}
+    <tr><th><code>{{.Name}}</code></th>
+        <td>
+          {{if .Available}}available
+          {{else if .Note}}<span class="muted hinted" title="{{.Note}}">could not probe</span>
+          {{else}}<span class="badge">NOT available</span>{{end}}
+          {{with featureHelp .Name}}<div class="muted">{{.}}</div>{{end}}
+        </td></tr>
+  {{end}}
+</table>
+{{end}}

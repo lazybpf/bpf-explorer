@@ -99,7 +99,7 @@ func readCgroupPaths(procRoot string, read func()) cgroupNS {
 		return cgroupNS{}
 	}
 
-	if err := runInCgroupNS(filepath.Join(procRoot, "1", "ns", "cgroup"), read); err != nil {
+	if err := runInNS(filepath.Join(procRoot, "1", "ns", "cgroup"), unix.CLONE_NEWCGROUP, read); err != nil {
 		read() // displaced, and said to be
 		return cgroupNS{
 			Namespaced: true,
@@ -110,15 +110,15 @@ func readCgroupPaths(procRoot string, read func()) cgroupNS {
 	return cgroupNS{Namespaced: true}
 }
 
-// runInCgroupNS runs fn on a thread that has joined the cgroup namespace named
-// by nsPath - what `nsenter --cgroup -t 1` does, for the length of one call.
+// runInNS runs fn on a thread that has joined the namespace named by nsPath, of
+// kind nstype - what `nsenter --cgroup -t 1` does, for the length of one call.
 //
 // The thread is locked and never unlocked: a thread that has been moved into
 // another namespace must not go back into the runtime's pool, and letting the
 // goroutine return while it is still locked is what has the runtime throw it
 // away instead. Only the calling thread's namespace changes, so nothing else in
 // the agent is affected while this runs.
-func runInCgroupNS(nsPath string, fn func()) error {
+func runInNS(nsPath string, nstype int, fn func()) error {
 	result := make(chan error, 1)
 	go func() {
 		runtime.LockOSThread()
@@ -131,7 +131,7 @@ func runInCgroupNS(nsPath string, fn func()) error {
 		}
 		defer f.Close()
 
-		if err := unix.Setns(int(f.Fd()), unix.CLONE_NEWCGROUP); err != nil {
+		if err := unix.Setns(int(f.Fd()), nstype); err != nil {
 			runtime.UnlockOSThread()
 			result <- err
 			return

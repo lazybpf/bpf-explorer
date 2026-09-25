@@ -47,7 +47,8 @@
 
      The node itself leads: it is the only one that answers without being asked
      a number, which is why it has no arrow in its name and why the section's
-     bare URL lands on it. The lookups after it turn one number into one thing.
+     bare URL lands on it. Its kernel's features follow, asked nothing either.
+     The lookups after them turn one number into one thing.
 
      ASCII arrows, not &rarr;: the display face has no glyph for it, so the
      browser substitutes another font for that one character and it lands
@@ -56,6 +57,8 @@
 <p class="tabs subtabs">
   <a class="{{tabClass .Util false "node"}}" href="/nodes/{{.Node}}/utils/node"
      title="what the node itself is: kernel, cgroups, container runtime">node</a>
+  <a class="{{tabClass .Util false "features"}}" href="/nodes/{{.Node}}/utils/features"
+     title="what the kernel supports for BPF">features</a>
   <a class="{{tabClass .Util false "pid"}}" href="/nodes/{{.Node}}/utils/pid"
      title="describe a process by its pid">pid -&gt; process</a>
   <a class="{{tabClass .Util false "inode"}}" href="/nodes/{{.Node}}/utils/inode"

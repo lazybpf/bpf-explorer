@@ -28,6 +28,7 @@ const (
 	BpfInspector_ResolveInode_FullMethodName    = "/bpfinspector.v1.BpfInspector/ResolveInode"
 	BpfInspector_DescribeProcess_FullMethodName = "/bpfinspector.v1.BpfInspector/DescribeProcess"
 	BpfInspector_DescribeNode_FullMethodName    = "/bpfinspector.v1.BpfInspector/DescribeNode"
+	BpfInspector_ProbeFeatures_FullMethodName   = "/bpfinspector.v1.BpfInspector/ProbeFeatures"
 )
 
 // BpfInspectorClient is the client API for BpfInspector service.
@@ -37,7 +38,8 @@ const (
 // BpfInspector is the per-node, read-only inspection API served by the agent
 // running inside the privileged DaemonSet pod. There is intentionally no RPC
 // that mutates kernel state in v1 (no map update/delete, no prog load/detach).
-// TraceLog is the one call that is not a pure read - see its comment.
+// TraceLog is the one call that is not a pure read - see its comment - and
+// ProbeFeatures loads and closes throwaway programs and maps, as bpftool does.
 type BpfInspectorClient interface {
 	ListMaps(ctx context.Context, in *ListMapsRequest, opts ...grpc.CallOption) (*ListMapsResponse, error)
 	DumpMap(ctx context.Context, in *DumpMapRequest, opts ...grpc.CallOption) (*DumpMapResponse, error)
@@ -48,6 +50,7 @@ type BpfInspectorClient interface {
 	ResolveInode(ctx context.Context, in *ResolveInodeRequest, opts ...grpc.CallOption) (*ResolveInodeResponse, error)
 	DescribeProcess(ctx context.Context, in *DescribeProcessRequest, opts ...grpc.CallOption) (*DescribeProcessResponse, error)
 	DescribeNode(ctx context.Context, in *DescribeNodeRequest, opts ...grpc.CallOption) (*DescribeNodeResponse, error)
+	ProbeFeatures(ctx context.Context, in *ProbeFeaturesRequest, opts ...grpc.CallOption) (*ProbeFeaturesResponse, error)
 }
 
 type bpfInspectorClient struct {
@@ -157,6 +160,16 @@ func (c *bpfInspectorClient) DescribeNode(ctx context.Context, in *DescribeNodeR
 	return out, nil
 }
 
+func (c *bpfInspectorClient) ProbeFeatures(ctx context.Context, in *ProbeFeaturesRequest, opts ...grpc.CallOption) (*ProbeFeaturesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ProbeFeaturesResponse)
+	err := c.cc.Invoke(ctx, BpfInspector_ProbeFeatures_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // BpfInspectorServer is the server API for BpfInspector service.
 // All implementations must embed UnimplementedBpfInspectorServer
 // for forward compatibility.
@@ -164,7 +177,8 @@ func (c *bpfInspectorClient) DescribeNode(ctx context.Context, in *DescribeNodeR
 // BpfInspector is the per-node, read-only inspection API served by the agent
 // running inside the privileged DaemonSet pod. There is intentionally no RPC
 // that mutates kernel state in v1 (no map update/delete, no prog load/detach).
-// TraceLog is the one call that is not a pure read - see its comment.
+// TraceLog is the one call that is not a pure read - see its comment - and
+// ProbeFeatures loads and closes throwaway programs and maps, as bpftool does.
 type BpfInspectorServer interface {
 	ListMaps(context.Context, *ListMapsRequest) (*ListMapsResponse, error)
 	DumpMap(context.Context, *DumpMapRequest) (*DumpMapResponse, error)
@@ -175,6 +189,7 @@ type BpfInspectorServer interface {
 	ResolveInode(context.Context, *ResolveInodeRequest) (*ResolveInodeResponse, error)
 	DescribeProcess(context.Context, *DescribeProcessRequest) (*DescribeProcessResponse, error)
 	DescribeNode(context.Context, *DescribeNodeRequest) (*DescribeNodeResponse, error)
+	ProbeFeatures(context.Context, *ProbeFeaturesRequest) (*ProbeFeaturesResponse, error)
 	mustEmbedUnimplementedBpfInspectorServer()
 }
 
@@ -211,6 +226,9 @@ func (UnimplementedBpfInspectorServer) DescribeProcess(context.Context, *Describ
 }
 func (UnimplementedBpfInspectorServer) DescribeNode(context.Context, *DescribeNodeRequest) (*DescribeNodeResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method DescribeNode not implemented")
+}
+func (UnimplementedBpfInspectorServer) ProbeFeatures(context.Context, *ProbeFeaturesRequest) (*ProbeFeaturesResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ProbeFeatures not implemented")
 }
 func (UnimplementedBpfInspectorServer) mustEmbedUnimplementedBpfInspectorServer() {}
 func (UnimplementedBpfInspectorServer) testEmbeddedByValue()                      {}
@@ -388,6 +406,24 @@ func _BpfInspector_DescribeNode_Handler(srv interface{}, ctx context.Context, de
 	return interceptor(ctx, in, info, handler)
 }
 
+func _BpfInspector_ProbeFeatures_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ProbeFeaturesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BpfInspectorServer).ProbeFeatures(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: BpfInspector_ProbeFeatures_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BpfInspectorServer).ProbeFeatures(ctx, req.(*ProbeFeaturesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // BpfInspector_ServiceDesc is the grpc.ServiceDesc for BpfInspector service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -426,6 +462,10 @@ var BpfInspector_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "DescribeNode",
 			Handler:    _BpfInspector_DescribeNode_Handler,
+		},
+		{
+			MethodName: "ProbeFeatures",
+			Handler:    _BpfInspector_ProbeFeatures_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

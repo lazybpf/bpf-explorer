@@ -7,7 +7,8 @@ option go_package = "github.com/lazybpf/bpf-explorer/gen/bpfinspectorv1;bpfinspe
 // BpfInspector is the per-node, read-only inspection API served by the agent
 // running inside the privileged DaemonSet pod. There is intentionally no RPC
 // that mutates kernel state in v1 (no map update/delete, no prog load/detach).
-// TraceLog is the one call that is not a pure read - see its comment.
+// TraceLog is the one call that is not a pure read - see its comment - and
+// ProbeFeatures loads and closes throwaway programs and maps, as bpftool does.
 service BpfInspector {
   rpc ListMaps(ListMapsRequest) returns (ListMapsResponse);
   rpc DumpMap(DumpMapRequest) returns (DumpMapResponse);
@@ -18,6 +19,7 @@ service BpfInspector {
   rpc ResolveInode(ResolveInodeRequest) returns (ResolveInodeResponse);
   rpc DescribeProcess(DescribeProcessRequest) returns (DescribeProcessResponse);
   rpc DescribeNode(DescribeNodeRequest) returns (DescribeNodeResponse);
+  rpc ProbeFeatures(ProbeFeaturesRequest) returns (ProbeFeaturesResponse);
 }
 
 message MapInfo {
@@ -378,4 +380,55 @@ message Namespace {
   // different number means the process has a namespace of its own - with
   // hostPID, pid 1 is the node's init, so that is the mark of a container.
   uint64 pid1_inode = 3;
+}
+
+// ProbeFeatures is `bpftool feature probe`: the system configuration, whether
+// there is a bpf() syscall, and which program types, map types and verifier
+// features the kernel has. The per-program-type helper lists are not probed yet.
+//
+// The type probes are the one thing on the agent that loads anything: each
+// loads a trivial program or creates a one-entry map and closes it at once,
+// exactly as bpftool does. Nothing is attached, pinned or left behind, and the
+// agent caches every answer, since a kernel gains no features without a reboot.
+message ProbeFeaturesRequest {}
+
+message ProbeFeaturesResponse {
+  // unprivileged_bpf_disabled and the bpf_jit_* sysctls, in bpftool's order.
+  repeated Sysctl sysctls = 1;
+  // Why the bpf_jit_* values are missing: they exist only in the node's initial
+  // network namespace, which the agent joins to read them, and joining it needs
+  // CAP_SYS_ADMIN. Empty when nothing stood in the way.
+  string sysctl_note = 2;
+  // The options bpftool prints, from the kernel's build config.
+  repeated KernelConfigOption kernel_config = 3;
+  // The file kernel_config was read from; empty when none could be, and
+  // kernel_config_note then says what was tried.
+  string kernel_config_source = 4;
+  string kernel_config_note = 5;
+  bool bpf_syscall = 6;
+  repeated FeatureProbe program_types = 7;
+  repeated FeatureProbe map_types = 8;
+  // bpftool's "miscellaneous eBPF features", plus ISA extension v4.
+  repeated FeatureProbe misc = 9;
+}
+
+message Sysctl {
+  string name = 1;     // bpftool's key, e.g. "bpf_jit_enable"
+  int64 value = 2;     // meaningful only when readable
+  bool readable = 3;
+  string note = 4;     // why it is not
+}
+
+message KernelConfigOption {
+  string name = 1;     // e.g. "CONFIG_BPF_SYSCALL"
+  string value = 2;    // "y", "m", "250", ...; empty when not set
+}
+
+// FeatureProbe is the outcome of one probe. A probe that could not be run - an
+// EPERM for want of CAP_BPF, say - is neither available nor not, and note says
+// what went wrong. bpftool prints that case as "NOT available".
+message FeatureProbe {
+  string name = 1;     // bpftool's spelling, e.g. "sched_cls", "lru_percpu_hash"
+  bool available = 2;
+  string note = 3;
 }

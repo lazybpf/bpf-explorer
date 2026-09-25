@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"golang.org/x/sys/unix"
 )
 
 // TestReadCgroupPaths covers which side of the agent's own cgroup namespace the
@@ -64,14 +66,14 @@ func TestReadCgroupPaths(t *testing.T) {
 	}
 }
 
-// TestRunInCgroupNS pins the contract the namespace crossing rests on: fn runs
+// TestRunInNS pins the contract the namespace crossing rests on: fn runs
 // only when the namespace was actually joined. Whether it can be joined here
 // depends on the privileges of the run - CAP_SYS_ADMIN in the namespace's owning
 // user namespace - so both outcomes are legitimate, and the test says what each
 // one has to look like rather than requiring one of them.
-func TestRunInCgroupNS(t *testing.T) {
+func TestRunInNS(t *testing.T) {
 	ran := false
-	err := runInCgroupNS("/proc/self/ns/cgroup", func() { ran = true })
+	err := runInNS("/proc/self/ns/cgroup", unix.CLONE_NEWCGROUP, func() { ran = true })
 	if err != nil && ran {
 		t.Errorf("fn ran even though the namespace was not joined: %v", err)
 	}
@@ -81,7 +83,7 @@ func TestRunInCgroupNS(t *testing.T) {
 
 	// A namespace that is not there is an error, and nothing runs.
 	ran = false
-	if err := runInCgroupNS(filepath.Join(t.TempDir(), "nothing"), func() { ran = true }); err == nil || ran {
+	if err := runInNS(filepath.Join(t.TempDir(), "nothing"), unix.CLONE_NEWCGROUP, func() { ran = true }); err == nil || ran {
 		t.Errorf("err %v, ran %v: want an error and nothing run", err, ran)
 	}
 }
