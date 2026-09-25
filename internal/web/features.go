@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/url"
 	"time"
 
 	pb "github.com/lazybpf/bpf-explorer/gen/bpfinspectorv1"
@@ -12,10 +13,11 @@ import (
 // features shows what the node's kernel supports for BPF - `bpftool feature
 // probe`, section by section. It is the question asked before anything is
 // loaded, where the node page answers what the node is and the object tabs
-// what is loaded on it.
+// what is loaded on it. It sat under utils until it earned a tab of its own:
+// it is the first thing to check on a node that will not load a program.
 func (h *Handlers) features(w http.ResponseWriter, r *http.Request) {
 	node := r.PathValue("node")
-	data := pageData{Node: node, Tab: "utils", Util: "features"}
+	data := pageData{Node: node, Tab: "features"}
 	data.Nodes, _ = h.nodes()
 
 	conn, err := h.dial(node)
@@ -39,6 +41,12 @@ func (h *Handlers) features(w http.ResponseWriter, r *http.Request) {
 	}
 	data.Features = f
 	h.render(w, "features", data)
+}
+
+// featuresMoved forwards the page's old path under utils, which is in
+// bookmarks and history from before it had a tab.
+func (h *Handlers) featuresMoved(w http.ResponseWriter, r *http.Request) {
+	http.Redirect(w, r, "/nodes/"+url.PathEscape(r.PathValue("node"))+"/features", http.StatusFound)
 }
 
 // sysctlText says what a system-configuration knob is set to in bpftool's own

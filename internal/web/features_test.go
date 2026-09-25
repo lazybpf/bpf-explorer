@@ -1,6 +1,8 @@
 package web
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -11,7 +13,7 @@ import (
 // sentences for the sysctls, "is set to" / "is not set" for the config - and
 // keeps a probe that could not run apart from one the kernel said no to.
 func TestFeaturesPage(t *testing.T) {
-	out := renderUtil(t, "features", pageData{Node: "node-a", Tab: "utils", Util: "features", Features: &pb.ProbeFeaturesResponse{
+	out := renderUtil(t, "features", pageData{Node: "node-a", Tab: "features", Features: &pb.ProbeFeaturesResponse{
 		Sysctls: []*pb.Sysctl{
 			{Name: "unprivileged_bpf_disabled", Value: 2, Readable: true},
 			{Name: "bpf_jit_enable", Value: 1, Readable: true},
@@ -49,20 +51,41 @@ func TestFeaturesPage(t *testing.T) {
 			t.Errorf("expected the page to contain %q\n%s", want, out)
 		}
 	}
-	if !strings.Contains(out, `href="/nodes/node-a/utils/features"`) {
-		t.Error("expected the utils menu to link the features page")
+	if !strings.Contains(out, `class="active" href="/nodes/node-a/features"`) {
+		t.Error("expected the tab bar to link the features page and mark it as the one open")
+	}
+	if strings.Contains(out, `/utils/features`) {
+		t.Error("expected no link to the features page's old path under utils")
 	}
 }
 
 // TestFeaturesPageNoKernelConfig covers the node without a readable config -
 // every container whose agent cannot reach pid 1's root.
 func TestFeaturesPageNoKernelConfig(t *testing.T) {
-	out := renderUtil(t, "features", pageData{Node: "node-a", Tab: "utils", Util: "features", Features: &pb.ProbeFeaturesResponse{
+	out := renderUtil(t, "features", pageData{Node: "node-a", Tab: "features", Features: &pb.ProbeFeaturesResponse{
 		KernelConfigNote: "open /proc/config.gz: no such file or directory",
 	}})
 	for _, want := range []string{"No kernel config found", "open /proc/config.gz: no such file or directory"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("expected the page to contain %q\n%s", want, out)
 		}
+	}
+}
+
+// TestFeaturesPageMovedOutOfUtils covers the path the page had under utils,
+// before it got a tab of its own.
+func TestFeaturesPageMovedOutOfUtils(t *testing.T) {
+	h, err := New(nil, nil)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	rec := httptest.NewRecorder()
+	h.Router().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/nodes/node-a/utils/features", nil))
+
+	if rec.Code != http.StatusFound {
+		t.Errorf("GET /nodes/node-a/utils/features = %d, want %d", rec.Code, http.StatusFound)
+	}
+	if got := rec.Header().Get("Location"); got != "/nodes/node-a/features" {
+		t.Errorf("redirected to %q, want %q", got, "/nodes/node-a/features")
 	}
 }

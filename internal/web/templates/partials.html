@@ -29,13 +29,16 @@
        They follow the attachment chain rather than the alphabet: a link is what
        holds a program to a hook, and a map is what a program reads and writes,
        so the bar reads outside in. cgroups comes after them: the same programs
-       again, seen from where they are attached. */}}
+       again, seen from where they are attached. features sits by utils: it is
+       about the node rather than what is loaded on it, but it is asked often
+       enough to be one click away. */}}
   <a class="{{tabClass .Tab .Sub "loaders"}}" href="/nodes/{{.Node}}/loaders">loaders</a>
   <a class="{{tabClass .Tab .Sub "links"}}" href="/nodes/{{.Node}}/links">links</a>
   <a class="{{tabClass .Tab .Sub "programs"}}" href="/nodes/{{.Node}}/programs">programs</a>
   <a class="{{tabClass .Tab .Sub "maps"}}" href="/nodes/{{.Node}}/maps">maps</a>
   <a class="{{tabClass .Tab .Sub "cgroups"}}" href="/nodes/{{.Node}}/cgroups">cgroups</a>
   <a class="{{tabClass .Tab .Sub "tracelog"}}" href="/nodes/{{.Node}}/tracelog">tracelog</a>
+  <a class="{{tabClass .Tab .Sub "features"}}" href="/nodes/{{.Node}}/features">features</a>
   <a class="{{tabClass .Tab .Sub "utils"}}" href="/nodes/{{.Node}}/utils">utils</a>
 </p>
 {{end}}
@@ -49,8 +52,7 @@
 
      The node itself leads: it is the only one that answers without being asked
      a number, which is why it has no arrow in its name and why the section's
-     bare URL lands on it. Its kernel's features follow, asked nothing either.
-     The lookups after them turn one number into one thing.
+     bare URL lands on it. The lookups after it turn one number into one thing.
 
      ASCII arrows, not &rarr;: the display face has no glyph for it, so the
      browser substitutes another font for that one character and it lands
@@ -59,8 +61,6 @@
 <p class="tabs subtabs">
   <a class="{{tabClass .Util false "node"}}" href="/nodes/{{.Node}}/utils/node"
      title="what the node itself is: kernel, cgroups, container runtime">node</a>
-  <a class="{{tabClass .Util false "features"}}" href="/nodes/{{.Node}}/utils/features"
-     title="what the kernel supports for BPF">features</a>
   <a class="{{tabClass .Util false "pid"}}" href="/nodes/{{.Node}}/utils/pid"
      title="describe a process by its pid">pid -&gt; process</a>
   <a class="{{tabClass .Util false "inode"}}" href="/nodes/{{.Node}}/utils/inode"
