@@ -308,14 +308,14 @@ func versionFromLDFlags(settings []debug.BuildSetting) (version, source string) 
 		if s.Key != "-ldflags" {
 			continue
 		}
-		for name, value := range xAssignments(s.Value) {
-			symbol := name
-			if i := strings.LastIndex(name, "."); i >= 0 {
-				symbol = name[i+1:]
+		for _, assignment := range xAssignments(s.Value) {
+			symbol := assignment.name
+			if i := strings.LastIndex(assignment.name, "."); i >= 0 {
+				symbol = assignment.name[i+1:]
 			}
 			for rank, want := range versionKeys {
 				if symbol == want && rank < best {
-					best, version, source = rank, value, "-X "+name
+					best, version, source = rank, assignment.value, "-X "+assignment.name
 				}
 			}
 		}
@@ -326,8 +326,13 @@ func versionFromLDFlags(settings []debug.BuildSetting) (version, source string) 
 // xAssignments returns the -X "name=value" pairs in a linker flag string. Both
 // spellings the go command accepts are handled ("-X name=value" and
 // "-X=name=value"), since a binary is stamped by whichever its build system used.
-func xAssignments(ldflags string) map[string]string {
-	out := map[string]string{}
+type xAssignment struct {
+	name  string
+	value string
+}
+
+func xAssignments(ldflags string) []xAssignment {
+	var out []xAssignment
 	fields := splitQuoted(ldflags)
 	for i, f := range fields {
 		assignment := ""
@@ -340,7 +345,10 @@ func xAssignments(ldflags string) map[string]string {
 			continue
 		}
 		if name, value, ok := strings.Cut(assignment, "="); ok {
-			out[strings.Trim(name, `"'`)] = strings.Trim(value, `"'`)
+			out = append(out, xAssignment{
+				name:  strings.Trim(name, `"'`),
+				value: strings.Trim(value, `"'`),
+			})
 		}
 	}
 	return out

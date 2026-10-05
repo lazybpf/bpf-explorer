@@ -16,7 +16,7 @@ loaded.
 It runs as two components:
 
 - agent (`--role=agent`) - gRPC server in a privileged DaemonSet; reads maps and
-  programs via `cilium/ebpf`.
+  programs via `cilium/ebpf`, and can query Tetragon's read-only policy API.
 - ui (`--role=ui`) - a Deployment that discovers agents via the Kubernetes API
   and fans out gRPC calls, serving HTML. `ClusterIP` only; reached via
   `kubectl port-forward`.
@@ -26,6 +26,20 @@ One binary serves both roles; one image runs both workloads. A third role,
 without a cluster - see [Run locally without a cluster](#run-locally-without-a-cluster).
 It is the default, so a bare `bpf-explorer` runs both halves; the manifest names
 `--role` explicitly for the two cluster workloads.
+
+## Tetragon policies
+
+The `tetragon policies` tab calls Tetragon's `ListTracingPolicies` gRPC API,
+and shows the same core fields as `tetra tracingpolicy list`: state, filter ID,
+namespace, sensors, kernel memory, mode, post count, enforcement count and
+monitor count. It also shows policy errors. By default, the agent connects to
+`unix:///var/run/tetragon/tetragon.sock`; the DaemonSet mounts the node's
+`/var/run/tetragon` directory read-only. Set
+`BPF_EXPLORER_TETRAGON_GRPC_ADDRESS` on the UI deployment to use another gRPC
+target reachable from the agent pod, such as a node address and port. Keep
+unauthenticated TCP gRPC listeners restricted to trusted clients. When Tetragon
+is absent or unreachable, the policy page shows the connection error while the
+rest of the explorer remains available.
 
 In a three-node cluster with an agent on every node:
 

@@ -56,3 +56,19 @@ func comma(n uint64) string {
 	}
 	return b.String()
 }
+
+// formatMemory matches Tetragon's decimal byte units in `tetra tracingpolicy list`.
+func formatMemory(bytes uint64) string {
+	if bytes < 1000 {
+		return strconv.FormatUint(bytes, 10) + " B"
+	}
+	units := []string{"kB", "MB", "GB", "TB", "PB"}
+	value := float64(bytes)
+	for _, unit := range units {
+		value /= 1000
+		if value < 1000 || unit == "PB" {
+			return strconv.FormatFloat(value, 'f', 2, 64) + " " + unit
+		}
+	}
+	return strconv.FormatUint(bytes, 10) + " B"
+}

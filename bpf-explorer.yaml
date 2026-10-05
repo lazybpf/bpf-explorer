@@ -71,6 +71,8 @@ spec:
       nodeSelector:
         bpf-explorer: "true"
       hostPID: true
+      # The agent reaches Tetragon's node-local gRPC socket through this host
+      # mount; it does not need to share the host network namespace.
       tolerations:
       - operator: Exists
       containers:
@@ -102,6 +104,9 @@ spec:
         - name: sys-kernel-tracing
           mountPath: /sys/kernel/tracing
           readOnly: true
+        - name: tetragon-socket
+          mountPath: /var/run/tetragon
+          readOnly: true
       volumes:
       - name: sys-fs-bpf
         hostPath:
@@ -119,6 +124,10 @@ spec:
         hostPath:
           path: /sys/kernel/tracing
           type: Directory
+      - name: tetragon-socket
+        hostPath:
+          path: /var/run/tetragon
+          type: DirectoryOrCreate
 ---
 # UI Deployment. Unprivileged, single replica. Discovers agent pods via the K8s
 # API and fans out read-only gRPC calls to each node's agent.
@@ -150,6 +159,9 @@ spec:
         # used without reaching for a registry.
         imagePullPolicy: IfNotPresent
         args: ["--role=ui", "--listen=:8080", "--namespace=bpf-explorer"]
+        env:
+        - name: BPF_EXPLORER_TETRAGON_GRPC_ADDRESS
+          value: "unix:///var/run/tetragon/tetragon.sock"
         # Optionally exclude noisy loaders (comma-separated PIDs) from the
         # dependency-graph grouping, e.g. "1" to hide the systemd loader.
         # env:

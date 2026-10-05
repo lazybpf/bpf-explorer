@@ -30,18 +30,23 @@ type Handlers struct {
 	disc          discovery.Discoverer
 	pages         map[string]*template.Template
 	hiddenLoaders map[uint32]bool // loader PIDs excluded from graph grouping
+	tetragonAddr  string
 }
 
 // New parses templates and returns the HTTP handlers. hiddenLoaders lists loader
 // PIDs to exclude when grouping the dependency graph (e.g. {1: true} for systemd).
-func New(disc discovery.Discoverer, hiddenLoaders map[uint32]bool) (*Handlers, error) {
+func New(disc discovery.Discoverer, hiddenLoaders map[uint32]bool, tetragonAddress ...string) (*Handlers, error) {
+	tetragonAddr := "unix:///var/run/tetragon/tetragon.sock"
+	if len(tetragonAddress) > 0 && tetragonAddress[0] != "" {
+		tetragonAddr = tetragonAddress[0]
+	}
 	funcs := template.FuncMap{
 		"mapFlags": mapFlags, "progName": progName, "progLoader": progLoader,
 		"mapLoaders": mapLoaders, "innerMapLoaders": innerMapLoaders,
 		"progArrayLoaders": progArrayLoaders,
 		"innerMapLabel":    innerMapLabel, "progLabel": progLabel,
 		"hexASCII": hexASCII, "tabClass": tabClass,
-		"holders": holders, "comma": comma, "registers": registerSheet,
+		"holders": holders, "comma": comma, "memory": formatMemory, "registers": registerSheet,
 		"nsHelp": namespaceHelp, "innerPIDs": innerPIDs, "cgroupHelp": cgroupHelp,
 		"nodeLinkTitle": nodeLinkTitle, "loadedAt": loadedAt,
 		"sysctlText": sysctlText, "availableCount": availableCount, "featureHelp": featureHelp,
@@ -52,7 +57,7 @@ func New(disc discovery.Discoverer, hiddenLoaders map[uint32]bool) (*Handlers, e
 	}
 	pages := map[string]*template.Template{}
 	for _, name := range []string{"index", "node", "maps", "mapdump", "programs", "progdump",
-		"links", "loaders", "loader", "tracelog", "utilpid", "utilinode", "features", "cgroups"} {
+		"links", "loaders", "loader", "tracelog", "utilpid", "utilinode", "features", "cgroups", "tetragon"} {
 		t, err := template.New(name).Funcs(funcs).ParseFS(templatesFS,
 			"templates/layout.html", "templates/partials.html", "templates/"+name+".html")
 		if err != nil {
@@ -60,7 +65,7 @@ func New(disc discovery.Discoverer, hiddenLoaders map[uint32]bool) (*Handlers, e
 		}
 		pages[name] = t
 	}
-	return &Handlers{disc: disc, pages: pages, hiddenLoaders: hiddenLoaders}, nil
+	return &Handlers{disc: disc, pages: pages, hiddenLoaders: hiddenLoaders, tetragonAddr: tetragonAddr}, nil
 }
 
 // Router registers the read-only routes.
@@ -72,6 +77,7 @@ func (h *Handlers) Router() http.Handler {
 	mux.HandleFunc("GET /nodes/{node}/programs", h.programs)
 	mux.HandleFunc("GET /nodes/{node}/programs/{id}", h.programs)
 	mux.HandleFunc("GET /nodes/{node}/links", h.links)
+	mux.HandleFunc("GET /nodes/{node}/tetragon", h.tetragonMoved)
 	mux.HandleFunc("GET /nodes/{node}/loaders", h.loadersIndex)
 	// The per-program and per-map diagrams are not loaders, but they share the
 	// loader tab and its template; they keep this prefix until the URLs get a
@@ -92,6 +98,7 @@ func (h *Handlers) Router() http.Handler {
 	mux.HandleFunc("GET /nodes/{node}/utils/node", h.nodeDetails)
 	mux.HandleFunc("GET /nodes/{node}/utils/pid", h.utilPID)
 	mux.HandleFunc("GET /nodes/{node}/utils/inode", h.utilInode)
+	mux.HandleFunc("GET /nodes/{node}/utils/tetragon", h.tetragonPolicies)
 	// That page had a tab of its own until it moved in beside the lookups, and
 	// its old path is still in bookmarks and history.
 	mux.HandleFunc("GET /nodes/{node}/node", h.nodeMoved)
@@ -113,11 +120,12 @@ type pageData struct {
 	Tab   string
 	// Util names the utility within the utils tab the way Tab names the tab:
 	// "node", "pid", "inode". Empty on every page outside that section.
-	Util     string
-	Err      string
-	Maps     []*pb.MapInfo
-	Programs []*pb.ProgramInfo
-	Links    []*pb.LinkInfo
+	Util             string
+	Err              string
+	Maps             []*pb.MapInfo
+	Programs         []*pb.ProgramInfo
+	Links            []*pb.LinkInfo
+	TetragonPolicies []*pb.TetragonPolicyInfo
 	// ProgFilter, MapFilter and LinkFilter narrow Programs, Maps and Links to
 	// one loader group. Nil when the page is showing everything on the node;
 	// the matching *Loaders slice is what it can be narrowed to, and is filled
@@ -158,6 +166,35 @@ type pageData struct {
 	// handler: the utilities share the tab, not a model.
 	PIDLookup   *pidLookup
 	InodeLookup *inodeLookup
+}
+
+// tetragonPolicies shows the policies Tetragon reports as loaded on this node.
+func (h *Handlers) tetragonPolicies(w http.ResponseWriter, r *http.Request) {
+	node := r.PathValue("node")
+	data := pageData{Node: node, Tab: "utils", Util: "tetragon"}
+	data.Nodes, _ = h.nodes()
+	conn, err := h.dial(node)
+	if err != nil {
+		data.Err = err.Error()
+		h.render(w, "tetragon", data)
+		return
+	}
+	defer conn.Close()
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+	res, err := pb.NewBpfInspectorClient(conn).ListTetragonPolicies(ctx, &pb.ListTetragonPoliciesRequest{Address: h.tetragonAddr})
+	if err != nil {
+		data.Err = err.Error()
+	} else {
+		data.TetragonPolicies = res.GetPolicies()
+	}
+	h.render(w, "tetragon", data)
+}
+
+// tetragonMoved keeps the original policy-list URL working after the page
+// moved into the utilities section.
+func (h *Handlers) tetragonMoved(w http.ResponseWriter, r *http.Request) {
+	http.Redirect(w, r, "/nodes/"+url.PathEscape(r.PathValue("node"))+"/utils/tetragon", http.StatusFound)
 }
 
 // loaderSummary is one row of the loaders index: a loader and how many objects
@@ -908,6 +945,8 @@ func pageTitle(page string, data pageData) string {
 	switch page {
 	case "index":
 		what = ""
+	case "tetragon":
+		what = "tetragon policies"
 	case "mapdump":
 		what = "map dump"
 		if d := data.Dump; d != nil {

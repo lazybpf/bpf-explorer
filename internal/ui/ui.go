@@ -21,6 +21,10 @@ const hideLoaderPIDsEnv = "BPF_EXPLORER_HIDE_LOADER_PIDS"
 // agentPort is the gRPC port the agents listen on (matches deploy/03-daemonset.yaml).
 const agentPort = 50051
 
+// tetragonAddressEnv configures the node-local Tetragon gRPC target forwarded
+// through each bpf-explorer agent. Empty selects Tetragon's default socket.
+const tetragonAddressEnv = "BPF_EXPLORER_TETRAGON_GRPC_ADDRESS"
+
 // Run serves the UI on addr. If staticAgents is non-empty it uses static
 // discovery; otherwise it discovers agent pods via the in-cluster K8s API in
 // the given namespace.
@@ -48,7 +52,7 @@ func Run(addr, namespace, staticAgents string) error {
 		log.Printf("ui: hiding loader PIDs from graph grouping: %v", os.Getenv(hideLoaderPIDsEnv))
 	}
 
-	handlers, err := web.New(disc, hidden)
+	handlers, err := web.New(disc, hidden, strings.TrimSpace(os.Getenv(tetragonAddressEnv)))
 	if err != nil {
 		return err
 	}
