@@ -14,7 +14,7 @@
 # The binary is pure Go (cilium/ebpf needs no cgo), so we cross-compile from the
 # build platform instead of emulating the target — fast even for arm64.
 
-FROM --platform=$BUILDPLATFORM golang:1.25 AS builder
+FROM --platform=$BUILDPLATFORM golang:1.26 AS builder
 ARG TARGETOS
 ARG TARGETARCH
 # Stamped into the binary and shown in the UI header. Left empty for a plain

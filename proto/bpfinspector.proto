@@ -21,7 +21,9 @@ service BpfInspector {
   rpc DescribeNode(DescribeNodeRequest) returns (DescribeNodeResponse);
   rpc ProbeFeatures(ProbeFeaturesRequest) returns (ProbeFeaturesResponse);
   rpc CgroupTree(CgroupTreeRequest) returns (CgroupTreeResponse);
+  rpc ListTetragonPolicies(ListTetragonPoliciesRequest) returns (ListTetragonPoliciesResponse);
 }
+
 
 message MapInfo {
   uint32 id = 1;
@@ -477,3 +479,25 @@ message CgroupProgram {
   uint32 attach_btf_obj_id = 6;
   uint32 attach_btf_id = 7;
 }
+
+// A read-only snapshot returned by Tetragon's own ListTracingPolicies API.
+message TetragonPolicyInfo {
+  uint64 id = 1;
+  string name = 2;
+  string namespace = 3;
+  string state = 4;
+  string mode = 5;
+  string error = 6;
+  repeated string sensors = 7;
+  uint64 filter_id = 8;
+  uint64 kernel_memory_bytes = 9;
+  uint64 npost = 10;
+  uint64 nenforce = 11;
+  uint64 nmonitor = 12;
+}
+message ListTetragonPoliciesRequest {
+  // Address of the node-local Tetragon gRPC server, e.g.
+  // unix:///var/run/tetragon/tetragon.sock or 127.0.0.1:54321.
+  string address = 1;
+}
+message ListTetragonPoliciesResponse { repeated TetragonPolicyInfo policies = 1; }

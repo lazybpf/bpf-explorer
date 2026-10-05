@@ -29,7 +29,8 @@ func Run(addr string) error {
 	grpcServer := grpc.NewServer()
 	// One trace_pipe hub per agent process: it is shared by every TraceLog
 	// stream so the node's trace buffer has a single reader.
-	pb.RegisterBpfInspectorServer(grpcServer, server.New(inspector.New(), tracelog.NewHub()))
+	tetragonAddr := os.Getenv("BPF_EXPLORER_TETRAGON_GRPC_ADDRESS")
+	pb.RegisterBpfInspectorServer(grpcServer, server.New(inspector.New(), tracelog.NewHub(), tetragonAddr))
 
 	go func() {
 		sig := make(chan os.Signal, 1)

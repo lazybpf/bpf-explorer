@@ -2931,6 +2931,229 @@ func (x *CgroupProgram) GetAttachBtfId() uint32 {
 	return 0
 }
 
+// A read-only snapshot returned by Tetragon's own ListTracingPolicies API.
+type TetragonPolicyInfo struct {
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	Id                uint64                 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
+	Name              string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	Namespace         string                 `protobuf:"bytes,3,opt,name=namespace,proto3" json:"namespace,omitempty"`
+	State             string                 `protobuf:"bytes,4,opt,name=state,proto3" json:"state,omitempty"`
+	Mode              string                 `protobuf:"bytes,5,opt,name=mode,proto3" json:"mode,omitempty"`
+	Error             string                 `protobuf:"bytes,6,opt,name=error,proto3" json:"error,omitempty"`
+	Sensors           []string               `protobuf:"bytes,7,rep,name=sensors,proto3" json:"sensors,omitempty"`
+	FilterId          uint64                 `protobuf:"varint,8,opt,name=filter_id,json=filterId,proto3" json:"filter_id,omitempty"`
+	KernelMemoryBytes uint64                 `protobuf:"varint,9,opt,name=kernel_memory_bytes,json=kernelMemoryBytes,proto3" json:"kernel_memory_bytes,omitempty"`
+	Npost             uint64                 `protobuf:"varint,10,opt,name=npost,proto3" json:"npost,omitempty"`
+	Nenforce          uint64                 `protobuf:"varint,11,opt,name=nenforce,proto3" json:"nenforce,omitempty"`
+	Nmonitor          uint64                 `protobuf:"varint,12,opt,name=nmonitor,proto3" json:"nmonitor,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *TetragonPolicyInfo) Reset() {
+	*x = TetragonPolicyInfo{}
+	mi := &file_proto_bpfinspector_proto_msgTypes[40]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TetragonPolicyInfo) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TetragonPolicyInfo) ProtoMessage() {}
+
+func (x *TetragonPolicyInfo) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_bpfinspector_proto_msgTypes[40]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TetragonPolicyInfo.ProtoReflect.Descriptor instead.
+func (*TetragonPolicyInfo) Descriptor() ([]byte, []int) {
+	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{40}
+}
+
+func (x *TetragonPolicyInfo) GetId() uint64 {
+	if x != nil {
+		return x.Id
+	}
+	return 0
+}
+
+func (x *TetragonPolicyInfo) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *TetragonPolicyInfo) GetNamespace() string {
+	if x != nil {
+		return x.Namespace
+	}
+	return ""
+}
+
+func (x *TetragonPolicyInfo) GetState() string {
+	if x != nil {
+		return x.State
+	}
+	return ""
+}
+
+func (x *TetragonPolicyInfo) GetMode() string {
+	if x != nil {
+		return x.Mode
+	}
+	return ""
+}
+
+func (x *TetragonPolicyInfo) GetError() string {
+	if x != nil {
+		return x.Error
+	}
+	return ""
+}
+
+func (x *TetragonPolicyInfo) GetSensors() []string {
+	if x != nil {
+		return x.Sensors
+	}
+	return nil
+}
+
+func (x *TetragonPolicyInfo) GetFilterId() uint64 {
+	if x != nil {
+		return x.FilterId
+	}
+	return 0
+}
+
+func (x *TetragonPolicyInfo) GetKernelMemoryBytes() uint64 {
+	if x != nil {
+		return x.KernelMemoryBytes
+	}
+	return 0
+}
+
+func (x *TetragonPolicyInfo) GetNpost() uint64 {
+	if x != nil {
+		return x.Npost
+	}
+	return 0
+}
+
+func (x *TetragonPolicyInfo) GetNenforce() uint64 {
+	if x != nil {
+		return x.Nenforce
+	}
+	return 0
+}
+
+func (x *TetragonPolicyInfo) GetNmonitor() uint64 {
+	if x != nil {
+		return x.Nmonitor
+	}
+	return 0
+}
+
+type ListTetragonPoliciesRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Address of the node-local Tetragon gRPC server, e.g.
+	// unix:///var/run/tetragon/tetragon.sock or 127.0.0.1:54321.
+	Address       string `protobuf:"bytes,1,opt,name=address,proto3" json:"address,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListTetragonPoliciesRequest) Reset() {
+	*x = ListTetragonPoliciesRequest{}
+	mi := &file_proto_bpfinspector_proto_msgTypes[41]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListTetragonPoliciesRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListTetragonPoliciesRequest) ProtoMessage() {}
+
+func (x *ListTetragonPoliciesRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_bpfinspector_proto_msgTypes[41]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListTetragonPoliciesRequest.ProtoReflect.Descriptor instead.
+func (*ListTetragonPoliciesRequest) Descriptor() ([]byte, []int) {
+	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{41}
+}
+
+func (x *ListTetragonPoliciesRequest) GetAddress() string {
+	if x != nil {
+		return x.Address
+	}
+	return ""
+}
+
+type ListTetragonPoliciesResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Policies      []*TetragonPolicyInfo  `protobuf:"bytes,1,rep,name=policies,proto3" json:"policies,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListTetragonPoliciesResponse) Reset() {
+	*x = ListTetragonPoliciesResponse{}
+	mi := &file_proto_bpfinspector_proto_msgTypes[42]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListTetragonPoliciesResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListTetragonPoliciesResponse) ProtoMessage() {}
+
+func (x *ListTetragonPoliciesResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_bpfinspector_proto_msgTypes[42]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListTetragonPoliciesResponse.ProtoReflect.Descriptor instead.
+func (*ListTetragonPoliciesResponse) Descriptor() ([]byte, []int) {
+	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{42}
+}
+
+func (x *ListTetragonPoliciesResponse) GetPolicies() []*TetragonPolicyInfo {
+	if x != nil {
+		return x.Policies
+	}
+	return nil
+}
+
 var File_proto_bpfinspector_proto protoreflect.FileDescriptor
 
 const file_proto_bpfinspector_proto_rawDesc = "" +
@@ -3160,7 +3383,25 @@ const file_proto_bpfinspector_proto_rawDesc = "" +
 	"\x04name\x18\x04 \x01(\tR\x04name\x12&\n" +
 	"\x0fattach_btf_name\x18\x05 \x01(\tR\rattachBtfName\x12)\n" +
 	"\x11attach_btf_obj_id\x18\x06 \x01(\rR\x0eattachBtfObjId\x12\"\n" +
-	"\rattach_btf_id\x18\a \x01(\rR\vattachBtfId2\xdf\a\n" +
+	"\rattach_btf_id\x18\a \x01(\rR\vattachBtfId\"\xcb\x02\n" +
+	"\x12TetragonPolicyInfo\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\x04R\x02id\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\x12\x1c\n" +
+	"\tnamespace\x18\x03 \x01(\tR\tnamespace\x12\x14\n" +
+	"\x05state\x18\x04 \x01(\tR\x05state\x12\x12\n" +
+	"\x04mode\x18\x05 \x01(\tR\x04mode\x12\x14\n" +
+	"\x05error\x18\x06 \x01(\tR\x05error\x12\x18\n" +
+	"\asensors\x18\a \x03(\tR\asensors\x12\x1b\n" +
+	"\tfilter_id\x18\b \x01(\x04R\bfilterId\x12.\n" +
+	"\x13kernel_memory_bytes\x18\t \x01(\x04R\x11kernelMemoryBytes\x12\x14\n" +
+	"\x05npost\x18\n" +
+	" \x01(\x04R\x05npost\x12\x1a\n" +
+	"\bnenforce\x18\v \x01(\x04R\bnenforce\x12\x1a\n" +
+	"\bnmonitor\x18\f \x01(\x04R\bnmonitor\"7\n" +
+	"\x1bListTetragonPoliciesRequest\x12\x18\n" +
+	"\aaddress\x18\x01 \x01(\tR\aaddress\"_\n" +
+	"\x1cListTetragonPoliciesResponse\x12?\n" +
+	"\bpolicies\x18\x01 \x03(\v2#.bpfinspector.v1.TetragonPolicyInfoR\bpolicies2\xd4\b\n" +
 	"\fBpfInspector\x12O\n" +
 	"\bListMaps\x12 .bpfinspector.v1.ListMapsRequest\x1a!.bpfinspector.v1.ListMapsResponse\x12L\n" +
 	"\aDumpMap\x12\x1f.bpfinspector.v1.DumpMapRequest\x1a .bpfinspector.v1.DumpMapResponse\x12[\n" +
@@ -3173,7 +3414,8 @@ const file_proto_bpfinspector_proto_rawDesc = "" +
 	"\fDescribeNode\x12$.bpfinspector.v1.DescribeNodeRequest\x1a%.bpfinspector.v1.DescribeNodeResponse\x12^\n" +
 	"\rProbeFeatures\x12%.bpfinspector.v1.ProbeFeaturesRequest\x1a&.bpfinspector.v1.ProbeFeaturesResponse\x12U\n" +
 	"\n" +
-	"CgroupTree\x12\".bpfinspector.v1.CgroupTreeRequest\x1a#.bpfinspector.v1.CgroupTreeResponseBCZAgithub.com/lazybpf/bpf-explorer/gen/bpfinspectorv1;bpfinspectorv1b\x06proto3"
+	"CgroupTree\x12\".bpfinspector.v1.CgroupTreeRequest\x1a#.bpfinspector.v1.CgroupTreeResponse\x12s\n" +
+	"\x14ListTetragonPolicies\x12,.bpfinspector.v1.ListTetragonPoliciesRequest\x1a-.bpfinspector.v1.ListTetragonPoliciesResponseBCZAgithub.com/lazybpf/bpf-explorer/gen/bpfinspectorv1;bpfinspectorv1b\x06proto3"
 
 var (
 	file_proto_bpfinspector_proto_rawDescOnce sync.Once
@@ -3187,48 +3429,51 @@ func file_proto_bpfinspector_proto_rawDescGZIP() []byte {
 	return file_proto_bpfinspector_proto_rawDescData
 }
 
-var file_proto_bpfinspector_proto_msgTypes = make([]protoimpl.MessageInfo, 40)
+var file_proto_bpfinspector_proto_msgTypes = make([]protoimpl.MessageInfo, 43)
 var file_proto_bpfinspector_proto_goTypes = []any{
-	(*MapInfo)(nil),                 // 0: bpfinspector.v1.MapInfo
-	(*ListMapsRequest)(nil),         // 1: bpfinspector.v1.ListMapsRequest
-	(*ListMapsResponse)(nil),        // 2: bpfinspector.v1.ListMapsResponse
-	(*MapEntry)(nil),                // 3: bpfinspector.v1.MapEntry
-	(*DumpMapRequest)(nil),          // 4: bpfinspector.v1.DumpMapRequest
-	(*DumpMapResponse)(nil),         // 5: bpfinspector.v1.DumpMapResponse
-	(*ProcessRef)(nil),              // 6: bpfinspector.v1.ProcessRef
-	(*ProgramInfo)(nil),             // 7: bpfinspector.v1.ProgramInfo
-	(*ListProgramsRequest)(nil),     // 8: bpfinspector.v1.ListProgramsRequest
-	(*ListProgramsResponse)(nil),    // 9: bpfinspector.v1.ListProgramsResponse
-	(*DumpProgramRequest)(nil),      // 10: bpfinspector.v1.DumpProgramRequest
-	(*DumpProgramResponse)(nil),     // 11: bpfinspector.v1.DumpProgramResponse
-	(*TailCall)(nil),                // 12: bpfinspector.v1.TailCall
-	(*LinkInfo)(nil),                // 13: bpfinspector.v1.LinkInfo
-	(*ListLinksRequest)(nil),        // 14: bpfinspector.v1.ListLinksRequest
-	(*ListLinksResponse)(nil),       // 15: bpfinspector.v1.ListLinksResponse
-	(*TraceLogRequest)(nil),         // 16: bpfinspector.v1.TraceLogRequest
-	(*TraceLogEvent)(nil),           // 17: bpfinspector.v1.TraceLogEvent
-	(*ResolveInodeRequest)(nil),     // 18: bpfinspector.v1.ResolveInodeRequest
-	(*WalkStats)(nil),               // 19: bpfinspector.v1.WalkStats
-	(*InodeHolder)(nil),             // 20: bpfinspector.v1.InodeHolder
-	(*InodeMatch)(nil),              // 21: bpfinspector.v1.InodeMatch
-	(*ResolveInodeResponse)(nil),    // 22: bpfinspector.v1.ResolveInodeResponse
-	(*DescribeProcessRequest)(nil),  // 23: bpfinspector.v1.DescribeProcessRequest
-	(*DescribeProcessResponse)(nil), // 24: bpfinspector.v1.DescribeProcessResponse
-	(*DescribeNodeRequest)(nil),     // 25: bpfinspector.v1.DescribeNodeRequest
-	(*DescribeNodeResponse)(nil),    // 26: bpfinspector.v1.DescribeNodeResponse
-	(*Kernel)(nil),                  // 27: bpfinspector.v1.Kernel
-	(*Cgroups)(nil),                 // 28: bpfinspector.v1.Cgroups
-	(*Component)(nil),               // 29: bpfinspector.v1.Component
-	(*Namespace)(nil),               // 30: bpfinspector.v1.Namespace
-	(*ProbeFeaturesRequest)(nil),    // 31: bpfinspector.v1.ProbeFeaturesRequest
-	(*ProbeFeaturesResponse)(nil),   // 32: bpfinspector.v1.ProbeFeaturesResponse
-	(*Sysctl)(nil),                  // 33: bpfinspector.v1.Sysctl
-	(*KernelConfigOption)(nil),      // 34: bpfinspector.v1.KernelConfigOption
-	(*FeatureProbe)(nil),            // 35: bpfinspector.v1.FeatureProbe
-	(*CgroupTreeRequest)(nil),       // 36: bpfinspector.v1.CgroupTreeRequest
-	(*CgroupTreeResponse)(nil),      // 37: bpfinspector.v1.CgroupTreeResponse
-	(*CgroupAttachments)(nil),       // 38: bpfinspector.v1.CgroupAttachments
-	(*CgroupProgram)(nil),           // 39: bpfinspector.v1.CgroupProgram
+	(*MapInfo)(nil),                      // 0: bpfinspector.v1.MapInfo
+	(*ListMapsRequest)(nil),              // 1: bpfinspector.v1.ListMapsRequest
+	(*ListMapsResponse)(nil),             // 2: bpfinspector.v1.ListMapsResponse
+	(*MapEntry)(nil),                     // 3: bpfinspector.v1.MapEntry
+	(*DumpMapRequest)(nil),               // 4: bpfinspector.v1.DumpMapRequest
+	(*DumpMapResponse)(nil),              // 5: bpfinspector.v1.DumpMapResponse
+	(*ProcessRef)(nil),                   // 6: bpfinspector.v1.ProcessRef
+	(*ProgramInfo)(nil),                  // 7: bpfinspector.v1.ProgramInfo
+	(*ListProgramsRequest)(nil),          // 8: bpfinspector.v1.ListProgramsRequest
+	(*ListProgramsResponse)(nil),         // 9: bpfinspector.v1.ListProgramsResponse
+	(*DumpProgramRequest)(nil),           // 10: bpfinspector.v1.DumpProgramRequest
+	(*DumpProgramResponse)(nil),          // 11: bpfinspector.v1.DumpProgramResponse
+	(*TailCall)(nil),                     // 12: bpfinspector.v1.TailCall
+	(*LinkInfo)(nil),                     // 13: bpfinspector.v1.LinkInfo
+	(*ListLinksRequest)(nil),             // 14: bpfinspector.v1.ListLinksRequest
+	(*ListLinksResponse)(nil),            // 15: bpfinspector.v1.ListLinksResponse
+	(*TraceLogRequest)(nil),              // 16: bpfinspector.v1.TraceLogRequest
+	(*TraceLogEvent)(nil),                // 17: bpfinspector.v1.TraceLogEvent
+	(*ResolveInodeRequest)(nil),          // 18: bpfinspector.v1.ResolveInodeRequest
+	(*WalkStats)(nil),                    // 19: bpfinspector.v1.WalkStats
+	(*InodeHolder)(nil),                  // 20: bpfinspector.v1.InodeHolder
+	(*InodeMatch)(nil),                   // 21: bpfinspector.v1.InodeMatch
+	(*ResolveInodeResponse)(nil),         // 22: bpfinspector.v1.ResolveInodeResponse
+	(*DescribeProcessRequest)(nil),       // 23: bpfinspector.v1.DescribeProcessRequest
+	(*DescribeProcessResponse)(nil),      // 24: bpfinspector.v1.DescribeProcessResponse
+	(*DescribeNodeRequest)(nil),          // 25: bpfinspector.v1.DescribeNodeRequest
+	(*DescribeNodeResponse)(nil),         // 26: bpfinspector.v1.DescribeNodeResponse
+	(*Kernel)(nil),                       // 27: bpfinspector.v1.Kernel
+	(*Cgroups)(nil),                      // 28: bpfinspector.v1.Cgroups
+	(*Component)(nil),                    // 29: bpfinspector.v1.Component
+	(*Namespace)(nil),                    // 30: bpfinspector.v1.Namespace
+	(*ProbeFeaturesRequest)(nil),         // 31: bpfinspector.v1.ProbeFeaturesRequest
+	(*ProbeFeaturesResponse)(nil),        // 32: bpfinspector.v1.ProbeFeaturesResponse
+	(*Sysctl)(nil),                       // 33: bpfinspector.v1.Sysctl
+	(*KernelConfigOption)(nil),           // 34: bpfinspector.v1.KernelConfigOption
+	(*FeatureProbe)(nil),                 // 35: bpfinspector.v1.FeatureProbe
+	(*CgroupTreeRequest)(nil),            // 36: bpfinspector.v1.CgroupTreeRequest
+	(*CgroupTreeResponse)(nil),           // 37: bpfinspector.v1.CgroupTreeResponse
+	(*CgroupAttachments)(nil),            // 38: bpfinspector.v1.CgroupAttachments
+	(*CgroupProgram)(nil),                // 39: bpfinspector.v1.CgroupProgram
+	(*TetragonPolicyInfo)(nil),           // 40: bpfinspector.v1.TetragonPolicyInfo
+	(*ListTetragonPoliciesRequest)(nil),  // 41: bpfinspector.v1.ListTetragonPoliciesRequest
+	(*ListTetragonPoliciesResponse)(nil), // 42: bpfinspector.v1.ListTetragonPoliciesResponse
 }
 var file_proto_bpfinspector_proto_depIdxs = []int32{
 	6,  // 0: bpfinspector.v1.MapInfo.pids:type_name -> bpfinspector.v1.ProcessRef
@@ -3252,33 +3497,36 @@ var file_proto_bpfinspector_proto_depIdxs = []int32{
 	35, // 18: bpfinspector.v1.ProbeFeaturesResponse.misc:type_name -> bpfinspector.v1.FeatureProbe
 	38, // 19: bpfinspector.v1.CgroupTreeResponse.cgroups:type_name -> bpfinspector.v1.CgroupAttachments
 	39, // 20: bpfinspector.v1.CgroupAttachments.programs:type_name -> bpfinspector.v1.CgroupProgram
-	1,  // 21: bpfinspector.v1.BpfInspector.ListMaps:input_type -> bpfinspector.v1.ListMapsRequest
-	4,  // 22: bpfinspector.v1.BpfInspector.DumpMap:input_type -> bpfinspector.v1.DumpMapRequest
-	8,  // 23: bpfinspector.v1.BpfInspector.ListPrograms:input_type -> bpfinspector.v1.ListProgramsRequest
-	10, // 24: bpfinspector.v1.BpfInspector.DumpProgram:input_type -> bpfinspector.v1.DumpProgramRequest
-	14, // 25: bpfinspector.v1.BpfInspector.ListLinks:input_type -> bpfinspector.v1.ListLinksRequest
-	16, // 26: bpfinspector.v1.BpfInspector.TraceLog:input_type -> bpfinspector.v1.TraceLogRequest
-	18, // 27: bpfinspector.v1.BpfInspector.ResolveInode:input_type -> bpfinspector.v1.ResolveInodeRequest
-	23, // 28: bpfinspector.v1.BpfInspector.DescribeProcess:input_type -> bpfinspector.v1.DescribeProcessRequest
-	25, // 29: bpfinspector.v1.BpfInspector.DescribeNode:input_type -> bpfinspector.v1.DescribeNodeRequest
-	31, // 30: bpfinspector.v1.BpfInspector.ProbeFeatures:input_type -> bpfinspector.v1.ProbeFeaturesRequest
-	36, // 31: bpfinspector.v1.BpfInspector.CgroupTree:input_type -> bpfinspector.v1.CgroupTreeRequest
-	2,  // 32: bpfinspector.v1.BpfInspector.ListMaps:output_type -> bpfinspector.v1.ListMapsResponse
-	5,  // 33: bpfinspector.v1.BpfInspector.DumpMap:output_type -> bpfinspector.v1.DumpMapResponse
-	9,  // 34: bpfinspector.v1.BpfInspector.ListPrograms:output_type -> bpfinspector.v1.ListProgramsResponse
-	11, // 35: bpfinspector.v1.BpfInspector.DumpProgram:output_type -> bpfinspector.v1.DumpProgramResponse
-	15, // 36: bpfinspector.v1.BpfInspector.ListLinks:output_type -> bpfinspector.v1.ListLinksResponse
-	17, // 37: bpfinspector.v1.BpfInspector.TraceLog:output_type -> bpfinspector.v1.TraceLogEvent
-	22, // 38: bpfinspector.v1.BpfInspector.ResolveInode:output_type -> bpfinspector.v1.ResolveInodeResponse
-	24, // 39: bpfinspector.v1.BpfInspector.DescribeProcess:output_type -> bpfinspector.v1.DescribeProcessResponse
-	26, // 40: bpfinspector.v1.BpfInspector.DescribeNode:output_type -> bpfinspector.v1.DescribeNodeResponse
-	32, // 41: bpfinspector.v1.BpfInspector.ProbeFeatures:output_type -> bpfinspector.v1.ProbeFeaturesResponse
-	37, // 42: bpfinspector.v1.BpfInspector.CgroupTree:output_type -> bpfinspector.v1.CgroupTreeResponse
-	32, // [32:43] is the sub-list for method output_type
-	21, // [21:32] is the sub-list for method input_type
-	21, // [21:21] is the sub-list for extension type_name
-	21, // [21:21] is the sub-list for extension extendee
-	0,  // [0:21] is the sub-list for field type_name
+	40, // 21: bpfinspector.v1.ListTetragonPoliciesResponse.policies:type_name -> bpfinspector.v1.TetragonPolicyInfo
+	1,  // 22: bpfinspector.v1.BpfInspector.ListMaps:input_type -> bpfinspector.v1.ListMapsRequest
+	4,  // 23: bpfinspector.v1.BpfInspector.DumpMap:input_type -> bpfinspector.v1.DumpMapRequest
+	8,  // 24: bpfinspector.v1.BpfInspector.ListPrograms:input_type -> bpfinspector.v1.ListProgramsRequest
+	10, // 25: bpfinspector.v1.BpfInspector.DumpProgram:input_type -> bpfinspector.v1.DumpProgramRequest
+	14, // 26: bpfinspector.v1.BpfInspector.ListLinks:input_type -> bpfinspector.v1.ListLinksRequest
+	16, // 27: bpfinspector.v1.BpfInspector.TraceLog:input_type -> bpfinspector.v1.TraceLogRequest
+	18, // 28: bpfinspector.v1.BpfInspector.ResolveInode:input_type -> bpfinspector.v1.ResolveInodeRequest
+	23, // 29: bpfinspector.v1.BpfInspector.DescribeProcess:input_type -> bpfinspector.v1.DescribeProcessRequest
+	25, // 30: bpfinspector.v1.BpfInspector.DescribeNode:input_type -> bpfinspector.v1.DescribeNodeRequest
+	31, // 31: bpfinspector.v1.BpfInspector.ProbeFeatures:input_type -> bpfinspector.v1.ProbeFeaturesRequest
+	36, // 32: bpfinspector.v1.BpfInspector.CgroupTree:input_type -> bpfinspector.v1.CgroupTreeRequest
+	41, // 33: bpfinspector.v1.BpfInspector.ListTetragonPolicies:input_type -> bpfinspector.v1.ListTetragonPoliciesRequest
+	2,  // 34: bpfinspector.v1.BpfInspector.ListMaps:output_type -> bpfinspector.v1.ListMapsResponse
+	5,  // 35: bpfinspector.v1.BpfInspector.DumpMap:output_type -> bpfinspector.v1.DumpMapResponse
+	9,  // 36: bpfinspector.v1.BpfInspector.ListPrograms:output_type -> bpfinspector.v1.ListProgramsResponse
+	11, // 37: bpfinspector.v1.BpfInspector.DumpProgram:output_type -> bpfinspector.v1.DumpProgramResponse
+	15, // 38: bpfinspector.v1.BpfInspector.ListLinks:output_type -> bpfinspector.v1.ListLinksResponse
+	17, // 39: bpfinspector.v1.BpfInspector.TraceLog:output_type -> bpfinspector.v1.TraceLogEvent
+	22, // 40: bpfinspector.v1.BpfInspector.ResolveInode:output_type -> bpfinspector.v1.ResolveInodeResponse
+	24, // 41: bpfinspector.v1.BpfInspector.DescribeProcess:output_type -> bpfinspector.v1.DescribeProcessResponse
+	26, // 42: bpfinspector.v1.BpfInspector.DescribeNode:output_type -> bpfinspector.v1.DescribeNodeResponse
+	32, // 43: bpfinspector.v1.BpfInspector.ProbeFeatures:output_type -> bpfinspector.v1.ProbeFeaturesResponse
+	37, // 44: bpfinspector.v1.BpfInspector.CgroupTree:output_type -> bpfinspector.v1.CgroupTreeResponse
+	42, // 45: bpfinspector.v1.BpfInspector.ListTetragonPolicies:output_type -> bpfinspector.v1.ListTetragonPoliciesResponse
+	34, // [34:46] is the sub-list for method output_type
+	22, // [22:34] is the sub-list for method input_type
+	22, // [22:22] is the sub-list for extension type_name
+	22, // [22:22] is the sub-list for extension extendee
+	0,  // [0:22] is the sub-list for field type_name
 }
 
 func init() { file_proto_bpfinspector_proto_init() }
@@ -3292,7 +3540,7 @@ func file_proto_bpfinspector_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_bpfinspector_proto_rawDesc), len(file_proto_bpfinspector_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   40,
+			NumMessages:   43,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

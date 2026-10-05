@@ -1,0 +1,28 @@
+{{define "content"}}
+{{template "nodebar" .}}
+{{template "utilnav" .}}
+<h2>Tetragon tracing policies on <span class="name">{{.Node}}</span> <span class="muted">({{len .TetragonPolicies}})</span></h2>
+<div class="scroll">
+<table>
+  <thead><tr>
+    <th>ID</th><th>NAME</th><th>STATE</th><th>FILTERID</th><th>NAMESPACE</th>
+    <th>SENSORS</th><th>KERNELMEMORY</th><th>MODE</th>
+    <th>NPOST</th><th>NENFORCE</th><th>NMONITOR</th><th>Error</th>
+  </tr></thead>
+  <tbody>
+  {{range .TetragonPolicies}}
+    <tr>
+      <td>{{.Id}}</td><td>{{.Name}}</td><td>{{.State}}</td><td>{{.FilterId}}</td>
+      <td>{{with .Namespace}}{{.}}{{else}}(global){{end}}</td>
+      <td>{{range $i, $sensor := .Sensors}}{{if $i}},{{end}}{{$sensor}}{{else}}<span class="muted">-</span>{{end}}</td>
+      <td>{{memory .KernelMemoryBytes}}</td><td>{{.Mode}}</td>
+      <td>{{.Npost}}</td><td>{{.Nenforce}}</td><td>{{.Nmonitor}}</td>
+      <td>{{with .Error}}{{.}}{{else}}<span class="muted">-</span>{{end}}</td>
+    </tr>
+  {{else}}
+    <tr><td colspan="12" class="muted">(no tracing policies)</td></tr>
+  {{end}}
+  </tbody>
+</table>
+</div>
+{{end}}

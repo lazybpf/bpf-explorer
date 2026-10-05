@@ -5,24 +5,69 @@ package server
 
 import (
 	"context"
+	"strings"
 	"time"
 
+	tetragon "github.com/cilium/tetragon/api/v1/tetragon"
 	pb "github.com/lazybpf/bpf-explorer/gen/bpfinspectorv1"
 	"github.com/lazybpf/bpf-explorer/internal/inspector"
 	"github.com/lazybpf/bpf-explorer/internal/tracelog"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
 )
 
 // Server implements pb.BpfInspectorServer.
 type Server struct {
 	pb.UnimplementedBpfInspectorServer
-	insp *inspector.Inspector
-	hub  *tracelog.Hub
+	insp         *inspector.Inspector
+	hub          *tracelog.Hub
+	tetragonAddr string
 }
 
-func New(insp *inspector.Inspector, hub *tracelog.Hub) *Server {
-	return &Server{insp: insp, hub: hub}
+func New(insp *inspector.Inspector, hub *tracelog.Hub, tetragonAddr ...string) *Server {
+	addr := "unix:///var/run/tetragon/tetragon.sock"
+	if len(tetragonAddr) > 0 && tetragonAddr[0] != "" {
+		addr = tetragonAddr[0]
+	}
+	return &Server{insp: insp, hub: hub, tetragonAddr: addr}
+}
+
+// ListTetragonPolicies asks the local Tetragon daemon for its current policy
+// state. It is read-only and deliberately uses Tetragon's gRPC API directly.
+func (s *Server) ListTetragonPolicies(ctx context.Context, req *pb.ListTetragonPoliciesRequest) (*pb.ListTetragonPoliciesResponse, error) {
+	addr := req.GetAddress()
+	if addr == "" {
+		addr = s.tetragonAddr
+	}
+	conn, err := grpc.DialContext(ctx, addr, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithBlock())
+	if err != nil {
+		return nil, err
+	}
+	defer conn.Close()
+	res, err := tetragon.NewFineGuidanceSensorsClient(conn).ListTracingPolicies(ctx, &tetragon.ListTracingPoliciesRequest{})
+	if err != nil {
+		return nil, err
+	}
+	out := &pb.ListTetragonPoliciesResponse{Policies: make([]*pb.TetragonPolicyInfo, 0, len(res.GetPolicies()))}
+	for _, p := range res.GetPolicies() {
+		counters := p.GetStats().GetActionCounters()
+		var post, enforce, monitor uint64
+		if counters != nil {
+			post = counters.GetPost()
+			enforce = counters.GetSignal() + counters.GetOverride() + counters.GetNotifyEnforcer() + counters.GetSet()
+			monitor = counters.GetMonitorSignal() + counters.GetMonitorOverride() + counters.GetMonitorNotifyEnforcer() + counters.GetMonitorSet()
+		}
+		out.Policies = append(out.Policies, &pb.TetragonPolicyInfo{
+			Id: p.GetId(), Name: p.GetName(), Namespace: p.GetNamespace(),
+			State: strings.ToLower(strings.TrimPrefix(p.GetState().String(), "TP_STATE_")),
+			Mode:  strings.ToLower(strings.TrimPrefix(p.GetMode().String(), "TP_MODE_")),
+			Error: p.GetError(), Sensors: p.GetSensors(), FilterId: p.GetFilterId(),
+			KernelMemoryBytes: p.GetKernelMemoryBytes(), Npost: post, Nenforce: enforce, Nmonitor: monitor,
+		})
+	}
+	return out, nil
 }
 
 func (s *Server) ListMaps(_ context.Context, _ *pb.ListMapsRequest) (*pb.ListMapsResponse, error) {
