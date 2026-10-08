@@ -68,6 +68,8 @@
             <td>{{with .Cgroup}}<code>{{.}}</code>{{else}}<span class="muted">-</span>{{end}}</td></tr>
       </table>
 
+      {{template "resources" .}}
+
       {{/* The other half of "which container is this": the cgroup says which
            slice it is accounted to, the namespaces say what it can see. */}}
       {{with .Namespaces}}

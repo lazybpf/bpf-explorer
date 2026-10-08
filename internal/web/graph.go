@@ -325,15 +325,25 @@ func parseLoaderGroup(group string) (label string, ok bool) {
 	if group == unattachedGroupID {
 		return unattachedLabel, true
 	}
-	rest, found := strings.CutPrefix(group, "sg_")
-	if !found {
-		return "", false
-	}
-	pid, err := strconv.ParseUint(rest, 10, 32)
-	if err != nil {
+	pid, ok := loaderPID(group)
+	if !ok {
 		return "", false
 	}
 	return fmt.Sprintf("pid %d", pid), true
+}
+
+// loaderPID reads the pid back out of a loaderGroupID. ok is false for the
+// no-loader group and for anything that is not a group id.
+func loaderPID(group string) (uint32, bool) {
+	rest, found := strings.CutPrefix(group, "sg_")
+	if !found {
+		return 0, false
+	}
+	pid, err := strconv.ParseUint(rest, 10, 32)
+	if err != nil {
+		return 0, false
+	}
+	return uint32(pid), true
 }
 
 // filterProgramsByLoader keeps the programs belonging to one loader group. It

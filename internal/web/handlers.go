@@ -51,6 +51,7 @@ func New(disc discovery.Discoverer, hiddenLoaders map[uint32]bool, tetragonAddre
 		"nodeLinkTitle": nodeLinkTitle, "loadedAt": loadedAt,
 		"sysctlText": sysctlText, "availableCount": availableCount, "featureHelp": featureHelp,
 		"attachedCount": attachedCount,
+		"bytesIEC":      bytesIEC, "cpuTime": cpuTime, "cpuLimit": cpuLimit, "workingSet": workingSet, "processCPU": processCPU,
 		// Exposed as a func so every page gets it without threading it through
 		// each handler's pageData.
 		"version": version.String,
@@ -205,6 +206,11 @@ type loaderSummary struct {
 	Progs int
 	Maps  int
 	Links int
+	// PID is the loader process, 0 for the no-loader group. Resources is what
+	// the kernel has accounted to it, nil when it could not be read - the
+	// process exited, or the agent did not answer.
+	PID       uint32
+	Resources *pb.ProcessResources
 }
 
 // loaderRoster turns a partition into the loaders index's two parts: a row per
@@ -217,6 +223,7 @@ func loaderRoster(groups []*loaderGroupData) (loaders []loaderSummary, noLoader 
 			ID: g.ID, Label: g.Label,
 			Progs: len(g.Progs), Maps: len(g.Maps), Links: len(g.Links),
 		}
+		row.PID, _ = loaderPID(g.ID)
 		if g.ID == unattachedGroupID {
 			noLoader = &row
 			continue
@@ -687,7 +694,37 @@ func (h *Handlers) loadersIndex(w http.ResponseWriter, r *http.Request) {
 	}
 	groups, _ := groupByLoader(progs, maps, links, h.hiddenLoaders)
 	data.Loaders, data.NoLoader = loaderRoster(groups)
+	h.addLoaderResources(r, node, data.Loaders)
 	h.render(w, "loaders", data)
+}
+
+// addLoaderResources fills in each loader's memory and CPU, in one call for the
+// whole roster. Best-effort: the roster has already answered, and a row the
+// agent says nothing about just shows dashes.
+func (h *Handlers) addLoaderResources(r *http.Request, node string, loaders []loaderSummary) {
+	pids := make([]uint32, 0, len(loaders))
+	for _, l := range loaders {
+		if l.PID != 0 {
+			pids = append(pids, l.PID)
+		}
+	}
+	if len(pids) == 0 {
+		return
+	}
+	conn, err := h.dial(node)
+	if err != nil {
+		return
+	}
+	defer conn.Close()
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+	resp, err := pb.NewBpfInspectorClient(conn).GetProcessResources(ctx, &pb.GetProcessResourcesRequest{Pids: pids})
+	if err != nil {
+		return
+	}
+	for i := range loaders {
+		loaders[i].Resources = resp.GetResources()[loaders[i].PID]
+	}
 }
 
 // loaderGraph renders the dependency diagram for a single loader.

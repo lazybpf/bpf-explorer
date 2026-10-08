@@ -449,7 +449,8 @@ func TestDescribeProcess(t *testing.T) {
 		t.Fatal(err)
 	}
 	status := "Name:\ttrace_loader\nState:\tS (sleeping)\nTgid:\t1234\nPid:\t1234\nPPid:\t1\n" +
-		"Uid:\t1000\t1000\t1000\t1000\nNStgid:\t1234\t7\nNSpid:\t1234\t7\n"
+		"Uid:\t1000\t1000\t1000\t1000\nNStgid:\t1234\t7\nNSpid:\t1234\t7\n" +
+		"VmHWM:\t   20480 kB\nVmRSS:\t   10240 kB\nThreads:\t4\n"
 	write := func(name, contents string) {
 		if err := os.WriteFile(filepath.Join(procDir, name), []byte(contents), 0o644); err != nil {
 			t.Fatal(err)
@@ -459,6 +460,19 @@ func TestDescribeProcess(t *testing.T) {
 	write("cmdline", "./loader\x00--verbose\x00")
 	write("cgroup", "0::/kubepods.slice/kubepods-besteffort.slice/pod0ddf.slice\n")
 	writeNS(t, procDir, map[string]string{"net": "net:[4026532345]"})
+	// utime 250 ticks, stime 50.
+	write("stat", "1234 (trace loader) S 1 1234 1234 0 -1 4194560 100 0 0 0 250 50 0 0 20 0 4 0 100 0 0\n")
+
+	// The node's cgroup2 mount, and the process's cgroup in it.
+	cgroupfs := t.TempDir()
+	writeMountinfo(t, root, "self", "36 26 0:31 / "+cgroupfs+" rw shared:9 - cgroup2 cgroup2 rw\n")
+	cgDir := filepath.Join(cgroupfs, "kubepods.slice/kubepods-besteffort.slice/pod0ddf.slice")
+	if err := os.MkdirAll(cgDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(cgDir, "memory.current"), []byte("4096\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	got := describeProcess(root, 1234)
 	want := ProcessDetail{
@@ -467,6 +481,11 @@ func TestDescribeProcess(t *testing.T) {
 		Cgroup:     "/kubepods.slice/kubepods-besteffort.slice/pod0ddf.slice",
 		Namespaces: []Namespace{{Kind: "net", Inode: 4026532345}},
 		NSPids:     []uint32{1234, 7},
+		Resources: ProcessResources{
+			UserCPU: 2500 * time.Millisecond, SystemCPU: 500 * time.Millisecond,
+			RSS: 10240 * 1024, PeakRSS: 20480 * 1024, Threads: 4,
+			Cgroup: CgroupResources{MemoryCurrent: 4096},
+		},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("describeProcess =\n%+v\nwant\n%+v", got, want)

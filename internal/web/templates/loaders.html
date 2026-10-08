@@ -6,7 +6,7 @@
 <table>
   {{/* What a loader is, and what the row under the rule is, belong on the
        column they describe: this page's prose ran longer than its table. */}}
-  <thead><tr><th title="the process that loaded these objects: a program's loader is the lowest-numbered process holding an fd to it. The row below the rule is not a loader - it collects everything no live process holds an fd to">group</th><th>links</th><th title="the programs this group loaded: those whose lowest-numbered holder is this process. A program has one loader, so unlike the maps column this one adds up to the programs on the node">programs</th><th title="the maps this group's programs reference, plus the ones it holds an open fd to with nothing using them yet. A map two loaders share is counted under each of them, so this column can add up to more maps than the node has">maps</th><th></th></tr></thead>
+  <thead><tr><th title="the process that loaded these objects: a program's loader is the lowest-numbered process holding an fd to it. The row below the rule is not a loader - it collects everything no live process holds an fd to">group</th><th>links</th><th title="the programs this group loaded: those whose lowest-numbered holder is this process. A program has one loader, so unlike the maps column this one adds up to the programs on the node">programs</th><th title="the maps this group's programs reference, plus the ones it holds an open fd to with nothing using them yet. A map two loaders share is counted under each of them, so this column can add up to more maps than the node has">maps</th><th title="memory this process is using now">memory</th><th title="CPU time this process has used since it started">cpu</th><th title="memory used by everything in the loader's cgroup: its container in a pod, its service under systemd. Includes page cache and BPF maps">cgroup memory</th><th title="CPU time used by everything in the loader's cgroup">cgroup cpu</th><th></th></tr></thead>
   <tbody>
   {{range .Loaders}}
     <tr>
@@ -16,12 +16,14 @@
       <td>{{if .Links}}<a href="/nodes/{{$.Node}}/links?loader={{.ID}}" title="the {{.Links}} links attaching this group's programs, listed with their types and attach points">{{.Links}}</a>{{else}}<span class="muted">0</span>{{end}}</td>
       <td>{{if .Progs}}<a href="/nodes/{{$.Node}}/programs?loader={{.ID}}" title="the {{.Progs}} programs this group loaded, listed with their types, maps and holders">{{.Progs}}</a>{{else}}<span class="muted">0</span>{{end}}</td>
       <td>{{if .Maps}}<a href="/nodes/{{$.Node}}/maps?loader={{.ID}}" title="the {{.Maps}} maps this group's programs reference, listed with their types, sizes and holders">{{.Maps}}</a>{{else}}<span class="muted">0</span>{{end}}</td>
+      {{template "resourcecells" .Resources}}
       <td>
         <a href="/nodes/{{$.Node}}/loaders/{{.ID}}" target="_blank" rel="noopener" title="graph: everything this group loaded - its programs, maps and links (new tab)">graph</a>
+        <a href="/nodes/{{$.Node}}/utils/pid?pid={{.PID}}" target="_blank" rel="noopener" title="process: this loader's details, with memory and CPU peaks, limits and throttling (new tab)">process</a>
       </td>
     </tr>
   {{else}}
-    <tr><td colspan="5" class="muted">{{if .NoLoader}}(no process on this node holds an fd to any eBPF object){{else}}(no eBPF objects){{end}}</td></tr>
+    <tr><td colspan="9" class="muted">{{if .NoLoader}}(no process on this node holds an fd to any eBPF object){{else}}(no eBPF objects){{end}}</td></tr>
   {{end}}
   {{/* The residual group, set below the rule: it holds everything with no
        loader at all, so it is a row of this table but not a process, and its
@@ -32,6 +34,8 @@
       <td>{{if .Links}}<a href="/nodes/{{$.Node}}/links?loader={{.ID}}" title="the {{.Links}} links in this group, listed with their types and attach points">{{.Links}}</a>{{else}}<span class="muted">0</span>{{end}}</td>
       <td>{{if .Progs}}<a href="/nodes/{{$.Node}}/programs?loader={{.ID}}" title="the {{.Progs}} programs in this group, listed with their types, maps and holders">{{.Progs}}</a>{{else}}<span class="muted">0</span>{{end}}</td>
       <td>{{if .Maps}}<a href="/nodes/{{$.Node}}/maps?loader={{.ID}}" title="the {{.Maps}} maps in this group, listed with their types, sizes and holders">{{.Maps}}</a>{{else}}<span class="muted">0</span>{{end}}</td>
+      {{/* Not a process, so nothing is accounted to it. */}}
+      <td></td><td></td><td></td><td></td>
       <td>
         <a href="/nodes/{{$.Node}}/loaders/{{.ID}}" target="_blank" rel="noopener" title="graph: the programs, maps and links in this group (new tab)">graph</a>
       </td>
@@ -40,4 +44,30 @@
   </tbody>
 </table>
 </div>
+{{end}}
+
+{{/* A loader's four resource cells. Takes its ProcessResources, nil when the
+     agent said nothing about it - the loader exited since the list was read.
+     A zero is a file the kernel does not have here, so it is a dash. The
+     detail - peaks, limits, user and system - is in the tooltips and on the
+     pid page the process link opens. */}}
+{{define "resourcecells"}}
+{{with .}}
+  <td{{with .PeakRssBytes}} title="peak {{bytesIEC .}}"{{end}}>{{if .RssBytes}}{{bytesIEC .RssBytes}}{{else}}<span class="muted">-</span>{{end}}</td>
+  <td title="user {{cpuTime .UserCpuUsec}}, system {{cpuTime .SystemCpuUsec}}">{{cpuTime (processCPU .)}}</td>
+  {{with .Cgroup}}
+    {{if .Note}}
+      <td title="{{.Note}}"><span class="muted">-</span></td><td title="{{.Note}}"><span class="muted">-</span></td>
+    {{else}}
+      <td{{if .MemoryCurrentBytes}} title="working set {{bytesIEC (workingSet .)}}{{with .MemoryPeakBytes}}, peak {{bytesIEC .}}{{end}}"{{end}}>
+        {{if .MemoryCurrentBytes}}{{bytesIEC .MemoryCurrentBytes}}{{with .MemoryMaxBytes}} <span class="muted">/ {{bytesIEC .}}</span>{{end}}{{else}}<span class="muted">-</span>{{end}}</td>
+      <td{{if .CpuUsageUsec}} title="user {{cpuTime .CpuUserUsec}}, system {{cpuTime .CpuSystemUsec}}{{if cpuLimit .}}, throttled {{.CpuNrThrottled}} times{{end}}"{{end}}>
+        {{if .CpuUsageUsec}}{{cpuTime .CpuUsageUsec}}{{with cpuLimit .}} <span class="muted">/ {{.}}</span>{{end}}{{else}}<span class="muted">-</span>{{end}}</td>
+    {{end}}
+  {{else}}
+    <td></td><td></td>
+  {{end}}
+{{else}}
+  <td><span class="muted">-</span></td><td><span class="muted">-</span></td><td><span class="muted">-</span></td><td><span class="muted">-</span></td>
+{{end}}
 {{end}}

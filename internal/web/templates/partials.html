@@ -69,3 +69,53 @@
      title="list policies loaded by Tetragon on this node">tetragon policies</a>
 </p>
 {{end}}
+
+{{/* What the kernel has accounted to a process and its cgroup, for the pid page
+     and a loader's page. Takes the DescribeProcessResponse. Everything is a
+     counter read once, so CPU is time used so far - a reload reads it again.
+     A zero is a file the kernel does not have here (a controller not enabled,
+     an older kernel), so it shows as a dash rather than as "0 B". */}}
+{{define "resources"}}
+{{with .Resources}}
+  <h2>resources</h2>
+  <table class="kv">
+    <tr><th title="resident memory of this process alone">memory</th>
+        <td>{{if .RssBytes}}{{bytesIEC .RssBytes}}
+              {{with .PeakRssBytes}}<span class="muted">(peak {{bytesIEC .}})</span>{{end}}
+            {{else}}<span class="muted">-</span>{{end}}</td></tr>
+    <tr><th title="CPU time this process has used since it started">cpu</th>
+        <td>{{cpuTime (processCPU .)}}
+            <span class="muted">(user {{cpuTime .UserCpuUsec}}, system {{cpuTime .SystemCpuUsec}})</span></td></tr>
+    <tr><th>threads</th><td>{{.Threads}}</td></tr>
+  </table>
+
+  {{with .Cgroup}}
+    <h2 title="everything in this process's cgroup: the container in a pod, the service under systemd">cgroup resources</h2>
+    {{if .Note}}
+      <p class="muted">{{.Note}}</p>
+    {{else}}
+      <table class="kv">
+        <tr><th title="all memory charged to the cgroup, page cache and BPF maps included">memory</th>
+            <td>{{if .MemoryCurrentBytes}}{{bytesIEC .MemoryCurrentBytes}}
+                  <span class="muted">({{with .MemoryPeakBytes}}peak {{bytesIEC .}}, {{end}}{{with .MemoryMaxBytes}}limit {{bytesIEC .}}{{else}}no limit{{end}})</span>
+                {{else}}<span class="muted">-</span>{{end}}</td></tr>
+        <tr><th title="memory less the page cache the kernel can drop first - what kubectl top shows">working set</th>
+            <td>{{if .MemoryCurrentBytes}}{{bytesIEC (workingSet .)}}{{else}}<span class="muted">-</span>{{end}}</td></tr>
+        <tr><th title="CPU time everything in the cgroup has used">cpu</th>
+            <td>{{if .CpuUsageUsec}}{{cpuTime .CpuUsageUsec}}
+                  <span class="muted">(user {{cpuTime .CpuUserUsec}}, system {{cpuTime .CpuSystemUsec}}{{with cpuLimit .}}, limit {{.}}{{end}})</span>
+                {{else}}<span class="muted">-</span>{{end}}</td></tr>
+        {{if cpuLimit .}}
+          <tr><th title="how often the cgroup used up its CPU limit and had to wait">throttled</th>
+              <td>{{.CpuNrThrottled}} times <span class="muted">({{cpuTime .CpuThrottledUsec}} waiting)</span></td></tr>
+        {{end}}
+        <tr><th title="processes and threads in the cgroup">tasks</th>
+            <td>{{if .Tasks}}{{.Tasks}}
+                  <span class="muted">({{with .TasksMax}}limit {{.}}{{else}}no limit{{end}})</span>
+                {{else}}<span class="muted">-</span>{{end}}</td></tr>
+      </table>
+    {{end}}
+  {{end}}
+{{end}}
+{{end}}
+

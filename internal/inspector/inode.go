@@ -583,6 +583,8 @@ type ProcessDetail struct {
 	// the number this reader sees, then the one it goes by inside each namespace
 	// below it. A process in the reader's own namespace has just the one.
 	NSPids []uint32
+	// Resources is what the kernel has accounted to it and its cgroup so far.
+	Resources ProcessResources
 }
 
 // Namespace is one of the namespaces a process is in.
@@ -650,7 +652,9 @@ func describeProcess(procRoot string, pid uint32) ProcessDetail {
 	// Read from the node's own cgroup namespace, so the path is the one the node
 	// knows this process by rather than the one the kernel spells for the agent's
 	// container - see cgroupNS.
-	readCgroupPaths(procRoot, func() { d.Cgroup = readCgroup(procDir) })
+	ns := readCgroupPaths(procRoot, func() { d.Cgroup = readCgroup(procDir) })
+	d.Resources, _ = readProcessResources(procDir)
+	d.Resources.Cgroup = cgroupResources(cgroupV2Root(procRoot), d.Cgroup, ns)
 	d.Namespaces = readNamespaces(procRoot, pid)
 	return d
 }

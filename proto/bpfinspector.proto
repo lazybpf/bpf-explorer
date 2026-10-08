@@ -18,6 +18,7 @@ service BpfInspector {
   rpc TraceLog(TraceLogRequest) returns (stream TraceLogEvent);
   rpc ResolveInode(ResolveInodeRequest) returns (ResolveInodeResponse);
   rpc DescribeProcess(DescribeProcessRequest) returns (DescribeProcessResponse);
+  rpc GetProcessResources(GetProcessResourcesRequest) returns (GetProcessResourcesResponse);
   rpc DescribeNode(DescribeNodeRequest) returns (DescribeNodeResponse);
   rpc ProbeFeatures(ProbeFeaturesRequest) returns (ProbeFeaturesResponse);
   rpc CgroupTree(CgroupTreeRequest) returns (CgroupTreeResponse);
@@ -282,6 +283,62 @@ message DescribeProcessResponse {
   // number `ps` prints in the container. One entry for a process in the agent's
   // own namespace, and none on a kernel too old to report them.
   repeated uint32 ns_pids = 11;
+  // What the kernel has accounted to the process and to its cgroup so far.
+  ProcessResources resources = 12;
+}
+
+// GetProcessResources is DescribeProcess's resources for many pids at once, for
+// the loaders list: one call, and one trip into the node's cgroup namespace,
+// rather than one of each per row.
+message GetProcessResourcesRequest { repeated uint32 pids = 1; }
+
+message GetProcessResourcesResponse {
+  // Keyed by pid. A pid that is gone, or that /proc does not show the agent,
+  // has no entry.
+  map<uint32, ProcessResources> resources = 1;
+}
+
+// ProcessResources is the kernel's own accounting for a process, the numbers
+// `systemctl status` prints for a service. Nothing is instrumented: these are
+// counters the kernel keeps anyway, read once. CPU is therefore time used so
+// far, not a rate - a percentage needs two reads and the time between them.
+//
+// The process half is the process alone (all its threads, none of its
+// children). The cgroup half is everything in its cgroup: in a pod that is the
+// container, which is what kubectl top reports, but for something started from
+// a shell it is the whole login session.
+message ProcessResources {
+  uint64 user_cpu_usec = 1;   // utime from /proc/<pid>/stat
+  uint64 system_cpu_usec = 2; // stime
+  uint64 rss_bytes = 3;       // VmRSS; 0 for a kernel thread, which has no memory of its own
+  uint64 peak_rss_bytes = 4;  // VmHWM, the most VmRSS has been
+  uint32 threads = 5;
+  CgroupResources cgroup = 6;
+}
+
+// CgroupResources is what cgroup v2 accounts for one cgroup. A file the kernel
+// does not have - a controller not enabled for the cgroup, memory.peak before
+// 5.19 - reads as 0. The root cgroup has no memory files at all.
+message CgroupResources {
+  // Why nothing was read: cgroup v1, the node's cgroup namespace could not be
+  // entered, the cgroup directory could not be opened. Empty when it was.
+  string note = 1;
+  uint64 memory_current_bytes = 2;
+  uint64 memory_peak_bytes = 3;
+  uint64 memory_max_bytes = 4; // 0 when there is no limit ("max")
+  // inactive_file from memory.stat: page cache the kernel can drop first.
+  // memory_current minus this is the working set the kubelet evicts on.
+  uint64 memory_inactive_file_bytes = 5;
+  uint64 cpu_usage_usec = 6;  // cpu.stat usage_usec, what systemctl prints as CPU
+  uint64 cpu_user_usec = 7;
+  uint64 cpu_system_usec = 8;
+  // cpu.max: quota_usec of CPU per period_usec. quota 0 when there is no limit.
+  uint64 cpu_quota_usec = 9;
+  uint64 cpu_period_usec = 10;
+  uint64 cpu_nr_throttled = 11; // periods the quota ran out in
+  uint64 cpu_throttled_usec = 12;
+  uint64 tasks = 13;     // pids.current
+  uint64 tasks_max = 14; // pids.max, 0 when there is no limit
 }
 
 // DescribeNode reports the node's own configuration: the kernel, the cgroup

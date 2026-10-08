@@ -271,7 +271,47 @@ func (s *Server) DescribeProcess(_ context.Context, req *pb.DescribeProcessReque
 		Cgroup:     d.Cgroup,
 		Namespaces: namespaces,
 		NsPids:     d.NSPids,
+		Resources:  processResources(d.Resources),
 	}, nil
+}
+
+// GetProcessResources reports what the kernel has accounted to each pid and its
+// cgroup. Pids that are gone are left out, not failed on: a loader can exit
+// between the list being drawn and this call.
+func (s *Server) GetProcessResources(_ context.Context, req *pb.GetProcessResourcesRequest) (*pb.GetProcessResourcesResponse, error) {
+	resp := &pb.GetProcessResourcesResponse{Resources: map[uint32]*pb.ProcessResources{}}
+	for pid, r := range s.insp.ProcessResources(req.GetPids()) {
+		resp.Resources[pid] = processResources(r)
+	}
+	return resp, nil
+}
+
+func processResources(r inspector.ProcessResources) *pb.ProcessResources {
+	usec := func(d time.Duration) uint64 { return uint64(d.Microseconds()) }
+	c := r.Cgroup
+	return &pb.ProcessResources{
+		UserCpuUsec:   usec(r.UserCPU),
+		SystemCpuUsec: usec(r.SystemCPU),
+		RssBytes:      r.RSS,
+		PeakRssBytes:  r.PeakRSS,
+		Threads:       r.Threads,
+		Cgroup: &pb.CgroupResources{
+			Note:                    c.Note,
+			MemoryCurrentBytes:      c.MemoryCurrent,
+			MemoryPeakBytes:         c.MemoryPeak,
+			MemoryMaxBytes:          c.MemoryMax,
+			MemoryInactiveFileBytes: c.MemoryInactiveFile,
+			CpuUsageUsec:            usec(c.CPUUsage),
+			CpuUserUsec:             usec(c.CPUUser),
+			CpuSystemUsec:           usec(c.CPUSystem),
+			CpuQuotaUsec:            usec(c.CPUQuota),
+			CpuPeriodUsec:           usec(c.CPUPeriod),
+			CpuNrThrottled:          c.NrThrottled,
+			CpuThrottledUsec:        usec(c.CPUThrottled),
+			Tasks:                   c.Tasks,
+			TasksMax:                c.TasksMax,
+		},
+	}
 }
 
 // DescribeNode reports the node's kernel, cgroup layout and container stack.

@@ -27,6 +27,7 @@ const (
 	BpfInspector_TraceLog_FullMethodName             = "/bpfinspector.v1.BpfInspector/TraceLog"
 	BpfInspector_ResolveInode_FullMethodName         = "/bpfinspector.v1.BpfInspector/ResolveInode"
 	BpfInspector_DescribeProcess_FullMethodName      = "/bpfinspector.v1.BpfInspector/DescribeProcess"
+	BpfInspector_GetProcessResources_FullMethodName  = "/bpfinspector.v1.BpfInspector/GetProcessResources"
 	BpfInspector_DescribeNode_FullMethodName         = "/bpfinspector.v1.BpfInspector/DescribeNode"
 	BpfInspector_ProbeFeatures_FullMethodName        = "/bpfinspector.v1.BpfInspector/ProbeFeatures"
 	BpfInspector_CgroupTree_FullMethodName           = "/bpfinspector.v1.BpfInspector/CgroupTree"
@@ -51,6 +52,7 @@ type BpfInspectorClient interface {
 	TraceLog(ctx context.Context, in *TraceLogRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[TraceLogEvent], error)
 	ResolveInode(ctx context.Context, in *ResolveInodeRequest, opts ...grpc.CallOption) (*ResolveInodeResponse, error)
 	DescribeProcess(ctx context.Context, in *DescribeProcessRequest, opts ...grpc.CallOption) (*DescribeProcessResponse, error)
+	GetProcessResources(ctx context.Context, in *GetProcessResourcesRequest, opts ...grpc.CallOption) (*GetProcessResourcesResponse, error)
 	DescribeNode(ctx context.Context, in *DescribeNodeRequest, opts ...grpc.CallOption) (*DescribeNodeResponse, error)
 	ProbeFeatures(ctx context.Context, in *ProbeFeaturesRequest, opts ...grpc.CallOption) (*ProbeFeaturesResponse, error)
 	CgroupTree(ctx context.Context, in *CgroupTreeRequest, opts ...grpc.CallOption) (*CgroupTreeResponse, error)
@@ -154,6 +156,16 @@ func (c *bpfInspectorClient) DescribeProcess(ctx context.Context, in *DescribePr
 	return out, nil
 }
 
+func (c *bpfInspectorClient) GetProcessResources(ctx context.Context, in *GetProcessResourcesRequest, opts ...grpc.CallOption) (*GetProcessResourcesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetProcessResourcesResponse)
+	err := c.cc.Invoke(ctx, BpfInspector_GetProcessResources_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *bpfInspectorClient) DescribeNode(ctx context.Context, in *DescribeNodeRequest, opts ...grpc.CallOption) (*DescribeNodeResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(DescribeNodeResponse)
@@ -212,6 +224,7 @@ type BpfInspectorServer interface {
 	TraceLog(*TraceLogRequest, grpc.ServerStreamingServer[TraceLogEvent]) error
 	ResolveInode(context.Context, *ResolveInodeRequest) (*ResolveInodeResponse, error)
 	DescribeProcess(context.Context, *DescribeProcessRequest) (*DescribeProcessResponse, error)
+	GetProcessResources(context.Context, *GetProcessResourcesRequest) (*GetProcessResourcesResponse, error)
 	DescribeNode(context.Context, *DescribeNodeRequest) (*DescribeNodeResponse, error)
 	ProbeFeatures(context.Context, *ProbeFeaturesRequest) (*ProbeFeaturesResponse, error)
 	CgroupTree(context.Context, *CgroupTreeRequest) (*CgroupTreeResponse, error)
@@ -249,6 +262,9 @@ func (UnimplementedBpfInspectorServer) ResolveInode(context.Context, *ResolveIno
 }
 func (UnimplementedBpfInspectorServer) DescribeProcess(context.Context, *DescribeProcessRequest) (*DescribeProcessResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method DescribeProcess not implemented")
+}
+func (UnimplementedBpfInspectorServer) GetProcessResources(context.Context, *GetProcessResourcesRequest) (*GetProcessResourcesResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetProcessResources not implemented")
 }
 func (UnimplementedBpfInspectorServer) DescribeNode(context.Context, *DescribeNodeRequest) (*DescribeNodeResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method DescribeNode not implemented")
@@ -420,6 +436,24 @@ func _BpfInspector_DescribeProcess_Handler(srv interface{}, ctx context.Context,
 	return interceptor(ctx, in, info, handler)
 }
 
+func _BpfInspector_GetProcessResources_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetProcessResourcesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BpfInspectorServer).GetProcessResources(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: BpfInspector_GetProcessResources_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BpfInspectorServer).GetProcessResources(ctx, req.(*GetProcessResourcesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _BpfInspector_DescribeNode_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(DescribeNodeRequest)
 	if err := dec(in); err != nil {
@@ -526,6 +560,10 @@ var BpfInspector_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "DescribeProcess",
 			Handler:    _BpfInspector_DescribeProcess_Handler,
+		},
+		{
+			MethodName: "GetProcessResources",
+			Handler:    _BpfInspector_GetProcessResources_Handler,
 		},
 		{
 			MethodName: "DescribeNode",
