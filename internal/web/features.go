@@ -51,7 +51,9 @@ func (h *Handlers) featuresMoved(w http.ResponseWriter, r *http.Request) {
 
 // sysctlText says what a system-configuration knob is set to in bpftool's own
 // words, so a line on the page can be matched against `bpftool feature probe`
-// by eye. The strings are the ones in the bpftool v7.5 binary.
+// by eye. The strings are the ones in the bpftool v7.5 binary, except for
+// bpf_stats_enabled: bpftool does not print it, so its lines are written to
+// match.
 func sysctlText(s *pb.Sysctl) string {
 	v := s.Value
 	switch s.Name {
@@ -110,6 +112,17 @@ func sysctlText(s *pb.Sysctl) string {
 			return "Unable to retrieve global memory limit for JIT compiler for unprivileged users"
 		}
 		return fmt.Sprintf("Global memory limit for JIT compiler for unprivileged users is %d bytes", v)
+	case "bpf_stats_enabled":
+		if !s.Readable {
+			return "Unable to retrieve BPF run-time stats status"
+		}
+		switch v {
+		case 0:
+			return "BPF run-time stats are not enabled by sysctl"
+		case 1:
+			return "BPF run-time stats are enabled by sysctl"
+		}
+		return fmt.Sprintf("BPF run-time stats status has unknown value %d", v)
 	}
 	if !s.Readable {
 		return "unreadable"

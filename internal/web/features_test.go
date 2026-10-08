@@ -19,6 +19,7 @@ func TestFeaturesPage(t *testing.T) {
 			{Name: "bpf_jit_enable", Value: 1, Readable: true},
 			{Name: "bpf_jit_harden", Note: "permission denied"},
 			{Name: "bpf_jit_limit", Value: 264241152, Readable: true},
+			{Name: "bpf_stats_enabled", Value: 0, Readable: true},
 		},
 		KernelConfigSource: "/proc/1/root/boot/config-6.1.0",
 		KernelConfig: []*pb.KernelConfigOption{
@@ -37,6 +38,8 @@ func TestFeaturesPage(t *testing.T) {
 		"Unable to retrieve JIT hardening status",
 		"permission denied",
 		"Global memory limit for JIT compiler for unprivileged users is 264241152 bytes",
+		"BPF run-time stats are not enabled by sysctl",
+		`from the <a href="/nodes/node-a/programs">programs</a> page`,
 		"/proc/1/root/boot/config-6.1.0",
 		"is set to <code>y</code>",
 		"is not set",

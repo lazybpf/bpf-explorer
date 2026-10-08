@@ -63,7 +63,10 @@ type Probe struct {
 // sysctlFiles are bpftool's system-configuration knobs, in its order, and where
 // each one lives under /proc/sys. The bpf_jit_* ones are net.core sysctls the
 // kernel registers in the initial network namespace only: in a pod's own netns
-// the files are not there at all.
+// the files are not there at all. bpf_stats_enabled is not one of bpftool's: it
+// comes last so the rest still read in its order. It shows only what was
+// written to it, not the stats fds held (see StatsSwitch), and is missing
+// before 5.1.
 var sysctlFiles = []struct {
 	name, path string
 	netns      bool
@@ -73,6 +76,7 @@ var sysctlFiles = []struct {
 	{"bpf_jit_harden", "sys/net/core/bpf_jit_harden", true},
 	{"bpf_jit_kallsyms", "sys/net/core/bpf_jit_kallsyms", true},
 	{"bpf_jit_limit", "sys/net/core/bpf_jit_limit", true},
+	{"bpf_stats_enabled", "sys/kernel/bpf_stats_enabled", false},
 }
 
 // kernelConfigOptions are the options bpftool v7.5 prints, in its order.

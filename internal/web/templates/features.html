@@ -12,6 +12,7 @@
           <td>
             {{sysctlText .}}
             {{if .Readable}}<span class="muted">({{.Value}})</span>{{else}}{{with .Note}}<div class="muted">{{.}}</div>{{end}}{{end}}
+            {{if and (eq .Name "bpf_stats_enabled") .Readable (eq .Value 0)}}<div class="muted">Turn them on for 10 minutes from the <a href="/nodes/{{$.Node}}/programs">programs</a> page.</div>{{end}}
           </td></tr>
     {{end}}
   </table>

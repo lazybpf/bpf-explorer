@@ -2886,7 +2886,8 @@ func (*ProbeFeaturesRequest) Descriptor() ([]byte, []int) {
 
 type ProbeFeaturesResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// unprivileged_bpf_disabled and the bpf_jit_* sysctls, in bpftool's order.
+	// unprivileged_bpf_disabled and the bpf_jit_* sysctls, in bpftool's order,
+	// then bpf_stats_enabled, which bpftool does not print.
 	Sysctls []*Sysctl `protobuf:"bytes,1,rep,name=sysctls,proto3" json:"sysctls,omitempty"`
 	// Why the bpf_jit_* values are missing: they exist only in the node's initial
 	// network namespace, which the agent joins to read them, and joining it needs

@@ -79,6 +79,7 @@ func TestReadSysctls(t *testing.T) {
 	dir := filepath.Join(procRoot, "sys", "kernel")
 	os.MkdirAll(dir, 0o755)
 	os.WriteFile(filepath.Join(dir, "unprivileged_bpf_disabled"), []byte("2\n"), 0o644)
+	os.WriteFile(filepath.Join(dir, "bpf_stats_enabled"), []byte("1\n"), 0o644)
 	jit := filepath.Join(procRoot, "sys", "net", "core")
 	os.MkdirAll(jit, 0o755)
 	os.WriteFile(filepath.Join(jit, "bpf_jit_limit"), []byte("264241152\n"), 0o644)
@@ -98,6 +99,10 @@ func TestReadSysctls(t *testing.T) {
 	}
 	if s := got[4]; s.Name != "bpf_jit_limit" || !s.Readable || s.Value != 264241152 {
 		t.Errorf("%+v: want bpf_jit_limit = 264241152", s)
+	}
+	// Not one of bpftool's, so after all of them.
+	if s := got[5]; s.Name != "bpf_stats_enabled" || !s.Readable || s.Value != 1 {
+		t.Errorf("%+v: want bpf_stats_enabled = 1, last", s)
 	}
 }
 
