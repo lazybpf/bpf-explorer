@@ -6,7 +6,8 @@ name: Release
 #     git push origin v0.1.0
 #
 # It publishes the multi-arch image to GHCR and opens a GitHub release whose
-# notes come from the tag annotation. There is deliberately no workflow_dispatch:
+# notes come from the tag annotation, with linux/amd64 and linux/arm64 binaries
+# attached. There is deliberately no workflow_dispatch:
 # releases and tags are immutable, so every fix ships as a new tag and the
 # published artefact always traces back to one.
 on:
@@ -26,6 +27,12 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # For the release binaries; the image builds with its own toolchain.
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
 
       # No QEMU needed: the Dockerfile's build stage is FROM --platform=$BUILDPLATFORM
       # and cross-compiles the pure-Go binary, and the final stage only COPYs it
@@ -81,6 +88,30 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      # The same pure-Go cross-compile and ldflags as the Dockerfile, for running
+      # without a cluster (--role=local). Asset names carry no version, so
+      # releases/latest/download/<name> always resolves, like bpf-explorer.yaml.
+      # A tarball keeps the executable bit. Built before the manifest is pinned
+      # and written to RUNNER_TEMP, so the VCS stamp sees a clean tree.
+      - name: Build binaries
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          COMMIT: ${{ github.sha }}
+          VERSION_PKG: github.com/lazybpf/bpf-explorer/internal/version
+        run: |
+          dist="$RUNNER_TEMP/dist"
+          mkdir -p "$dist"
+          for arch in amd64 arm64; do
+            out="$RUNNER_TEMP/build/linux-${arch}"
+            CGO_ENABLED=0 GOOS=linux GOARCH="$arch" \
+              go build -trimpath \
+              -ldflags="-s -w -X ${VERSION_PKG}.Version=${VERSION} -X ${VERSION_PKG}.Commit=${COMMIT}" \
+              -o "$out/bpf-explorer" ./cmd/bpf-explorer
+            cp LICENSE "$out/"
+            tar -C "$out" -czf "$dist/bpf-explorer-linux-${arch}.tar.gz" bpf-explorer LICENSE
+          done
+          (cd "$dist" && sha256sum *.tar.gz > checksums.txt && cat checksums.txt)
+
       # Deliberately after the build: this dirties the working tree, and the
       # builder's VCS stamp would otherwise mark a released image "-dirty".
       # Fails loudly rather than shipping an unpinned manifest if the image line
@@ -117,7 +148,8 @@ jobs:
           cat "$RUNNER_TEMP/notes.md"
 
       # --verify-tag refuses to invent a tag, so the release can only ever
-      # describe a pushed one. The pinned manifest rides along as the artefact.
+      # describe a pushed one. The pinned manifest and the binaries ride along as
+      # artefacts.
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -128,4 +160,6 @@ jobs:
           if [[ "$PRERELEASE" == "true" ]]; then
             flags+=(--prerelease)
           fi
-          gh release create "$VERSION" "${flags[@]}" bpf-explorer.yaml
+          gh release create "$VERSION" "${flags[@]}" bpf-explorer.yaml \
+            "$RUNNER_TEMP"/dist/bpf-explorer-linux-*.tar.gz \
+            "$RUNNER_TEMP"/dist/checksums.txt

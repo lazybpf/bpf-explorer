@@ -262,6 +262,9 @@ Each release carries a copy of `bpf-explorer.yaml` with the image line rewritten
 from `:dev` to that release's tag, so what a cluster runs is always a version
 someone tagged. There is no `:latest` image tag - nothing floats.
 
+Releases also carry linux/amd64 and linux/arm64 binaries for running without a
+cluster, e.g. releases/latest/download/bpf-explorer-linux-arm64.tar.gz.
+
 > [!IMPORTANT]
 > Tags and releases are immutable. Nothing can be re-published under a version
 > that already shipped, so every fix - however small - goes out as a new tag.
