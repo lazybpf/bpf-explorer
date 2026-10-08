@@ -32,6 +32,7 @@ const (
 	BpfInspector_ProbeFeatures_FullMethodName        = "/bpfinspector.v1.BpfInspector/ProbeFeatures"
 	BpfInspector_CgroupTree_FullMethodName           = "/bpfinspector.v1.BpfInspector/CgroupTree"
 	BpfInspector_ListTetragonPolicies_FullMethodName = "/bpfinspector.v1.BpfInspector/ListTetragonPolicies"
+	BpfInspector_SetStats_FullMethodName             = "/bpfinspector.v1.BpfInspector/SetStats"
 )
 
 // BpfInspectorClient is the client API for BpfInspector service.
@@ -43,6 +44,8 @@ const (
 // that mutates kernel state in v1 (no map update/delete, no prog load/detach).
 // TraceLog is the one call that is not a pure read - see its comment - and
 // ProbeFeatures loads and closes throwaway programs and maps, as bpftool does.
+// SetStats is the one call that changes how the kernel runs: it turns BPF
+// run-time stats on, for a while.
 type BpfInspectorClient interface {
 	ListMaps(ctx context.Context, in *ListMapsRequest, opts ...grpc.CallOption) (*ListMapsResponse, error)
 	DumpMap(ctx context.Context, in *DumpMapRequest, opts ...grpc.CallOption) (*DumpMapResponse, error)
@@ -57,6 +60,7 @@ type BpfInspectorClient interface {
 	ProbeFeatures(ctx context.Context, in *ProbeFeaturesRequest, opts ...grpc.CallOption) (*ProbeFeaturesResponse, error)
 	CgroupTree(ctx context.Context, in *CgroupTreeRequest, opts ...grpc.CallOption) (*CgroupTreeResponse, error)
 	ListTetragonPolicies(ctx context.Context, in *ListTetragonPoliciesRequest, opts ...grpc.CallOption) (*ListTetragonPoliciesResponse, error)
+	SetStats(ctx context.Context, in *SetStatsRequest, opts ...grpc.CallOption) (*StatsState, error)
 }
 
 type bpfInspectorClient struct {
@@ -206,6 +210,16 @@ func (c *bpfInspectorClient) ListTetragonPolicies(ctx context.Context, in *ListT
 	return out, nil
 }
 
+func (c *bpfInspectorClient) SetStats(ctx context.Context, in *SetStatsRequest, opts ...grpc.CallOption) (*StatsState, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(StatsState)
+	err := c.cc.Invoke(ctx, BpfInspector_SetStats_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // BpfInspectorServer is the server API for BpfInspector service.
 // All implementations must embed UnimplementedBpfInspectorServer
 // for forward compatibility.
@@ -215,6 +229,8 @@ func (c *bpfInspectorClient) ListTetragonPolicies(ctx context.Context, in *ListT
 // that mutates kernel state in v1 (no map update/delete, no prog load/detach).
 // TraceLog is the one call that is not a pure read - see its comment - and
 // ProbeFeatures loads and closes throwaway programs and maps, as bpftool does.
+// SetStats is the one call that changes how the kernel runs: it turns BPF
+// run-time stats on, for a while.
 type BpfInspectorServer interface {
 	ListMaps(context.Context, *ListMapsRequest) (*ListMapsResponse, error)
 	DumpMap(context.Context, *DumpMapRequest) (*DumpMapResponse, error)
@@ -229,6 +245,7 @@ type BpfInspectorServer interface {
 	ProbeFeatures(context.Context, *ProbeFeaturesRequest) (*ProbeFeaturesResponse, error)
 	CgroupTree(context.Context, *CgroupTreeRequest) (*CgroupTreeResponse, error)
 	ListTetragonPolicies(context.Context, *ListTetragonPoliciesRequest) (*ListTetragonPoliciesResponse, error)
+	SetStats(context.Context, *SetStatsRequest) (*StatsState, error)
 	mustEmbedUnimplementedBpfInspectorServer()
 }
 
@@ -277,6 +294,9 @@ func (UnimplementedBpfInspectorServer) CgroupTree(context.Context, *CgroupTreeRe
 }
 func (UnimplementedBpfInspectorServer) ListTetragonPolicies(context.Context, *ListTetragonPoliciesRequest) (*ListTetragonPoliciesResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ListTetragonPolicies not implemented")
+}
+func (UnimplementedBpfInspectorServer) SetStats(context.Context, *SetStatsRequest) (*StatsState, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SetStats not implemented")
 }
 func (UnimplementedBpfInspectorServer) mustEmbedUnimplementedBpfInspectorServer() {}
 func (UnimplementedBpfInspectorServer) testEmbeddedByValue()                      {}
@@ -526,6 +546,24 @@ func _BpfInspector_ListTetragonPolicies_Handler(srv interface{}, ctx context.Con
 	return interceptor(ctx, in, info, handler)
 }
 
+func _BpfInspector_SetStats_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SetStatsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BpfInspectorServer).SetStats(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: BpfInspector_SetStats_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BpfInspectorServer).SetStats(ctx, req.(*SetStatsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // BpfInspector_ServiceDesc is the grpc.ServiceDesc for BpfInspector service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -580,6 +618,10 @@ var BpfInspector_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListTetragonPolicies",
 			Handler:    _BpfInspector_ListTetragonPolicies_Handler,
+		},
+		{
+			MethodName: "SetStats",
+			Handler:    _BpfInspector_SetStats_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

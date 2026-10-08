@@ -558,8 +558,17 @@ type ProgramInfo struct {
 	// adds its own boot time before sending it, as bpftool does before printing.
 	// 0 when the kernel does not report one (before 4.15).
 	LoadedAtUnixNano int64 `protobuf:"varint,7,opt,name=loaded_at_unix_nano,json=loadedAtUnixNano,proto3" json:"loaded_at_unix_nano,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	// The run_cnt, run_time_ns and recursion_misses `bpftool prog show` prints.
+	// The kernel only counts while run-time stats are on (see StatsState), and
+	// keeps the totals when they go off, so these are sums over every period
+	// stats were on since the program was loaded. A program reached through
+	// bpf_tail_call is never counted: the jump bypasses the counting, and its
+	// time is in the run time of the program that made the call.
+	RunCount        uint64 `protobuf:"varint,8,opt,name=run_count,json=runCount,proto3" json:"run_count,omitempty"`
+	RunTimeNs       uint64 `protobuf:"varint,9,opt,name=run_time_ns,json=runTimeNs,proto3" json:"run_time_ns,omitempty"`
+	RecursionMisses uint64 `protobuf:"varint,10,opt,name=recursion_misses,json=recursionMisses,proto3" json:"recursion_misses,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *ProgramInfo) Reset() {
@@ -641,6 +650,27 @@ func (x *ProgramInfo) GetLoadedAtUnixNano() int64 {
 	return 0
 }
 
+func (x *ProgramInfo) GetRunCount() uint64 {
+	if x != nil {
+		return x.RunCount
+	}
+	return 0
+}
+
+func (x *ProgramInfo) GetRunTimeNs() uint64 {
+	if x != nil {
+		return x.RunTimeNs
+	}
+	return 0
+}
+
+func (x *ProgramInfo) GetRecursionMisses() uint64 {
+	if x != nil {
+		return x.RecursionMisses
+	}
+	return 0
+}
+
 type ListProgramsRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
@@ -680,6 +710,7 @@ func (*ListProgramsRequest) Descriptor() ([]byte, []int) {
 type ListProgramsResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Programs      []*ProgramInfo         `protobuf:"bytes,1,rep,name=programs,proto3" json:"programs,omitempty"`
+	Stats         *StatsState            `protobuf:"bytes,2,opt,name=stats,proto3" json:"stats,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -721,6 +752,133 @@ func (x *ListProgramsResponse) GetPrograms() []*ProgramInfo {
 	return nil
 }
 
+func (x *ListProgramsResponse) GetStats() *StatsState {
+	if x != nil {
+		return x.Stats
+	}
+	return nil
+}
+
+// StatsState is whether the node's kernel is counting program runs and run time
+// (kernel.bpf_stats_enabled), and who turned that on. The kernel keeps it on
+// while the sysctl is 1 or any process holds a BPF_ENABLE_STATS fd. The agent
+// holds such an fd while its own toggle is on, so the stats go off again when
+// the agent exits, however it exits, and it closes the fd on its own after a
+// fixed time so nobody leaves a busy node paying for the counting.
+type StatsState struct {
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	Held        bool                   `protobuf:"varint,1,opt,name=held,proto3" json:"held,omitempty"`                                  // the agent holds an fd: the toggle is on
+	SecondsLeft uint32                 `protobuf:"varint,2,opt,name=seconds_left,json=secondsLeft,proto3" json:"seconds_left,omitempty"` // when held: until the agent closes it on its own
+	Sysctl      bool                   `protobuf:"varint,3,opt,name=sysctl,proto3" json:"sysctl,omitempty"`                              // kernel.bpf_stats_enabled reads 1
+	// Other processes holding a BPF_ENABLE_STATS fd, from /proc. Only those the
+	// agent can see: without hostPID that is its own pod.
+	Holders       []*ProcessRef `protobuf:"bytes,4,rep,name=holders,proto3" json:"holders,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *StatsState) Reset() {
+	*x = StatsState{}
+	mi := &file_proto_bpfinspector_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StatsState) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StatsState) ProtoMessage() {}
+
+func (x *StatsState) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_bpfinspector_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StatsState.ProtoReflect.Descriptor instead.
+func (*StatsState) Descriptor() ([]byte, []int) {
+	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *StatsState) GetHeld() bool {
+	if x != nil {
+		return x.Held
+	}
+	return false
+}
+
+func (x *StatsState) GetSecondsLeft() uint32 {
+	if x != nil {
+		return x.SecondsLeft
+	}
+	return 0
+}
+
+func (x *StatsState) GetSysctl() bool {
+	if x != nil {
+		return x.Sysctl
+	}
+	return false
+}
+
+func (x *StatsState) GetHolders() []*ProcessRef {
+	if x != nil {
+		return x.Holders
+	}
+	return nil
+}
+
+type SetStatsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Enabled       bool                   `protobuf:"varint,1,opt,name=enabled,proto3" json:"enabled,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SetStatsRequest) Reset() {
+	*x = SetStatsRequest{}
+	mi := &file_proto_bpfinspector_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SetStatsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SetStatsRequest) ProtoMessage() {}
+
+func (x *SetStatsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_bpfinspector_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SetStatsRequest.ProtoReflect.Descriptor instead.
+func (*SetStatsRequest) Descriptor() ([]byte, []int) {
+	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *SetStatsRequest) GetEnabled() bool {
+	if x != nil {
+		return x.Enabled
+	}
+	return false
+}
+
 // DumpProgram returns the translated (xlated) instruction listing of a program,
 // like `bpftool prog dump xlated`. The kernel only exposes xlated instructions
 // with sufficient privilege (CAP_SYS_ADMIN) and when not disabled by
@@ -734,7 +892,7 @@ type DumpProgramRequest struct {
 
 func (x *DumpProgramRequest) Reset() {
 	*x = DumpProgramRequest{}
-	mi := &file_proto_bpfinspector_proto_msgTypes[10]
+	mi := &file_proto_bpfinspector_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -746,7 +904,7 @@ func (x *DumpProgramRequest) String() string {
 func (*DumpProgramRequest) ProtoMessage() {}
 
 func (x *DumpProgramRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_bpfinspector_proto_msgTypes[10]
+	mi := &file_proto_bpfinspector_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -759,7 +917,7 @@ func (x *DumpProgramRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DumpProgramRequest.ProtoReflect.Descriptor instead.
 func (*DumpProgramRequest) Descriptor() ([]byte, []int) {
-	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{10}
+	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *DumpProgramRequest) GetId() uint32 {
@@ -783,7 +941,7 @@ type DumpProgramResponse struct {
 
 func (x *DumpProgramResponse) Reset() {
 	*x = DumpProgramResponse{}
-	mi := &file_proto_bpfinspector_proto_msgTypes[11]
+	mi := &file_proto_bpfinspector_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -795,7 +953,7 @@ func (x *DumpProgramResponse) String() string {
 func (*DumpProgramResponse) ProtoMessage() {}
 
 func (x *DumpProgramResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_bpfinspector_proto_msgTypes[11]
+	mi := &file_proto_bpfinspector_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -808,7 +966,7 @@ func (x *DumpProgramResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DumpProgramResponse.ProtoReflect.Descriptor instead.
 func (*DumpProgramResponse) Descriptor() ([]byte, []int) {
-	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{11}
+	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *DumpProgramResponse) GetLines() []string {
@@ -861,7 +1019,7 @@ type TailCall struct {
 
 func (x *TailCall) Reset() {
 	*x = TailCall{}
-	mi := &file_proto_bpfinspector_proto_msgTypes[12]
+	mi := &file_proto_bpfinspector_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -873,7 +1031,7 @@ func (x *TailCall) String() string {
 func (*TailCall) ProtoMessage() {}
 
 func (x *TailCall) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_bpfinspector_proto_msgTypes[12]
+	mi := &file_proto_bpfinspector_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -886,7 +1044,7 @@ func (x *TailCall) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TailCall.ProtoReflect.Descriptor instead.
 func (*TailCall) Descriptor() ([]byte, []int) {
-	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{12}
+	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *TailCall) GetSite() uint32 {
@@ -940,7 +1098,7 @@ type LinkInfo struct {
 
 func (x *LinkInfo) Reset() {
 	*x = LinkInfo{}
-	mi := &file_proto_bpfinspector_proto_msgTypes[13]
+	mi := &file_proto_bpfinspector_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -952,7 +1110,7 @@ func (x *LinkInfo) String() string {
 func (*LinkInfo) ProtoMessage() {}
 
 func (x *LinkInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_bpfinspector_proto_msgTypes[13]
+	mi := &file_proto_bpfinspector_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -965,7 +1123,7 @@ func (x *LinkInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LinkInfo.ProtoReflect.Descriptor instead.
 func (*LinkInfo) Descriptor() ([]byte, []int) {
-	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{13}
+	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *LinkInfo) GetId() uint32 {
@@ -1011,7 +1169,7 @@ type ListLinksRequest struct {
 
 func (x *ListLinksRequest) Reset() {
 	*x = ListLinksRequest{}
-	mi := &file_proto_bpfinspector_proto_msgTypes[14]
+	mi := &file_proto_bpfinspector_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1023,7 +1181,7 @@ func (x *ListLinksRequest) String() string {
 func (*ListLinksRequest) ProtoMessage() {}
 
 func (x *ListLinksRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_bpfinspector_proto_msgTypes[14]
+	mi := &file_proto_bpfinspector_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1036,7 +1194,7 @@ func (x *ListLinksRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListLinksRequest.ProtoReflect.Descriptor instead.
 func (*ListLinksRequest) Descriptor() ([]byte, []int) {
-	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{14}
+	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{16}
 }
 
 type ListLinksResponse struct {
@@ -1048,7 +1206,7 @@ type ListLinksResponse struct {
 
 func (x *ListLinksResponse) Reset() {
 	*x = ListLinksResponse{}
-	mi := &file_proto_bpfinspector_proto_msgTypes[15]
+	mi := &file_proto_bpfinspector_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1060,7 +1218,7 @@ func (x *ListLinksResponse) String() string {
 func (*ListLinksResponse) ProtoMessage() {}
 
 func (x *ListLinksResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_bpfinspector_proto_msgTypes[15]
+	mi := &file_proto_bpfinspector_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1073,7 +1231,7 @@ func (x *ListLinksResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListLinksResponse.ProtoReflect.Descriptor instead.
 func (*ListLinksResponse) Descriptor() ([]byte, []int) {
-	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{15}
+	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *ListLinksResponse) GetLinks() []*LinkInfo {
@@ -1099,7 +1257,7 @@ type TraceLogRequest struct {
 
 func (x *TraceLogRequest) Reset() {
 	*x = TraceLogRequest{}
-	mi := &file_proto_bpfinspector_proto_msgTypes[16]
+	mi := &file_proto_bpfinspector_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1111,7 +1269,7 @@ func (x *TraceLogRequest) String() string {
 func (*TraceLogRequest) ProtoMessage() {}
 
 func (x *TraceLogRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_bpfinspector_proto_msgTypes[16]
+	mi := &file_proto_bpfinspector_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1124,7 +1282,7 @@ func (x *TraceLogRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TraceLogRequest.ProtoReflect.Descriptor instead.
 func (*TraceLogRequest) Descriptor() ([]byte, []int) {
-	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{16}
+	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{18}
 }
 
 type TraceLogEvent struct {
@@ -1137,7 +1295,7 @@ type TraceLogEvent struct {
 
 func (x *TraceLogEvent) Reset() {
 	*x = TraceLogEvent{}
-	mi := &file_proto_bpfinspector_proto_msgTypes[17]
+	mi := &file_proto_bpfinspector_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1149,7 +1307,7 @@ func (x *TraceLogEvent) String() string {
 func (*TraceLogEvent) ProtoMessage() {}
 
 func (x *TraceLogEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_bpfinspector_proto_msgTypes[17]
+	mi := &file_proto_bpfinspector_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1162,7 +1320,7 @@ func (x *TraceLogEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TraceLogEvent.ProtoReflect.Descriptor instead.
 func (*TraceLogEvent) Descriptor() ([]byte, []int) {
-	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{17}
+	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *TraceLogEvent) GetLine() string {
@@ -1215,7 +1373,7 @@ type ResolveInodeRequest struct {
 
 func (x *ResolveInodeRequest) Reset() {
 	*x = ResolveInodeRequest{}
-	mi := &file_proto_bpfinspector_proto_msgTypes[18]
+	mi := &file_proto_bpfinspector_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1227,7 +1385,7 @@ func (x *ResolveInodeRequest) String() string {
 func (*ResolveInodeRequest) ProtoMessage() {}
 
 func (x *ResolveInodeRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_bpfinspector_proto_msgTypes[18]
+	mi := &file_proto_bpfinspector_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1240,7 +1398,7 @@ func (x *ResolveInodeRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResolveInodeRequest.ProtoReflect.Descriptor instead.
 func (*ResolveInodeRequest) Descriptor() ([]byte, []int) {
-	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{18}
+	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *ResolveInodeRequest) GetInode() uint64 {
@@ -1297,7 +1455,7 @@ type WalkStats struct {
 
 func (x *WalkStats) Reset() {
 	*x = WalkStats{}
-	mi := &file_proto_bpfinspector_proto_msgTypes[19]
+	mi := &file_proto_bpfinspector_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1309,7 +1467,7 @@ func (x *WalkStats) String() string {
 func (*WalkStats) ProtoMessage() {}
 
 func (x *WalkStats) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_bpfinspector_proto_msgTypes[19]
+	mi := &file_proto_bpfinspector_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1322,7 +1480,7 @@ func (x *WalkStats) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WalkStats.ProtoReflect.Descriptor instead.
 func (*WalkStats) Descriptor() ([]byte, []int) {
-	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{19}
+	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *WalkStats) GetRan() bool {
@@ -1396,7 +1554,7 @@ type InodeHolder struct {
 
 func (x *InodeHolder) Reset() {
 	*x = InodeHolder{}
-	mi := &file_proto_bpfinspector_proto_msgTypes[20]
+	mi := &file_proto_bpfinspector_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1408,7 +1566,7 @@ func (x *InodeHolder) String() string {
 func (*InodeHolder) ProtoMessage() {}
 
 func (x *InodeHolder) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_bpfinspector_proto_msgTypes[20]
+	mi := &file_proto_bpfinspector_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1421,7 +1579,7 @@ func (x *InodeHolder) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InodeHolder.ProtoReflect.Descriptor instead.
 func (*InodeHolder) Descriptor() ([]byte, []int) {
-	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{20}
+	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *InodeHolder) GetPid() uint32 {
@@ -1476,7 +1634,7 @@ type InodeMatch struct {
 
 func (x *InodeMatch) Reset() {
 	*x = InodeMatch{}
-	mi := &file_proto_bpfinspector_proto_msgTypes[21]
+	mi := &file_proto_bpfinspector_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1488,7 +1646,7 @@ func (x *InodeMatch) String() string {
 func (*InodeMatch) ProtoMessage() {}
 
 func (x *InodeMatch) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_bpfinspector_proto_msgTypes[21]
+	mi := &file_proto_bpfinspector_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1501,7 +1659,7 @@ func (x *InodeMatch) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InodeMatch.ProtoReflect.Descriptor instead.
 func (*InodeMatch) Descriptor() ([]byte, []int) {
-	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{21}
+	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *InodeMatch) GetPath() string {
@@ -1567,7 +1725,7 @@ type ResolveInodeResponse struct {
 
 func (x *ResolveInodeResponse) Reset() {
 	*x = ResolveInodeResponse{}
-	mi := &file_proto_bpfinspector_proto_msgTypes[22]
+	mi := &file_proto_bpfinspector_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1579,7 +1737,7 @@ func (x *ResolveInodeResponse) String() string {
 func (*ResolveInodeResponse) ProtoMessage() {}
 
 func (x *ResolveInodeResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_bpfinspector_proto_msgTypes[22]
+	mi := &file_proto_bpfinspector_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1592,7 +1750,7 @@ func (x *ResolveInodeResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResolveInodeResponse.ProtoReflect.Descriptor instead.
 func (*ResolveInodeResponse) Descriptor() ([]byte, []int) {
-	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{22}
+	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *ResolveInodeResponse) GetMatches() []*InodeMatch {
@@ -1627,7 +1785,7 @@ type DescribeProcessRequest struct {
 
 func (x *DescribeProcessRequest) Reset() {
 	*x = DescribeProcessRequest{}
-	mi := &file_proto_bpfinspector_proto_msgTypes[23]
+	mi := &file_proto_bpfinspector_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1639,7 +1797,7 @@ func (x *DescribeProcessRequest) String() string {
 func (*DescribeProcessRequest) ProtoMessage() {}
 
 func (x *DescribeProcessRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_bpfinspector_proto_msgTypes[23]
+	mi := &file_proto_bpfinspector_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1652,7 +1810,7 @@ func (x *DescribeProcessRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DescribeProcessRequest.ProtoReflect.Descriptor instead.
 func (*DescribeProcessRequest) Descriptor() ([]byte, []int) {
-	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{23}
+	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *DescribeProcessRequest) GetPid() uint32 {
@@ -1687,7 +1845,7 @@ type DescribeProcessResponse struct {
 
 func (x *DescribeProcessResponse) Reset() {
 	*x = DescribeProcessResponse{}
-	mi := &file_proto_bpfinspector_proto_msgTypes[24]
+	mi := &file_proto_bpfinspector_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1699,7 +1857,7 @@ func (x *DescribeProcessResponse) String() string {
 func (*DescribeProcessResponse) ProtoMessage() {}
 
 func (x *DescribeProcessResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_bpfinspector_proto_msgTypes[24]
+	mi := &file_proto_bpfinspector_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1712,7 +1870,7 @@ func (x *DescribeProcessResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DescribeProcessResponse.ProtoReflect.Descriptor instead.
 func (*DescribeProcessResponse) Descriptor() ([]byte, []int) {
-	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{24}
+	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *DescribeProcessResponse) GetFound() bool {
@@ -1811,7 +1969,7 @@ type GetProcessResourcesRequest struct {
 
 func (x *GetProcessResourcesRequest) Reset() {
 	*x = GetProcessResourcesRequest{}
-	mi := &file_proto_bpfinspector_proto_msgTypes[25]
+	mi := &file_proto_bpfinspector_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1823,7 +1981,7 @@ func (x *GetProcessResourcesRequest) String() string {
 func (*GetProcessResourcesRequest) ProtoMessage() {}
 
 func (x *GetProcessResourcesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_bpfinspector_proto_msgTypes[25]
+	mi := &file_proto_bpfinspector_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1836,7 +1994,7 @@ func (x *GetProcessResourcesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetProcessResourcesRequest.ProtoReflect.Descriptor instead.
 func (*GetProcessResourcesRequest) Descriptor() ([]byte, []int) {
-	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{25}
+	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *GetProcessResourcesRequest) GetPids() []uint32 {
@@ -1857,7 +2015,7 @@ type GetProcessResourcesResponse struct {
 
 func (x *GetProcessResourcesResponse) Reset() {
 	*x = GetProcessResourcesResponse{}
-	mi := &file_proto_bpfinspector_proto_msgTypes[26]
+	mi := &file_proto_bpfinspector_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1869,7 +2027,7 @@ func (x *GetProcessResourcesResponse) String() string {
 func (*GetProcessResourcesResponse) ProtoMessage() {}
 
 func (x *GetProcessResourcesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_bpfinspector_proto_msgTypes[26]
+	mi := &file_proto_bpfinspector_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1882,7 +2040,7 @@ func (x *GetProcessResourcesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetProcessResourcesResponse.ProtoReflect.Descriptor instead.
 func (*GetProcessResourcesResponse) Descriptor() ([]byte, []int) {
-	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{26}
+	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *GetProcessResourcesResponse) GetResources() map[uint32]*ProcessResources {
@@ -1915,7 +2073,7 @@ type ProcessResources struct {
 
 func (x *ProcessResources) Reset() {
 	*x = ProcessResources{}
-	mi := &file_proto_bpfinspector_proto_msgTypes[27]
+	mi := &file_proto_bpfinspector_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1927,7 +2085,7 @@ func (x *ProcessResources) String() string {
 func (*ProcessResources) ProtoMessage() {}
 
 func (x *ProcessResources) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_bpfinspector_proto_msgTypes[27]
+	mi := &file_proto_bpfinspector_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1940,7 +2098,7 @@ func (x *ProcessResources) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProcessResources.ProtoReflect.Descriptor instead.
 func (*ProcessResources) Descriptor() ([]byte, []int) {
-	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{27}
+	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *ProcessResources) GetUserCpuUsec() uint64 {
@@ -2015,7 +2173,7 @@ type CgroupResources struct {
 
 func (x *CgroupResources) Reset() {
 	*x = CgroupResources{}
-	mi := &file_proto_bpfinspector_proto_msgTypes[28]
+	mi := &file_proto_bpfinspector_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2027,7 +2185,7 @@ func (x *CgroupResources) String() string {
 func (*CgroupResources) ProtoMessage() {}
 
 func (x *CgroupResources) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_bpfinspector_proto_msgTypes[28]
+	mi := &file_proto_bpfinspector_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2040,7 +2198,7 @@ func (x *CgroupResources) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CgroupResources.ProtoReflect.Descriptor instead.
 func (*CgroupResources) Descriptor() ([]byte, []int) {
-	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{28}
+	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *CgroupResources) GetNote() string {
@@ -2160,7 +2318,7 @@ type DescribeNodeRequest struct {
 
 func (x *DescribeNodeRequest) Reset() {
 	*x = DescribeNodeRequest{}
-	mi := &file_proto_bpfinspector_proto_msgTypes[29]
+	mi := &file_proto_bpfinspector_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2172,7 +2330,7 @@ func (x *DescribeNodeRequest) String() string {
 func (*DescribeNodeRequest) ProtoMessage() {}
 
 func (x *DescribeNodeRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_bpfinspector_proto_msgTypes[29]
+	mi := &file_proto_bpfinspector_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2185,7 +2343,7 @@ func (x *DescribeNodeRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DescribeNodeRequest.ProtoReflect.Descriptor instead.
 func (*DescribeNodeRequest) Descriptor() ([]byte, []int) {
-	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{29}
+	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{31}
 }
 
 type DescribeNodeResponse struct {
@@ -2200,7 +2358,7 @@ type DescribeNodeResponse struct {
 
 func (x *DescribeNodeResponse) Reset() {
 	*x = DescribeNodeResponse{}
-	mi := &file_proto_bpfinspector_proto_msgTypes[30]
+	mi := &file_proto_bpfinspector_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2212,7 +2370,7 @@ func (x *DescribeNodeResponse) String() string {
 func (*DescribeNodeResponse) ProtoMessage() {}
 
 func (x *DescribeNodeResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_bpfinspector_proto_msgTypes[30]
+	mi := &file_proto_bpfinspector_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2225,7 +2383,7 @@ func (x *DescribeNodeResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DescribeNodeResponse.ProtoReflect.Descriptor instead.
 func (*DescribeNodeResponse) Descriptor() ([]byte, []int) {
-	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{30}
+	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{32}
 }
 
 func (x *DescribeNodeResponse) GetKernel() *Kernel {
@@ -2270,7 +2428,7 @@ type Kernel struct {
 
 func (x *Kernel) Reset() {
 	*x = Kernel{}
-	mi := &file_proto_bpfinspector_proto_msgTypes[31]
+	mi := &file_proto_bpfinspector_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2282,7 +2440,7 @@ func (x *Kernel) String() string {
 func (*Kernel) ProtoMessage() {}
 
 func (x *Kernel) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_bpfinspector_proto_msgTypes[31]
+	mi := &file_proto_bpfinspector_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2295,7 +2453,7 @@ func (x *Kernel) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Kernel.ProtoReflect.Descriptor instead.
 func (*Kernel) Descriptor() ([]byte, []int) {
-	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{31}
+	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{33}
 }
 
 func (x *Kernel) GetRelease() string {
@@ -2379,7 +2537,7 @@ type Cgroups struct {
 
 func (x *Cgroups) Reset() {
 	*x = Cgroups{}
-	mi := &file_proto_bpfinspector_proto_msgTypes[32]
+	mi := &file_proto_bpfinspector_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2391,7 +2549,7 @@ func (x *Cgroups) String() string {
 func (*Cgroups) ProtoMessage() {}
 
 func (x *Cgroups) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_bpfinspector_proto_msgTypes[32]
+	mi := &file_proto_bpfinspector_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2404,7 +2562,7 @@ func (x *Cgroups) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Cgroups.ProtoReflect.Descriptor instead.
 func (*Cgroups) Descriptor() ([]byte, []int) {
-	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{32}
+	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{34}
 }
 
 func (x *Cgroups) GetMode() string {
@@ -2501,7 +2659,7 @@ type Component struct {
 
 func (x *Component) Reset() {
 	*x = Component{}
-	mi := &file_proto_bpfinspector_proto_msgTypes[33]
+	mi := &file_proto_bpfinspector_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2513,7 +2671,7 @@ func (x *Component) String() string {
 func (*Component) ProtoMessage() {}
 
 func (x *Component) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_bpfinspector_proto_msgTypes[33]
+	mi := &file_proto_bpfinspector_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2526,7 +2684,7 @@ func (x *Component) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Component.ProtoReflect.Descriptor instead.
 func (*Component) Descriptor() ([]byte, []int) {
-	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{33}
+	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{35}
 }
 
 func (x *Component) GetName() string {
@@ -2609,7 +2767,7 @@ type Namespace struct {
 
 func (x *Namespace) Reset() {
 	*x = Namespace{}
-	mi := &file_proto_bpfinspector_proto_msgTypes[34]
+	mi := &file_proto_bpfinspector_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2621,7 +2779,7 @@ func (x *Namespace) String() string {
 func (*Namespace) ProtoMessage() {}
 
 func (x *Namespace) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_bpfinspector_proto_msgTypes[34]
+	mi := &file_proto_bpfinspector_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2634,7 +2792,7 @@ func (x *Namespace) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Namespace.ProtoReflect.Descriptor instead.
 func (*Namespace) Descriptor() ([]byte, []int) {
-	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{34}
+	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{36}
 }
 
 func (x *Namespace) GetKind() string {
@@ -2674,7 +2832,7 @@ type ProbeFeaturesRequest struct {
 
 func (x *ProbeFeaturesRequest) Reset() {
 	*x = ProbeFeaturesRequest{}
-	mi := &file_proto_bpfinspector_proto_msgTypes[35]
+	mi := &file_proto_bpfinspector_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2686,7 +2844,7 @@ func (x *ProbeFeaturesRequest) String() string {
 func (*ProbeFeaturesRequest) ProtoMessage() {}
 
 func (x *ProbeFeaturesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_bpfinspector_proto_msgTypes[35]
+	mi := &file_proto_bpfinspector_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2699,7 +2857,7 @@ func (x *ProbeFeaturesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProbeFeaturesRequest.ProtoReflect.Descriptor instead.
 func (*ProbeFeaturesRequest) Descriptor() ([]byte, []int) {
-	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{35}
+	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{37}
 }
 
 type ProbeFeaturesResponse struct {
@@ -2727,7 +2885,7 @@ type ProbeFeaturesResponse struct {
 
 func (x *ProbeFeaturesResponse) Reset() {
 	*x = ProbeFeaturesResponse{}
-	mi := &file_proto_bpfinspector_proto_msgTypes[36]
+	mi := &file_proto_bpfinspector_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2739,7 +2897,7 @@ func (x *ProbeFeaturesResponse) String() string {
 func (*ProbeFeaturesResponse) ProtoMessage() {}
 
 func (x *ProbeFeaturesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_bpfinspector_proto_msgTypes[36]
+	mi := &file_proto_bpfinspector_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2752,7 +2910,7 @@ func (x *ProbeFeaturesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProbeFeaturesResponse.ProtoReflect.Descriptor instead.
 func (*ProbeFeaturesResponse) Descriptor() ([]byte, []int) {
-	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{36}
+	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{38}
 }
 
 func (x *ProbeFeaturesResponse) GetSysctls() []*Sysctl {
@@ -2830,7 +2988,7 @@ type Sysctl struct {
 
 func (x *Sysctl) Reset() {
 	*x = Sysctl{}
-	mi := &file_proto_bpfinspector_proto_msgTypes[37]
+	mi := &file_proto_bpfinspector_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2842,7 +3000,7 @@ func (x *Sysctl) String() string {
 func (*Sysctl) ProtoMessage() {}
 
 func (x *Sysctl) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_bpfinspector_proto_msgTypes[37]
+	mi := &file_proto_bpfinspector_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2855,7 +3013,7 @@ func (x *Sysctl) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Sysctl.ProtoReflect.Descriptor instead.
 func (*Sysctl) Descriptor() ([]byte, []int) {
-	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{37}
+	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{39}
 }
 
 func (x *Sysctl) GetName() string {
@@ -2896,7 +3054,7 @@ type KernelConfigOption struct {
 
 func (x *KernelConfigOption) Reset() {
 	*x = KernelConfigOption{}
-	mi := &file_proto_bpfinspector_proto_msgTypes[38]
+	mi := &file_proto_bpfinspector_proto_msgTypes[40]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2908,7 +3066,7 @@ func (x *KernelConfigOption) String() string {
 func (*KernelConfigOption) ProtoMessage() {}
 
 func (x *KernelConfigOption) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_bpfinspector_proto_msgTypes[38]
+	mi := &file_proto_bpfinspector_proto_msgTypes[40]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2921,7 +3079,7 @@ func (x *KernelConfigOption) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use KernelConfigOption.ProtoReflect.Descriptor instead.
 func (*KernelConfigOption) Descriptor() ([]byte, []int) {
-	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{38}
+	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{40}
 }
 
 func (x *KernelConfigOption) GetName() string {
@@ -2952,7 +3110,7 @@ type FeatureProbe struct {
 
 func (x *FeatureProbe) Reset() {
 	*x = FeatureProbe{}
-	mi := &file_proto_bpfinspector_proto_msgTypes[39]
+	mi := &file_proto_bpfinspector_proto_msgTypes[41]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2964,7 +3122,7 @@ func (x *FeatureProbe) String() string {
 func (*FeatureProbe) ProtoMessage() {}
 
 func (x *FeatureProbe) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_bpfinspector_proto_msgTypes[39]
+	mi := &file_proto_bpfinspector_proto_msgTypes[41]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2977,7 +3135,7 @@ func (x *FeatureProbe) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FeatureProbe.ProtoReflect.Descriptor instead.
 func (*FeatureProbe) Descriptor() ([]byte, []int) {
-	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{39}
+	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{41}
 }
 
 func (x *FeatureProbe) GetName() string {
@@ -3020,7 +3178,7 @@ type CgroupTreeRequest struct {
 
 func (x *CgroupTreeRequest) Reset() {
 	*x = CgroupTreeRequest{}
-	mi := &file_proto_bpfinspector_proto_msgTypes[40]
+	mi := &file_proto_bpfinspector_proto_msgTypes[42]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3032,7 +3190,7 @@ func (x *CgroupTreeRequest) String() string {
 func (*CgroupTreeRequest) ProtoMessage() {}
 
 func (x *CgroupTreeRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_bpfinspector_proto_msgTypes[40]
+	mi := &file_proto_bpfinspector_proto_msgTypes[42]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3045,7 +3203,7 @@ func (x *CgroupTreeRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CgroupTreeRequest.ProtoReflect.Descriptor instead.
 func (*CgroupTreeRequest) Descriptor() ([]byte, []int) {
-	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{40}
+	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{42}
 }
 
 func (x *CgroupTreeRequest) GetRoot() string {
@@ -3075,7 +3233,7 @@ type CgroupTreeResponse struct {
 
 func (x *CgroupTreeResponse) Reset() {
 	*x = CgroupTreeResponse{}
-	mi := &file_proto_bpfinspector_proto_msgTypes[41]
+	mi := &file_proto_bpfinspector_proto_msgTypes[43]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3087,7 +3245,7 @@ func (x *CgroupTreeResponse) String() string {
 func (*CgroupTreeResponse) ProtoMessage() {}
 
 func (x *CgroupTreeResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_bpfinspector_proto_msgTypes[41]
+	mi := &file_proto_bpfinspector_proto_msgTypes[43]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3100,7 +3258,7 @@ func (x *CgroupTreeResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CgroupTreeResponse.ProtoReflect.Descriptor instead.
 func (*CgroupTreeResponse) Descriptor() ([]byte, []int) {
-	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{41}
+	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{43}
 }
 
 func (x *CgroupTreeResponse) GetMountPoint() string {
@@ -3137,7 +3295,7 @@ type CgroupAttachments struct {
 
 func (x *CgroupAttachments) Reset() {
 	*x = CgroupAttachments{}
-	mi := &file_proto_bpfinspector_proto_msgTypes[42]
+	mi := &file_proto_bpfinspector_proto_msgTypes[44]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3149,7 +3307,7 @@ func (x *CgroupAttachments) String() string {
 func (*CgroupAttachments) ProtoMessage() {}
 
 func (x *CgroupAttachments) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_bpfinspector_proto_msgTypes[42]
+	mi := &file_proto_bpfinspector_proto_msgTypes[44]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3162,7 +3320,7 @@ func (x *CgroupAttachments) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CgroupAttachments.ProtoReflect.Descriptor instead.
 func (*CgroupAttachments) Descriptor() ([]byte, []int) {
-	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{42}
+	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{44}
 }
 
 func (x *CgroupAttachments) GetPath() string {
@@ -3205,7 +3363,7 @@ type CgroupProgram struct {
 
 func (x *CgroupProgram) Reset() {
 	*x = CgroupProgram{}
-	mi := &file_proto_bpfinspector_proto_msgTypes[43]
+	mi := &file_proto_bpfinspector_proto_msgTypes[45]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3217,7 +3375,7 @@ func (x *CgroupProgram) String() string {
 func (*CgroupProgram) ProtoMessage() {}
 
 func (x *CgroupProgram) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_bpfinspector_proto_msgTypes[43]
+	mi := &file_proto_bpfinspector_proto_msgTypes[45]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3230,7 +3388,7 @@ func (x *CgroupProgram) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CgroupProgram.ProtoReflect.Descriptor instead.
 func (*CgroupProgram) Descriptor() ([]byte, []int) {
-	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{43}
+	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{45}
 }
 
 func (x *CgroupProgram) GetId() uint32 {
@@ -3303,7 +3461,7 @@ type TetragonPolicyInfo struct {
 
 func (x *TetragonPolicyInfo) Reset() {
 	*x = TetragonPolicyInfo{}
-	mi := &file_proto_bpfinspector_proto_msgTypes[44]
+	mi := &file_proto_bpfinspector_proto_msgTypes[46]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3315,7 +3473,7 @@ func (x *TetragonPolicyInfo) String() string {
 func (*TetragonPolicyInfo) ProtoMessage() {}
 
 func (x *TetragonPolicyInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_bpfinspector_proto_msgTypes[44]
+	mi := &file_proto_bpfinspector_proto_msgTypes[46]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3328,7 +3486,7 @@ func (x *TetragonPolicyInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TetragonPolicyInfo.ProtoReflect.Descriptor instead.
 func (*TetragonPolicyInfo) Descriptor() ([]byte, []int) {
-	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{44}
+	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{46}
 }
 
 func (x *TetragonPolicyInfo) GetId() uint64 {
@@ -3426,7 +3584,7 @@ type ListTetragonPoliciesRequest struct {
 
 func (x *ListTetragonPoliciesRequest) Reset() {
 	*x = ListTetragonPoliciesRequest{}
-	mi := &file_proto_bpfinspector_proto_msgTypes[45]
+	mi := &file_proto_bpfinspector_proto_msgTypes[47]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3438,7 +3596,7 @@ func (x *ListTetragonPoliciesRequest) String() string {
 func (*ListTetragonPoliciesRequest) ProtoMessage() {}
 
 func (x *ListTetragonPoliciesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_bpfinspector_proto_msgTypes[45]
+	mi := &file_proto_bpfinspector_proto_msgTypes[47]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3451,7 +3609,7 @@ func (x *ListTetragonPoliciesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListTetragonPoliciesRequest.ProtoReflect.Descriptor instead.
 func (*ListTetragonPoliciesRequest) Descriptor() ([]byte, []int) {
-	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{45}
+	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{47}
 }
 
 func (x *ListTetragonPoliciesRequest) GetAddress() string {
@@ -3470,7 +3628,7 @@ type ListTetragonPoliciesResponse struct {
 
 func (x *ListTetragonPoliciesResponse) Reset() {
 	*x = ListTetragonPoliciesResponse{}
-	mi := &file_proto_bpfinspector_proto_msgTypes[46]
+	mi := &file_proto_bpfinspector_proto_msgTypes[48]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3482,7 +3640,7 @@ func (x *ListTetragonPoliciesResponse) String() string {
 func (*ListTetragonPoliciesResponse) ProtoMessage() {}
 
 func (x *ListTetragonPoliciesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_bpfinspector_proto_msgTypes[46]
+	mi := &file_proto_bpfinspector_proto_msgTypes[48]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3495,7 +3653,7 @@ func (x *ListTetragonPoliciesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListTetragonPoliciesResponse.ProtoReflect.Descriptor instead.
 func (*ListTetragonPoliciesResponse) Descriptor() ([]byte, []int) {
-	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{46}
+	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{48}
 }
 
 func (x *ListTetragonPoliciesResponse) GetPolicies() []*TetragonPolicyInfo {
@@ -3552,7 +3710,7 @@ const file_proto_bpfinspector_proto_rawDesc = "" +
 	"\n" +
 	"ProcessRef\x12\x10\n" +
 	"\x03pid\x18\x01 \x01(\rR\x03pid\x12\x12\n" +
-	"\x04comm\x18\x02 \x01(\tR\x04comm\"\xd0\x01\n" +
+	"\x04comm\x18\x02 \x01(\tR\x04comm\"\xb8\x02\n" +
 	"\vProgramInfo\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\rR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x12\n" +
@@ -3560,10 +3718,23 @@ const file_proto_bpfinspector_proto_rawDesc = "" +
 	"\x03tag\x18\x04 \x01(\tR\x03tag\x12\x17\n" +
 	"\amap_ids\x18\x05 \x03(\rR\x06mapIds\x12/\n" +
 	"\x04pids\x18\x06 \x03(\v2\x1b.bpfinspector.v1.ProcessRefR\x04pids\x12-\n" +
-	"\x13loaded_at_unix_nano\x18\a \x01(\x03R\x10loadedAtUnixNano\"\x15\n" +
-	"\x13ListProgramsRequest\"P\n" +
+	"\x13loaded_at_unix_nano\x18\a \x01(\x03R\x10loadedAtUnixNano\x12\x1b\n" +
+	"\trun_count\x18\b \x01(\x04R\brunCount\x12\x1e\n" +
+	"\vrun_time_ns\x18\t \x01(\x04R\trunTimeNs\x12)\n" +
+	"\x10recursion_misses\x18\n" +
+	" \x01(\x04R\x0frecursionMisses\"\x15\n" +
+	"\x13ListProgramsRequest\"\x83\x01\n" +
 	"\x14ListProgramsResponse\x128\n" +
-	"\bprograms\x18\x01 \x03(\v2\x1c.bpfinspector.v1.ProgramInfoR\bprograms\"$\n" +
+	"\bprograms\x18\x01 \x03(\v2\x1c.bpfinspector.v1.ProgramInfoR\bprograms\x121\n" +
+	"\x05stats\x18\x02 \x01(\v2\x1b.bpfinspector.v1.StatsStateR\x05stats\"\x92\x01\n" +
+	"\n" +
+	"StatsState\x12\x12\n" +
+	"\x04held\x18\x01 \x01(\bR\x04held\x12!\n" +
+	"\fseconds_left\x18\x02 \x01(\rR\vsecondsLeft\x12\x16\n" +
+	"\x06sysctl\x18\x03 \x01(\bR\x06sysctl\x125\n" +
+	"\aholders\x18\x04 \x03(\v2\x1b.bpfinspector.v1.ProcessRefR\aholders\"+\n" +
+	"\x0fSetStatsRequest\x12\x18\n" +
+	"\aenabled\x18\x01 \x01(\bR\aenabled\"$\n" +
 	"\x12DumpProgramRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\rR\x02id\"\x97\x01\n" +
 	"\x13DumpProgramResponse\x12\x14\n" +
@@ -3783,7 +3954,8 @@ const file_proto_bpfinspector_proto_rawDesc = "" +
 	"\x1bListTetragonPoliciesRequest\x12\x18\n" +
 	"\aaddress\x18\x01 \x01(\tR\aaddress\"_\n" +
 	"\x1cListTetragonPoliciesResponse\x12?\n" +
-	"\bpolicies\x18\x01 \x03(\v2#.bpfinspector.v1.TetragonPolicyInfoR\bpolicies2\xc6\t\n" +
+	"\bpolicies\x18\x01 \x03(\v2#.bpfinspector.v1.TetragonPolicyInfoR\bpolicies2\x91\n" +
+	"\n" +
 	"\fBpfInspector\x12O\n" +
 	"\bListMaps\x12 .bpfinspector.v1.ListMapsRequest\x1a!.bpfinspector.v1.ListMapsResponse\x12L\n" +
 	"\aDumpMap\x12\x1f.bpfinspector.v1.DumpMapRequest\x1a .bpfinspector.v1.DumpMapResponse\x12[\n" +
@@ -3798,7 +3970,8 @@ const file_proto_bpfinspector_proto_rawDesc = "" +
 	"\rProbeFeatures\x12%.bpfinspector.v1.ProbeFeaturesRequest\x1a&.bpfinspector.v1.ProbeFeaturesResponse\x12U\n" +
 	"\n" +
 	"CgroupTree\x12\".bpfinspector.v1.CgroupTreeRequest\x1a#.bpfinspector.v1.CgroupTreeResponse\x12s\n" +
-	"\x14ListTetragonPolicies\x12,.bpfinspector.v1.ListTetragonPoliciesRequest\x1a-.bpfinspector.v1.ListTetragonPoliciesResponseBCZAgithub.com/lazybpf/bpf-explorer/gen/bpfinspectorv1;bpfinspectorv1b\x06proto3"
+	"\x14ListTetragonPolicies\x12,.bpfinspector.v1.ListTetragonPoliciesRequest\x1a-.bpfinspector.v1.ListTetragonPoliciesResponse\x12I\n" +
+	"\bSetStats\x12 .bpfinspector.v1.SetStatsRequest\x1a\x1b.bpfinspector.v1.StatsStateBCZAgithub.com/lazybpf/bpf-explorer/gen/bpfinspectorv1;bpfinspectorv1b\x06proto3"
 
 var (
 	file_proto_bpfinspector_proto_rawDescOnce sync.Once
@@ -3812,7 +3985,7 @@ func file_proto_bpfinspector_proto_rawDescGZIP() []byte {
 	return file_proto_bpfinspector_proto_rawDescData
 }
 
-var file_proto_bpfinspector_proto_msgTypes = make([]protoimpl.MessageInfo, 48)
+var file_proto_bpfinspector_proto_msgTypes = make([]protoimpl.MessageInfo, 50)
 var file_proto_bpfinspector_proto_goTypes = []any{
 	(*MapInfo)(nil),                      // 0: bpfinspector.v1.MapInfo
 	(*ListMapsRequest)(nil),              // 1: bpfinspector.v1.ListMapsRequest
@@ -3824,44 +3997,46 @@ var file_proto_bpfinspector_proto_goTypes = []any{
 	(*ProgramInfo)(nil),                  // 7: bpfinspector.v1.ProgramInfo
 	(*ListProgramsRequest)(nil),          // 8: bpfinspector.v1.ListProgramsRequest
 	(*ListProgramsResponse)(nil),         // 9: bpfinspector.v1.ListProgramsResponse
-	(*DumpProgramRequest)(nil),           // 10: bpfinspector.v1.DumpProgramRequest
-	(*DumpProgramResponse)(nil),          // 11: bpfinspector.v1.DumpProgramResponse
-	(*TailCall)(nil),                     // 12: bpfinspector.v1.TailCall
-	(*LinkInfo)(nil),                     // 13: bpfinspector.v1.LinkInfo
-	(*ListLinksRequest)(nil),             // 14: bpfinspector.v1.ListLinksRequest
-	(*ListLinksResponse)(nil),            // 15: bpfinspector.v1.ListLinksResponse
-	(*TraceLogRequest)(nil),              // 16: bpfinspector.v1.TraceLogRequest
-	(*TraceLogEvent)(nil),                // 17: bpfinspector.v1.TraceLogEvent
-	(*ResolveInodeRequest)(nil),          // 18: bpfinspector.v1.ResolveInodeRequest
-	(*WalkStats)(nil),                    // 19: bpfinspector.v1.WalkStats
-	(*InodeHolder)(nil),                  // 20: bpfinspector.v1.InodeHolder
-	(*InodeMatch)(nil),                   // 21: bpfinspector.v1.InodeMatch
-	(*ResolveInodeResponse)(nil),         // 22: bpfinspector.v1.ResolveInodeResponse
-	(*DescribeProcessRequest)(nil),       // 23: bpfinspector.v1.DescribeProcessRequest
-	(*DescribeProcessResponse)(nil),      // 24: bpfinspector.v1.DescribeProcessResponse
-	(*GetProcessResourcesRequest)(nil),   // 25: bpfinspector.v1.GetProcessResourcesRequest
-	(*GetProcessResourcesResponse)(nil),  // 26: bpfinspector.v1.GetProcessResourcesResponse
-	(*ProcessResources)(nil),             // 27: bpfinspector.v1.ProcessResources
-	(*CgroupResources)(nil),              // 28: bpfinspector.v1.CgroupResources
-	(*DescribeNodeRequest)(nil),          // 29: bpfinspector.v1.DescribeNodeRequest
-	(*DescribeNodeResponse)(nil),         // 30: bpfinspector.v1.DescribeNodeResponse
-	(*Kernel)(nil),                       // 31: bpfinspector.v1.Kernel
-	(*Cgroups)(nil),                      // 32: bpfinspector.v1.Cgroups
-	(*Component)(nil),                    // 33: bpfinspector.v1.Component
-	(*Namespace)(nil),                    // 34: bpfinspector.v1.Namespace
-	(*ProbeFeaturesRequest)(nil),         // 35: bpfinspector.v1.ProbeFeaturesRequest
-	(*ProbeFeaturesResponse)(nil),        // 36: bpfinspector.v1.ProbeFeaturesResponse
-	(*Sysctl)(nil),                       // 37: bpfinspector.v1.Sysctl
-	(*KernelConfigOption)(nil),           // 38: bpfinspector.v1.KernelConfigOption
-	(*FeatureProbe)(nil),                 // 39: bpfinspector.v1.FeatureProbe
-	(*CgroupTreeRequest)(nil),            // 40: bpfinspector.v1.CgroupTreeRequest
-	(*CgroupTreeResponse)(nil),           // 41: bpfinspector.v1.CgroupTreeResponse
-	(*CgroupAttachments)(nil),            // 42: bpfinspector.v1.CgroupAttachments
-	(*CgroupProgram)(nil),                // 43: bpfinspector.v1.CgroupProgram
-	(*TetragonPolicyInfo)(nil),           // 44: bpfinspector.v1.TetragonPolicyInfo
-	(*ListTetragonPoliciesRequest)(nil),  // 45: bpfinspector.v1.ListTetragonPoliciesRequest
-	(*ListTetragonPoliciesResponse)(nil), // 46: bpfinspector.v1.ListTetragonPoliciesResponse
-	nil,                                  // 47: bpfinspector.v1.GetProcessResourcesResponse.ResourcesEntry
+	(*StatsState)(nil),                   // 10: bpfinspector.v1.StatsState
+	(*SetStatsRequest)(nil),              // 11: bpfinspector.v1.SetStatsRequest
+	(*DumpProgramRequest)(nil),           // 12: bpfinspector.v1.DumpProgramRequest
+	(*DumpProgramResponse)(nil),          // 13: bpfinspector.v1.DumpProgramResponse
+	(*TailCall)(nil),                     // 14: bpfinspector.v1.TailCall
+	(*LinkInfo)(nil),                     // 15: bpfinspector.v1.LinkInfo
+	(*ListLinksRequest)(nil),             // 16: bpfinspector.v1.ListLinksRequest
+	(*ListLinksResponse)(nil),            // 17: bpfinspector.v1.ListLinksResponse
+	(*TraceLogRequest)(nil),              // 18: bpfinspector.v1.TraceLogRequest
+	(*TraceLogEvent)(nil),                // 19: bpfinspector.v1.TraceLogEvent
+	(*ResolveInodeRequest)(nil),          // 20: bpfinspector.v1.ResolveInodeRequest
+	(*WalkStats)(nil),                    // 21: bpfinspector.v1.WalkStats
+	(*InodeHolder)(nil),                  // 22: bpfinspector.v1.InodeHolder
+	(*InodeMatch)(nil),                   // 23: bpfinspector.v1.InodeMatch
+	(*ResolveInodeResponse)(nil),         // 24: bpfinspector.v1.ResolveInodeResponse
+	(*DescribeProcessRequest)(nil),       // 25: bpfinspector.v1.DescribeProcessRequest
+	(*DescribeProcessResponse)(nil),      // 26: bpfinspector.v1.DescribeProcessResponse
+	(*GetProcessResourcesRequest)(nil),   // 27: bpfinspector.v1.GetProcessResourcesRequest
+	(*GetProcessResourcesResponse)(nil),  // 28: bpfinspector.v1.GetProcessResourcesResponse
+	(*ProcessResources)(nil),             // 29: bpfinspector.v1.ProcessResources
+	(*CgroupResources)(nil),              // 30: bpfinspector.v1.CgroupResources
+	(*DescribeNodeRequest)(nil),          // 31: bpfinspector.v1.DescribeNodeRequest
+	(*DescribeNodeResponse)(nil),         // 32: bpfinspector.v1.DescribeNodeResponse
+	(*Kernel)(nil),                       // 33: bpfinspector.v1.Kernel
+	(*Cgroups)(nil),                      // 34: bpfinspector.v1.Cgroups
+	(*Component)(nil),                    // 35: bpfinspector.v1.Component
+	(*Namespace)(nil),                    // 36: bpfinspector.v1.Namespace
+	(*ProbeFeaturesRequest)(nil),         // 37: bpfinspector.v1.ProbeFeaturesRequest
+	(*ProbeFeaturesResponse)(nil),        // 38: bpfinspector.v1.ProbeFeaturesResponse
+	(*Sysctl)(nil),                       // 39: bpfinspector.v1.Sysctl
+	(*KernelConfigOption)(nil),           // 40: bpfinspector.v1.KernelConfigOption
+	(*FeatureProbe)(nil),                 // 41: bpfinspector.v1.FeatureProbe
+	(*CgroupTreeRequest)(nil),            // 42: bpfinspector.v1.CgroupTreeRequest
+	(*CgroupTreeResponse)(nil),           // 43: bpfinspector.v1.CgroupTreeResponse
+	(*CgroupAttachments)(nil),            // 44: bpfinspector.v1.CgroupAttachments
+	(*CgroupProgram)(nil),                // 45: bpfinspector.v1.CgroupProgram
+	(*TetragonPolicyInfo)(nil),           // 46: bpfinspector.v1.TetragonPolicyInfo
+	(*ListTetragonPoliciesRequest)(nil),  // 47: bpfinspector.v1.ListTetragonPoliciesRequest
+	(*ListTetragonPoliciesResponse)(nil), // 48: bpfinspector.v1.ListTetragonPoliciesResponse
+	nil,                                  // 49: bpfinspector.v1.GetProcessResourcesResponse.ResourcesEntry
 }
 var file_proto_bpfinspector_proto_depIdxs = []int32{
 	6,  // 0: bpfinspector.v1.MapInfo.pids:type_name -> bpfinspector.v1.ProcessRef
@@ -3869,58 +4044,62 @@ var file_proto_bpfinspector_proto_depIdxs = []int32{
 	3,  // 2: bpfinspector.v1.DumpMapResponse.entries:type_name -> bpfinspector.v1.MapEntry
 	6,  // 3: bpfinspector.v1.ProgramInfo.pids:type_name -> bpfinspector.v1.ProcessRef
 	7,  // 4: bpfinspector.v1.ListProgramsResponse.programs:type_name -> bpfinspector.v1.ProgramInfo
-	12, // 5: bpfinspector.v1.DumpProgramResponse.tail_calls:type_name -> bpfinspector.v1.TailCall
-	13, // 6: bpfinspector.v1.ListLinksResponse.links:type_name -> bpfinspector.v1.LinkInfo
-	20, // 7: bpfinspector.v1.InodeMatch.holders:type_name -> bpfinspector.v1.InodeHolder
-	21, // 8: bpfinspector.v1.ResolveInodeResponse.matches:type_name -> bpfinspector.v1.InodeMatch
-	19, // 9: bpfinspector.v1.ResolveInodeResponse.walk:type_name -> bpfinspector.v1.WalkStats
-	34, // 10: bpfinspector.v1.DescribeProcessResponse.namespaces:type_name -> bpfinspector.v1.Namespace
-	27, // 11: bpfinspector.v1.DescribeProcessResponse.resources:type_name -> bpfinspector.v1.ProcessResources
-	47, // 12: bpfinspector.v1.GetProcessResourcesResponse.resources:type_name -> bpfinspector.v1.GetProcessResourcesResponse.ResourcesEntry
-	28, // 13: bpfinspector.v1.ProcessResources.cgroup:type_name -> bpfinspector.v1.CgroupResources
-	31, // 14: bpfinspector.v1.DescribeNodeResponse.kernel:type_name -> bpfinspector.v1.Kernel
-	32, // 15: bpfinspector.v1.DescribeNodeResponse.cgroups:type_name -> bpfinspector.v1.Cgroups
-	33, // 16: bpfinspector.v1.DescribeNodeResponse.components:type_name -> bpfinspector.v1.Component
-	37, // 17: bpfinspector.v1.ProbeFeaturesResponse.sysctls:type_name -> bpfinspector.v1.Sysctl
-	38, // 18: bpfinspector.v1.ProbeFeaturesResponse.kernel_config:type_name -> bpfinspector.v1.KernelConfigOption
-	39, // 19: bpfinspector.v1.ProbeFeaturesResponse.program_types:type_name -> bpfinspector.v1.FeatureProbe
-	39, // 20: bpfinspector.v1.ProbeFeaturesResponse.map_types:type_name -> bpfinspector.v1.FeatureProbe
-	39, // 21: bpfinspector.v1.ProbeFeaturesResponse.misc:type_name -> bpfinspector.v1.FeatureProbe
-	42, // 22: bpfinspector.v1.CgroupTreeResponse.cgroups:type_name -> bpfinspector.v1.CgroupAttachments
-	43, // 23: bpfinspector.v1.CgroupAttachments.programs:type_name -> bpfinspector.v1.CgroupProgram
-	44, // 24: bpfinspector.v1.ListTetragonPoliciesResponse.policies:type_name -> bpfinspector.v1.TetragonPolicyInfo
-	27, // 25: bpfinspector.v1.GetProcessResourcesResponse.ResourcesEntry.value:type_name -> bpfinspector.v1.ProcessResources
-	1,  // 26: bpfinspector.v1.BpfInspector.ListMaps:input_type -> bpfinspector.v1.ListMapsRequest
-	4,  // 27: bpfinspector.v1.BpfInspector.DumpMap:input_type -> bpfinspector.v1.DumpMapRequest
-	8,  // 28: bpfinspector.v1.BpfInspector.ListPrograms:input_type -> bpfinspector.v1.ListProgramsRequest
-	10, // 29: bpfinspector.v1.BpfInspector.DumpProgram:input_type -> bpfinspector.v1.DumpProgramRequest
-	14, // 30: bpfinspector.v1.BpfInspector.ListLinks:input_type -> bpfinspector.v1.ListLinksRequest
-	16, // 31: bpfinspector.v1.BpfInspector.TraceLog:input_type -> bpfinspector.v1.TraceLogRequest
-	18, // 32: bpfinspector.v1.BpfInspector.ResolveInode:input_type -> bpfinspector.v1.ResolveInodeRequest
-	23, // 33: bpfinspector.v1.BpfInspector.DescribeProcess:input_type -> bpfinspector.v1.DescribeProcessRequest
-	25, // 34: bpfinspector.v1.BpfInspector.GetProcessResources:input_type -> bpfinspector.v1.GetProcessResourcesRequest
-	29, // 35: bpfinspector.v1.BpfInspector.DescribeNode:input_type -> bpfinspector.v1.DescribeNodeRequest
-	35, // 36: bpfinspector.v1.BpfInspector.ProbeFeatures:input_type -> bpfinspector.v1.ProbeFeaturesRequest
-	40, // 37: bpfinspector.v1.BpfInspector.CgroupTree:input_type -> bpfinspector.v1.CgroupTreeRequest
-	45, // 38: bpfinspector.v1.BpfInspector.ListTetragonPolicies:input_type -> bpfinspector.v1.ListTetragonPoliciesRequest
-	2,  // 39: bpfinspector.v1.BpfInspector.ListMaps:output_type -> bpfinspector.v1.ListMapsResponse
-	5,  // 40: bpfinspector.v1.BpfInspector.DumpMap:output_type -> bpfinspector.v1.DumpMapResponse
-	9,  // 41: bpfinspector.v1.BpfInspector.ListPrograms:output_type -> bpfinspector.v1.ListProgramsResponse
-	11, // 42: bpfinspector.v1.BpfInspector.DumpProgram:output_type -> bpfinspector.v1.DumpProgramResponse
-	15, // 43: bpfinspector.v1.BpfInspector.ListLinks:output_type -> bpfinspector.v1.ListLinksResponse
-	17, // 44: bpfinspector.v1.BpfInspector.TraceLog:output_type -> bpfinspector.v1.TraceLogEvent
-	22, // 45: bpfinspector.v1.BpfInspector.ResolveInode:output_type -> bpfinspector.v1.ResolveInodeResponse
-	24, // 46: bpfinspector.v1.BpfInspector.DescribeProcess:output_type -> bpfinspector.v1.DescribeProcessResponse
-	26, // 47: bpfinspector.v1.BpfInspector.GetProcessResources:output_type -> bpfinspector.v1.GetProcessResourcesResponse
-	30, // 48: bpfinspector.v1.BpfInspector.DescribeNode:output_type -> bpfinspector.v1.DescribeNodeResponse
-	36, // 49: bpfinspector.v1.BpfInspector.ProbeFeatures:output_type -> bpfinspector.v1.ProbeFeaturesResponse
-	41, // 50: bpfinspector.v1.BpfInspector.CgroupTree:output_type -> bpfinspector.v1.CgroupTreeResponse
-	46, // 51: bpfinspector.v1.BpfInspector.ListTetragonPolicies:output_type -> bpfinspector.v1.ListTetragonPoliciesResponse
-	39, // [39:52] is the sub-list for method output_type
-	26, // [26:39] is the sub-list for method input_type
-	26, // [26:26] is the sub-list for extension type_name
-	26, // [26:26] is the sub-list for extension extendee
-	0,  // [0:26] is the sub-list for field type_name
+	10, // 5: bpfinspector.v1.ListProgramsResponse.stats:type_name -> bpfinspector.v1.StatsState
+	6,  // 6: bpfinspector.v1.StatsState.holders:type_name -> bpfinspector.v1.ProcessRef
+	14, // 7: bpfinspector.v1.DumpProgramResponse.tail_calls:type_name -> bpfinspector.v1.TailCall
+	15, // 8: bpfinspector.v1.ListLinksResponse.links:type_name -> bpfinspector.v1.LinkInfo
+	22, // 9: bpfinspector.v1.InodeMatch.holders:type_name -> bpfinspector.v1.InodeHolder
+	23, // 10: bpfinspector.v1.ResolveInodeResponse.matches:type_name -> bpfinspector.v1.InodeMatch
+	21, // 11: bpfinspector.v1.ResolveInodeResponse.walk:type_name -> bpfinspector.v1.WalkStats
+	36, // 12: bpfinspector.v1.DescribeProcessResponse.namespaces:type_name -> bpfinspector.v1.Namespace
+	29, // 13: bpfinspector.v1.DescribeProcessResponse.resources:type_name -> bpfinspector.v1.ProcessResources
+	49, // 14: bpfinspector.v1.GetProcessResourcesResponse.resources:type_name -> bpfinspector.v1.GetProcessResourcesResponse.ResourcesEntry
+	30, // 15: bpfinspector.v1.ProcessResources.cgroup:type_name -> bpfinspector.v1.CgroupResources
+	33, // 16: bpfinspector.v1.DescribeNodeResponse.kernel:type_name -> bpfinspector.v1.Kernel
+	34, // 17: bpfinspector.v1.DescribeNodeResponse.cgroups:type_name -> bpfinspector.v1.Cgroups
+	35, // 18: bpfinspector.v1.DescribeNodeResponse.components:type_name -> bpfinspector.v1.Component
+	39, // 19: bpfinspector.v1.ProbeFeaturesResponse.sysctls:type_name -> bpfinspector.v1.Sysctl
+	40, // 20: bpfinspector.v1.ProbeFeaturesResponse.kernel_config:type_name -> bpfinspector.v1.KernelConfigOption
+	41, // 21: bpfinspector.v1.ProbeFeaturesResponse.program_types:type_name -> bpfinspector.v1.FeatureProbe
+	41, // 22: bpfinspector.v1.ProbeFeaturesResponse.map_types:type_name -> bpfinspector.v1.FeatureProbe
+	41, // 23: bpfinspector.v1.ProbeFeaturesResponse.misc:type_name -> bpfinspector.v1.FeatureProbe
+	44, // 24: bpfinspector.v1.CgroupTreeResponse.cgroups:type_name -> bpfinspector.v1.CgroupAttachments
+	45, // 25: bpfinspector.v1.CgroupAttachments.programs:type_name -> bpfinspector.v1.CgroupProgram
+	46, // 26: bpfinspector.v1.ListTetragonPoliciesResponse.policies:type_name -> bpfinspector.v1.TetragonPolicyInfo
+	29, // 27: bpfinspector.v1.GetProcessResourcesResponse.ResourcesEntry.value:type_name -> bpfinspector.v1.ProcessResources
+	1,  // 28: bpfinspector.v1.BpfInspector.ListMaps:input_type -> bpfinspector.v1.ListMapsRequest
+	4,  // 29: bpfinspector.v1.BpfInspector.DumpMap:input_type -> bpfinspector.v1.DumpMapRequest
+	8,  // 30: bpfinspector.v1.BpfInspector.ListPrograms:input_type -> bpfinspector.v1.ListProgramsRequest
+	12, // 31: bpfinspector.v1.BpfInspector.DumpProgram:input_type -> bpfinspector.v1.DumpProgramRequest
+	16, // 32: bpfinspector.v1.BpfInspector.ListLinks:input_type -> bpfinspector.v1.ListLinksRequest
+	18, // 33: bpfinspector.v1.BpfInspector.TraceLog:input_type -> bpfinspector.v1.TraceLogRequest
+	20, // 34: bpfinspector.v1.BpfInspector.ResolveInode:input_type -> bpfinspector.v1.ResolveInodeRequest
+	25, // 35: bpfinspector.v1.BpfInspector.DescribeProcess:input_type -> bpfinspector.v1.DescribeProcessRequest
+	27, // 36: bpfinspector.v1.BpfInspector.GetProcessResources:input_type -> bpfinspector.v1.GetProcessResourcesRequest
+	31, // 37: bpfinspector.v1.BpfInspector.DescribeNode:input_type -> bpfinspector.v1.DescribeNodeRequest
+	37, // 38: bpfinspector.v1.BpfInspector.ProbeFeatures:input_type -> bpfinspector.v1.ProbeFeaturesRequest
+	42, // 39: bpfinspector.v1.BpfInspector.CgroupTree:input_type -> bpfinspector.v1.CgroupTreeRequest
+	47, // 40: bpfinspector.v1.BpfInspector.ListTetragonPolicies:input_type -> bpfinspector.v1.ListTetragonPoliciesRequest
+	11, // 41: bpfinspector.v1.BpfInspector.SetStats:input_type -> bpfinspector.v1.SetStatsRequest
+	2,  // 42: bpfinspector.v1.BpfInspector.ListMaps:output_type -> bpfinspector.v1.ListMapsResponse
+	5,  // 43: bpfinspector.v1.BpfInspector.DumpMap:output_type -> bpfinspector.v1.DumpMapResponse
+	9,  // 44: bpfinspector.v1.BpfInspector.ListPrograms:output_type -> bpfinspector.v1.ListProgramsResponse
+	13, // 45: bpfinspector.v1.BpfInspector.DumpProgram:output_type -> bpfinspector.v1.DumpProgramResponse
+	17, // 46: bpfinspector.v1.BpfInspector.ListLinks:output_type -> bpfinspector.v1.ListLinksResponse
+	19, // 47: bpfinspector.v1.BpfInspector.TraceLog:output_type -> bpfinspector.v1.TraceLogEvent
+	24, // 48: bpfinspector.v1.BpfInspector.ResolveInode:output_type -> bpfinspector.v1.ResolveInodeResponse
+	26, // 49: bpfinspector.v1.BpfInspector.DescribeProcess:output_type -> bpfinspector.v1.DescribeProcessResponse
+	28, // 50: bpfinspector.v1.BpfInspector.GetProcessResources:output_type -> bpfinspector.v1.GetProcessResourcesResponse
+	32, // 51: bpfinspector.v1.BpfInspector.DescribeNode:output_type -> bpfinspector.v1.DescribeNodeResponse
+	38, // 52: bpfinspector.v1.BpfInspector.ProbeFeatures:output_type -> bpfinspector.v1.ProbeFeaturesResponse
+	43, // 53: bpfinspector.v1.BpfInspector.CgroupTree:output_type -> bpfinspector.v1.CgroupTreeResponse
+	48, // 54: bpfinspector.v1.BpfInspector.ListTetragonPolicies:output_type -> bpfinspector.v1.ListTetragonPoliciesResponse
+	10, // 55: bpfinspector.v1.BpfInspector.SetStats:output_type -> bpfinspector.v1.StatsState
+	42, // [42:56] is the sub-list for method output_type
+	28, // [28:42] is the sub-list for method input_type
+	28, // [28:28] is the sub-list for extension type_name
+	28, // [28:28] is the sub-list for extension extendee
+	0,  // [0:28] is the sub-list for field type_name
 }
 
 func init() { file_proto_bpfinspector_proto_init() }
@@ -3934,7 +4113,7 @@ func file_proto_bpfinspector_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_bpfinspector_proto_rawDesc), len(file_proto_bpfinspector_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   48,
+			NumMessages:   50,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

@@ -23,15 +23,16 @@ type Server struct {
 	pb.UnimplementedBpfInspectorServer
 	insp         *inspector.Inspector
 	hub          *tracelog.Hub
+	stats        *inspector.StatsSwitch
 	tetragonAddr string
 }
 
-func New(insp *inspector.Inspector, hub *tracelog.Hub, tetragonAddr ...string) *Server {
+func New(insp *inspector.Inspector, hub *tracelog.Hub, stats *inspector.StatsSwitch, tetragonAddr ...string) *Server {
 	addr := "unix:///var/run/tetragon/tetragon.sock"
 	if len(tetragonAddr) > 0 && tetragonAddr[0] != "" {
 		addr = tetragonAddr[0]
 	}
-	return &Server{insp: insp, hub: hub, tetragonAddr: addr}
+	return &Server{insp: insp, hub: hub, stats: stats, tetragonAddr: addr}
 }
 
 // ListTetragonPolicies asks the local Tetragon daemon for its current policy
@@ -147,9 +148,37 @@ func (s *Server) ListPrograms(_ context.Context, _ *pb.ListProgramsRequest) (*pb
 			MapIds:           p.MapIDs,
 			Pids:             pids,
 			LoadedAtUnixNano: loadedAt,
+			RunCount:         p.RunCount,
+			RunTimeNs:        uint64(p.RunTime),
+			RecursionMisses:  p.RecursionMisses,
 		})
 	}
+	resp.Stats = statsState(s.stats.State())
 	return resp, nil
+}
+
+// SetStats turns the agent's stats switch on or off. A kernel refusal (before
+// 5.8, or without CAP_SYS_ADMIN) comes back as the kernel's error.
+func (s *Server) SetStats(_ context.Context, req *pb.SetStatsRequest) (*pb.StatsState, error) {
+	st, err := s.stats.Set(req.GetEnabled())
+	if err != nil {
+		return nil, err
+	}
+	return statsState(st), nil
+}
+
+func statsState(st inspector.StatsState) *pb.StatsState {
+	holders := make([]*pb.ProcessRef, 0, len(st.Holders))
+	for _, ref := range st.Holders {
+		holders = append(holders, &pb.ProcessRef{Pid: ref.PID, Comm: ref.Comm})
+	}
+	return &pb.StatsState{
+		Held: st.Held,
+		// Rounded up, so the last second of a hold does not read as none.
+		SecondsLeft: uint32((st.Left + time.Second - 1) / time.Second),
+		Sysctl:      st.Sysctl,
+		Holders:     holders,
+	}
 }
 
 func (s *Server) DumpProgram(_ context.Context, req *pb.DumpProgramRequest) (*pb.DumpProgramResponse, error) {

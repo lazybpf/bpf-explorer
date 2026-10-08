@@ -1,4 +1,5 @@
-// Package agent runs the per-node, read-only eBPF inspection gRPC server. It
+// Package agent runs the per-node, read-only eBPF inspection gRPC server. The
+// one exception is the run-time stats switch. It
 // reads maps/programs via cilium/ebpf (internal/inspector). Reading BPF objects
 // requires privileges (CAP_BPF/CAP_SYS_ADMIN); it runs in the privileged
 // DaemonSet pod.
@@ -30,7 +31,7 @@ func Run(addr string) error {
 	// One trace_pipe hub per agent process: it is shared by every TraceLog
 	// stream so the node's trace buffer has a single reader.
 	tetragonAddr := os.Getenv("BPF_EXPLORER_TETRAGON_GRPC_ADDRESS")
-	pb.RegisterBpfInspectorServer(grpcServer, server.New(inspector.New(), tracelog.NewHub(), tetragonAddr))
+	pb.RegisterBpfInspectorServer(grpcServer, server.New(inspector.New(), tracelog.NewHub(), inspector.NewStatsSwitch(), tetragonAddr))
 
 	go func() {
 		sig := make(chan os.Signal, 1)

@@ -52,6 +52,8 @@ func New(disc discovery.Discoverer, hiddenLoaders map[uint32]bool, tetragonAddre
 		"sysctlText": sysctlText, "availableCount": availableCount, "featureHelp": featureHelp,
 		"attachedCount": attachedCount,
 		"bytesIEC":      bytesIEC, "cpuTime": cpuTime, "cpuLimit": cpuLimit, "workingSet": workingSet, "processCPU": processCPU,
+		"statsOn": statsOn, "statsLocked": statsLocked, "statsBy": statsBy, "statsOffIn": statsOffIn,
+		"runTime": runTime, "avgRun": avgRun,
 		// Exposed as a func so every page gets it without threading it through
 		// each handler's pageData.
 		"version": version.String,
@@ -69,7 +71,7 @@ func New(disc discovery.Discoverer, hiddenLoaders map[uint32]bool, tetragonAddre
 	return &Handlers{disc: disc, pages: pages, hiddenLoaders: hiddenLoaders, tetragonAddr: tetragonAddr}, nil
 }
 
-// Router registers the read-only routes.
+// Router registers the routes: all reads, but for the stats switch.
 func (h *Handlers) Router() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /{$}", h.index)
@@ -77,6 +79,9 @@ func (h *Handlers) Router() http.Handler {
 	mux.HandleFunc("GET /nodes/{node}/maps/{id}", h.maps)
 	mux.HandleFunc("GET /nodes/{node}/programs", h.programs)
 	mux.HandleFunc("GET /nodes/{node}/programs/{id}", h.programs)
+	// The one route that changes anything on a node, so it refuses requests
+	// another site's page makes the browser send.
+	mux.Handle("POST /nodes/{node}/programs/stats", http.NewCrossOriginProtection().Handler(http.HandlerFunc(h.setStats)))
 	mux.HandleFunc("GET /nodes/{node}/links", h.links)
 	mux.HandleFunc("GET /nodes/{node}/tetragon", h.tetragonMoved)
 	mux.HandleFunc("GET /nodes/{node}/loaders", h.loadersIndex)
@@ -121,10 +126,14 @@ type pageData struct {
 	Tab   string
 	// Util names the utility within the utils tab the way Tab names the tab:
 	// "node", "pid", "inode". Empty on every page outside that section.
-	Util             string
-	Err              string
-	Maps             []*pb.MapInfo
-	Programs         []*pb.ProgramInfo
+	Util     string
+	Err      string
+	Maps     []*pb.MapInfo
+	Programs []*pb.ProgramInfo
+	// Stats is whether the node counts program runs, for the programs page's
+	// toggle and stats columns; StatsErr is why the toggle just failed.
+	Stats            *pb.StatsState
+	StatsErr         string
 	Links            []*pb.LinkInfo
 	TetragonPolicies []*pb.TetragonPolicyInfo
 	// ProgFilter, MapFilter and LinkFilter narrow Programs, Maps and Links to
@@ -447,6 +456,12 @@ func (h *Handlers) maps(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handlers) programs(w http.ResponseWriter, r *http.Request) {
+	h.programList(w, r, "")
+}
+
+// programList renders the programs page, or one program's xlated listing.
+// statsErr is set when the stats toggle that led here failed.
+func (h *Handlers) programList(w http.ResponseWriter, r *http.Request, statsErr string) {
 	// As in maps: one program's xlated listing gets its own page rather than
 	// repeating the list it was opened from.
 	idStr := r.PathValue("id")
@@ -475,7 +490,7 @@ func (h *Handlers) programs(w http.ResponseWriter, r *http.Request) {
 	}
 
 	node := r.PathValue("node")
-	data := pageData{Node: node, Tab: "programs"}
+	data := pageData{Node: node, Tab: "programs", StatsErr: statsErr}
 	data.Nodes, _ = h.nodes()
 	if group != "" {
 		// Set before anything is fetched, so that a page that ends in an error
@@ -504,6 +519,7 @@ func (h *Handlers) programs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	data.Programs = list.GetPrograms()
+	data.Stats = list.GetStats()
 
 	// Map metadata, for a map reference that should say which map it is - a
 	// tooltip on the list's map-ref column, and on the map a dump's listing

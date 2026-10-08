@@ -232,6 +232,12 @@
     text-underline-offset: .25em;
     cursor: help;
   }
+  /* Counts and durations, right-aligned so their digits line up down the
+     column. */
+  th.num, td.num { text-align: right; white-space: nowrap; }
+  /* A second, smaller line under a number, kept off the number's own line so
+     the column still lines up. */
+  td .sub { display: block; font-size: .8rem; }
   tbody tr:hover {
     background: rgba(85, 255, 85, .07);
     box-shadow: inset 2px 0 0 var(--fg-hi);
@@ -359,6 +365,53 @@
     outline-offset: 1px;
   }
   input::placeholder { color: var(--fg-dim); opacity: 1; }
+  /* A row of forms side by side, e.g. a filter and a switch. */
+  .toolbar { column-gap: 1.5rem; }
+  /* An on/off switch: a pill track with a knob that slides right and lights
+     up when on. Drawn from scratch like the select, so it takes the theme.
+     The knob is sized from the track, so it sits the same gap from every
+     edge: the browser makes a checkbox border-box, so the border is inside
+     the track's size. Whole pixels, so rounding cannot push it off by one. */
+  input[role=switch] {
+    --track-w: 40px;
+    --track-h: 22px;
+    --gap: 3px;
+    --knob: calc(var(--track-h) - 2px - 2 * var(--gap));
+    appearance: none;
+    box-sizing: border-box;
+    position: relative;
+    flex: none;
+    width: var(--track-w);
+    height: var(--track-h);
+    padding: 0;
+    margin: 0;
+    border-radius: 999px;
+    background: var(--bg-inset);
+    cursor: pointer;
+    transition: background .15s, border-color .15s;
+  }
+  input[role=switch]::before {
+    content: "";
+    position: absolute;
+    top: var(--gap);
+    left: var(--gap);
+    width: var(--knob);
+    height: var(--knob);
+    border-radius: 50%;
+    background: var(--fg-dim);
+    transition: transform .15s, background .15s, box-shadow .15s;
+  }
+  input[role=switch]:hover { border-color: var(--accent); }
+  input[role=switch]:checked { border-color: var(--accent); background: var(--bg-panel); }
+  input[role=switch]:checked::before {
+    transform: translateX(calc(var(--track-w) - var(--track-h)));
+    background: var(--accent);
+    box-shadow: 0 0 6px var(--accent);
+  }
+  input[role=switch]:disabled { cursor: not-allowed; opacity: .55; }
+  @media (prefers-reduced-motion: reduce) {
+    input[role=switch], input[role=switch]::before { transition: none; }
+  }
   /* The native select is a different box from the button beside it - its own
      metrics and its own chrome, so the two never line up - and it is drawn from
      scratch instead: the shared font, padding and border, with the arrow as two
@@ -499,15 +552,15 @@
 {{template "content" .}}
 </main>
 <script>
-// A picker that is the whole form - the loader filters - submits itself when it
-// changes, so choosing a group is one gesture rather than two. The button stays
-// in the markup and is only hidden here: without JS it is still the way to
-// submit, and the form is a plain GET either way.
+// A picker that is the whole form - the loader filters, the run stats toggle -
+// submits itself when it changes, so choosing is one gesture rather than two.
+// The button stays in the markup and is only hidden here: without JS it is
+// still the way to submit.
 for (const form of document.querySelectorAll('form[data-autosubmit]')) {
   const button = form.querySelector('button[type=submit]');
   if (button) button.hidden = true;
-  for (const select of form.querySelectorAll('select')) {
-    select.addEventListener('change', () => form.submit());
+  for (const field of form.querySelectorAll('select, input[type=checkbox]')) {
+    field.addEventListener('change', () => form.submit());
   }
 }
 </script>

@@ -7,6 +7,11 @@
 {{$count := printf "%d" (len .Programs)}}
 {{with .ProgFilter}}{{if .Total}}{{$count = printf "%d of %d" (len $.Programs) .Total}}{{end}}{{end}}
 <h2>programs on <span class="name">{{.Node}}</span>{{with .ProgFilter}} <span class="muted">/ {{.Label}}</span>{{end}} <span class="muted">({{$count}})</span></h2>
+{{$on := statsOn .Stats}}
+{{/* One toolbar: the loader picker and the stats switch, two forms because one
+     is a GET that narrows the list and the other a POST that changes the node. */}}
+{{if or .ProgLoaders .Stats}}
+<div class="controls toolbar">
 {{if .ProgLoaders}}
 {{/* GET, so a narrowed list can be linked to and reloaded - the same form the
      maps and links pages and the utilities use. Only groups that have programs
@@ -30,13 +35,30 @@
   {{with .ProgFilter}}<a href="/nodes/{{$.Node}}/loaders/{{.Group}}" target="_blank" rel="noopener" title="graph: everything this group loaded - its programs, maps and links (new tab)">graph</a>{{end}}
 </form>
 {{end}}
+{{/* Nil from an agent that predates the switch. Off by itself after the
+     agent's StatsTTL; a sysctl or another process keeping stats on locks it on. */}}
+{{with .Stats}}
+<form class="controls" method="post" action="/nodes/{{$.Node}}/programs/stats" data-autosubmit>
+  <input type="hidden" name="loader" value="{{$group}}">
+  {{if statsLocked .}}
+    <label title="Kept on by {{statsBy .}}, so it can't be turned off here.">run stats <input type="checkbox" role="switch" checked disabled></label>
+  {{else}}
+    <label title="Count runs and run time for each program. Turns off by itself after 10 minutes.">run stats <input type="checkbox" role="switch" name="on" value="1"{{if .Held}} checked{{end}}></label>
+    <button type="submit">apply</button>
+    {{if .Held}}<span class="muted">{{statsOffIn .SecondsLeft}}</span>{{end}}
+  {{end}}
+</form>
+{{end}}
+</div>
+{{end}}
+{{with .StatsErr}}<p class="err">run stats: {{.}}</p>{{end}}
 <div class="scroll">
 <table>
   {{/* The Holders column stays under a filter, unlike the links page's Loader:
        only the lowest-numbered holder names the group, so these rows are not
        one value repeated - a program held by its loader and by a second process
        says so here. */}}
-  <thead><tr><th title="the kernel's id for this program, what bpftool prog show lists it by. The kernel recycles ids, so one names this program only while it exists">ID</th><th>Name</th><th>Type</th><th>Tag</th><th title="when the program was loaded - the loaded_at `bpftool prog show` prints, dated on the node: the kernel counts a load time from that node&#39;s boot, not in dates. Shown as an age, with the timestamp itself on hover">Loaded</th><th>Maps</th><th title="processes holding an open fd to this program; the lowest-numbered one is treated as its loader. When none do, an inferred loader is shown instead - of the program array holding this program in a tail-call slot">Holders</th><th></th></tr></thead>
+  <thead><tr><th title="the kernel's id for this program, what bpftool prog show lists it by. The kernel recycles ids, so one names this program only while it exists">ID</th><th>Name</th><th>Type</th><th>Tag</th><th title="when the program was loaded - the loaded_at `bpftool prog show` prints, dated on the node: the kernel counts a load time from that node&#39;s boot, not in dates. Shown as an age, with the timestamp itself on hover">Loaded</th>{{if $on}}<th class="num" title="Times this program ran while run stats were on.">Runs</th><th class="num" title="Total time spent in this program. A tail-called program's time counts toward the program that called it.">Run time</th><th class="num" title="Run time divided by runs.">Avg/run</th>{{end}}<th>Maps</th><th title="processes holding an open fd to this program; the lowest-numbered one is treated as its loader. When none do, an inferred loader is shown instead - of the program array holding this program in a tail-call slot">Holders</th><th></th></tr></thead>
   <tbody>
   {{range .Programs}}
     <tr>
@@ -46,6 +68,11 @@
            column of identical timestamps answers that far more slowly. The
            timestamp is the tooltip, for matching a row against bpftool. */}}
       <td>{{with loadedAt .LoadedAtUnixNano}}<span title="{{.At}}">{{.Ago}}</span>{{else}}<span class="muted" title="this node reported no load time: the kernel has only exposed one since 4.15">-</span>{{end}}</td>
+      {{if $on}}
+      <td class="num">{{if .RunCount}}{{comma .RunCount}}{{else}}<span class="muted">0</span>{{end}}{{with .RecursionMisses}}<span class="muted sub" title="Runs the kernel skipped to avoid recursion on the same CPU.">+{{comma .}} missed</span>{{end}}</td>
+      <td class="num">{{if .RunTimeNs}}{{runTime .RunTimeNs}}{{else}}<span class="muted">-</span>{{end}}</td>
+      <td class="num">{{with avgRun .}}{{.}}{{else}}<span class="muted">-</span>{{end}}</td>
+      {{end}}
       <td>
         {{range .MapIds}}{{$id := .}}{{$m := index $.MapsByID $id}}<a href="/nodes/{{$.Node}}/maps/{{$id}}" target="_blank" rel="noopener"{{with $m}} title="{{.Name}} ({{.Type}})"{{end}}>{{$id}}</a>{{" "}}{{else}}<span class="muted">-</span>{{end}}
       </td>
@@ -67,7 +94,7 @@
       </td>
     </tr>
   {{else}}
-    <tr><td colspan="8" class="muted">{{with .ProgFilter}}(no programs for {{.Label}}){{else}}(no programs){{end}}</td></tr>
+    <tr><td colspan="{{if $on}}11{{else}}8{{end}}" class="muted">{{with .ProgFilter}}(no programs for {{.Label}}){{else}}(no programs){{end}}</td></tr>
   {{end}}
   </tbody>
 </table>

@@ -3,8 +3,8 @@
 // contents. The map/prog iteration and the BTF value formatting are ported from
 // tools/lazyebpf (lazybpf.go and btfdump.go).
 //
-// Everything here is read-only; there is deliberately no code path that mutates
-// kernel state.
+// Everything here is read-only, with one exception kept in stats.go: the
+// switch that turns BPF run-time stats on.
 package inspector
 
 import (
@@ -87,6 +87,11 @@ type ProgramSummary struct {
 	// boot, so only this node can say what time that was. Zero when the kernel
 	// reports no load time (before 4.15) or the boot clock cannot be read.
 	LoadedAt time.Time
+	// The kernel's run-time stats for the program: zero unless stats have been
+	// on at some point since it was loaded. See StatsSwitch.
+	RunCount        uint64
+	RunTime         time.Duration
+	RecursionMisses uint64
 }
 
 // Inspector reads maps/programs/links from the host kernel.
@@ -258,7 +263,7 @@ func (i *Inspector) ListPrograms() ([]ProgramSummary, error) {
 		if since, ok := info.LoadTime(); ok && bootOK {
 			loadedAt = boot.Add(since)
 		}
-		out = append(out, ProgramSummary{
+		sum := ProgramSummary{
 			ID:       uint32(progID),
 			Name:     info.Name,
 			Type:     info.Type.String(),
@@ -266,7 +271,15 @@ func (i *Inspector) ListPrograms() ([]ProgramSummary, error) {
 			MapIDs:   ids,
 			PIDs:     pidsByProg[uint32(progID)],
 			LoadedAt: loadedAt,
-		})
+		}
+		// A failed read leaves them zero, which is what a program reads
+		// with stats never turned on: a dash in the list, not an error.
+		if st, err := p.Stats(); err == nil {
+			sum.RunCount = st.RunCount
+			sum.RunTime = st.Runtime
+			sum.RecursionMisses = st.RecursionMisses
+		}
+		out = append(out, sum)
 		p.Close()
 	}
 	return out, nil
