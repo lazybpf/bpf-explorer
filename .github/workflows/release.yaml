@@ -2,7 +2,7 @@ name: Release
 
 # Pushing an annotated tag is the ONLY way to publish:
 #
-#     git tag -a v0.1.0 -m "v0.1.0 - first release"
+#     git tag -s v0.1.0 -m "v0.1.0 - first release"
 #     git push origin v0.1.0
 #
 # It publishes the multi-arch image to GHCR and opens a GitHub release whose

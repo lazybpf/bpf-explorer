@@ -222,6 +222,16 @@ kubectl apply -f bpf-explorer.yaml
 
 ## Run locally without a cluster
 
+Each release carries a binary for linux amd64 and arm64 (swap the arch to match
+`uname -m`), with checksums - or build it, see [Build](#build):
+
+```console
+curl -fsSLO https://github.com/lazybpf/bpf-explorer/releases/latest/download/bpf-explorer-linux-amd64.tar.gz
+curl -fsSLO https://github.com/lazybpf/bpf-explorer/releases/latest/download/checksums.txt
+sha256sum --ignore-missing -c checksums.txt
+tar xzf bpf-explorer-linux-amd64.tar.gz
+```
+
 `--role=local` runs both components in one process, with the UI pointed at the
 bundled agent by static discovery. No cluster, no RBAC, one terminal - and it is
 the default role, so the flag is what a bare invocation already means:
@@ -248,13 +258,14 @@ sudo ./bpf-explorer --role=agent --listen=:50051
 
 ## Releasing
 
-Pushing an annotated tag is the only way to publish. The
-[`release`](.github/workflows/release.yaml) workflow builds the
+Pushing an annotated tag is the only way to publish. Tags are GPG-signed, like
+commits, and show as Verified on GitHub; check one with `git tag -v v0.1.0`.
+The [`release`](.github/workflows/release.yaml) workflow builds the
 multi-arch image, pushes it to GHCR under the tag name, and opens a GitHub
 release whose notes come from the tag annotation:
 
 ```console
-git tag -a v0.1.0 -m "v0.1.0 - first release"
+git tag -s v0.1.0 -m "v0.1.0 - first release"
 git push origin v0.1.0
 ```
 
@@ -279,7 +290,7 @@ internal - both ship in the same image, so it can change without a MAJOR bump.
 A hyphen makes the tag a pre-release, so bake one before a MINOR or MAJOR bump:
 
 ```console
-git tag -a v0.2.0-rc.1 -m "v0.2.0-rc.1 - cursor pagination for DumpMap"
+git tag -s v0.2.0-rc.1 -m "v0.2.0-rc.1 - cursor pagination for DumpMap"
 git push origin v0.2.0-rc.1
 ```
 
