@@ -143,7 +143,9 @@ jobs:
             echo "::error::$VERSION is not an annotated tag - use 'git tag -a'"
             exit 1
           fi
-          git tag -l "$VERSION" --format='%(contents)' > "$RUNNER_TEMP/notes.md"
+          # Subject and body only: %(contents) would carry the PGP block of a
+          # signed tag (git tag -s) into the notes.
+          git tag -l "$VERSION" --format='%(contents:subject)%0a%0a%(contents:body)' > "$RUNNER_TEMP/notes.md"
           echo "--- release notes ---"
           cat "$RUNNER_TEMP/notes.md"
 
