@@ -567,8 +567,14 @@ type ProgramInfo struct {
 	RunCount        uint64 `protobuf:"varint,8,opt,name=run_count,json=runCount,proto3" json:"run_count,omitempty"`
 	RunTimeNs       uint64 `protobuf:"varint,9,opt,name=run_time_ns,json=runTimeNs,proto3" json:"run_time_ns,omitempty"`
 	RecursionMisses uint64 `protobuf:"varint,10,opt,name=recursion_misses,json=recursionMisses,proto3" json:"recursion_misses,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// Share of one CPU the program used over a one-second sample, in percent:
+	// its run time grew by this much of the wall time between two reads, so a
+	// program running on several CPUs at once goes over 100. Set only when the
+	// request asked for a sample and stats were on, and not for a program loaded
+	// during the sample.
+	CpuPercent    *float64 `protobuf:"fixed64,11,opt,name=cpu_percent,json=cpuPercent,proto3,oneof" json:"cpu_percent,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *ProgramInfo) Reset() {
@@ -671,8 +677,19 @@ func (x *ProgramInfo) GetRecursionMisses() uint64 {
 	return 0
 }
 
+func (x *ProgramInfo) GetCpuPercent() float64 {
+	if x != nil && x.CpuPercent != nil {
+		return *x.CpuPercent
+	}
+	return 0
+}
+
 type ListProgramsRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Read every program's run time twice, a second apart, to fill in
+	// cpu_percent. The call then takes that second longer, so only the programs
+	// list asks; it is skipped while stats are off, when run time stands still.
+	SampleCpu     bool `protobuf:"varint,1,opt,name=sample_cpu,json=sampleCpu,proto3" json:"sample_cpu,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -705,6 +722,13 @@ func (x *ListProgramsRequest) ProtoReflect() protoreflect.Message {
 // Deprecated: Use ListProgramsRequest.ProtoReflect.Descriptor instead.
 func (*ListProgramsRequest) Descriptor() ([]byte, []int) {
 	return file_proto_bpfinspector_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *ListProgramsRequest) GetSampleCpu() bool {
+	if x != nil {
+		return x.SampleCpu
+	}
+	return false
 }
 
 type ListProgramsResponse struct {
@@ -3710,7 +3734,7 @@ const file_proto_bpfinspector_proto_rawDesc = "" +
 	"\n" +
 	"ProcessRef\x12\x10\n" +
 	"\x03pid\x18\x01 \x01(\rR\x03pid\x12\x12\n" +
-	"\x04comm\x18\x02 \x01(\tR\x04comm\"\xb8\x02\n" +
+	"\x04comm\x18\x02 \x01(\tR\x04comm\"\xee\x02\n" +
 	"\vProgramInfo\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\rR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x12\n" +
@@ -3722,8 +3746,13 @@ const file_proto_bpfinspector_proto_rawDesc = "" +
 	"\trun_count\x18\b \x01(\x04R\brunCount\x12\x1e\n" +
 	"\vrun_time_ns\x18\t \x01(\x04R\trunTimeNs\x12)\n" +
 	"\x10recursion_misses\x18\n" +
-	" \x01(\x04R\x0frecursionMisses\"\x15\n" +
-	"\x13ListProgramsRequest\"\x83\x01\n" +
+	" \x01(\x04R\x0frecursionMisses\x12$\n" +
+	"\vcpu_percent\x18\v \x01(\x01H\x00R\n" +
+	"cpuPercent\x88\x01\x01B\x0e\n" +
+	"\f_cpu_percent\"4\n" +
+	"\x13ListProgramsRequest\x12\x1d\n" +
+	"\n" +
+	"sample_cpu\x18\x01 \x01(\bR\tsampleCpu\"\x83\x01\n" +
 	"\x14ListProgramsResponse\x128\n" +
 	"\bprograms\x18\x01 \x03(\v2\x1c.bpfinspector.v1.ProgramInfoR\bprograms\x121\n" +
 	"\x05stats\x18\x02 \x01(\v2\x1b.bpfinspector.v1.StatsStateR\x05stats\"\x92\x01\n" +
@@ -4107,6 +4136,7 @@ func file_proto_bpfinspector_proto_init() {
 	if File_proto_bpfinspector_proto != nil {
 		return
 	}
+	file_proto_bpfinspector_proto_msgTypes[7].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{

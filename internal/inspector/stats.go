@@ -32,6 +32,9 @@ type StatsState struct {
 	Holders []ProcessRef // other processes holding an fd
 }
 
+// On reports whether the kernel is counting, for any of those reasons.
+func (st StatsState) On() bool { return st.Held || st.Sysctl || len(st.Holders) > 0 }
+
 // StatsSwitch turns BPF run-time stats on for StatsTTL at a time. It holds a
 // BPF_ENABLE_STATS fd rather than writing the sysctl: the kernel drops the fd
 // when this process exits, so the stats cannot outlive the agent.

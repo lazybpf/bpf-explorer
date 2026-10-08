@@ -146,3 +146,25 @@ func TestScanStatsHolders(t *testing.T) {
 		t.Errorf("holders = %+v, want only bpftop(100): not the loader, not self", got)
 	}
 }
+
+func TestCPUShare(t *testing.T) {
+	t0 := time.Unix(1000, 0)
+	read := func(rt time.Duration, after time.Duration) runTimeRead { return runTimeRead{rt, t0.Add(after)} }
+	for name, c := range map[string]struct {
+		before, after runTimeRead
+		want          float64
+		ok            bool
+	}{
+		"idle":             {read(5*time.Second, 0), read(5*time.Second, time.Second), 0, true},
+		"a tenth of a CPU": {read(0, 0), read(100*time.Millisecond, time.Second), 10, true},
+		"two CPUs":         {read(time.Second, 0), read(5*time.Second, 2*time.Second), 200, true},
+		// Same id, run time went backwards: the program was replaced.
+		"recycled id":  {read(time.Second, 0), read(time.Millisecond, time.Second), 0, false},
+		"no wall time": {read(0, 0), read(time.Millisecond, 0), 0, false},
+	} {
+		got, ok := cpuShare(c.before, c.after)
+		if ok != c.ok || got != c.want {
+			t.Errorf("%s: cpuShare = %v, %v; want %v, %v", name, got, ok, c.want, c.ok)
+		}
+	}
+}

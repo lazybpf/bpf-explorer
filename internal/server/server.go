@@ -123,8 +123,18 @@ func (s *Server) DumpMap(_ context.Context, req *pb.DumpMapRequest) (*pb.DumpMap
 	return resp, nil
 }
 
-func (s *Server) ListPrograms(_ context.Context, _ *pb.ListProgramsRequest) (*pb.ListProgramsResponse, error) {
-	progs, err := s.insp.ListPrograms()
+// cpuSample is how long ListPrograms samples run time for when asked to.
+const cpuSample = time.Second
+
+func (s *Server) ListPrograms(_ context.Context, req *pb.ListProgramsRequest) (*pb.ListProgramsResponse, error) {
+	// Read before the listing: whether to sample depends on it, and with stats
+	// off no run time moves, so there is nothing to wait a second for.
+	st := s.stats.State()
+	var sample time.Duration
+	if req.GetSampleCpu() && st.On() {
+		sample = cpuSample
+	}
+	progs, err := s.insp.ListPrograms(sample)
 	if err != nil {
 		return nil, err
 	}
@@ -140,6 +150,10 @@ func (s *Server) ListPrograms(_ context.Context, _ *pb.ListProgramsRequest) (*pb
 		if !p.LoadedAt.IsZero() {
 			loadedAt = p.LoadedAt.UnixNano()
 		}
+		var cpu *float64
+		if p.HasCPU {
+			cpu = &p.CPUPercent
+		}
 		resp.Programs = append(resp.Programs, &pb.ProgramInfo{
 			Id:               p.ID,
 			Name:             p.Name,
@@ -151,9 +165,10 @@ func (s *Server) ListPrograms(_ context.Context, _ *pb.ListProgramsRequest) (*pb
 			RunCount:         p.RunCount,
 			RunTimeNs:        uint64(p.RunTime),
 			RecursionMisses:  p.RecursionMisses,
+			CpuPercent:       cpu,
 		})
 	}
-	resp.Stats = statsState(s.stats.State())
+	resp.Stats = statsState(st)
 	return resp, nil
 }
 

@@ -53,7 +53,7 @@ func New(disc discovery.Discoverer, hiddenLoaders map[uint32]bool, tetragonAddre
 		"attachedCount": attachedCount,
 		"bytesIEC":      bytesIEC, "cpuTime": cpuTime, "cpuLimit": cpuLimit, "workingSet": workingSet, "processCPU": processCPU,
 		"statsOn": statsOn, "statsLocked": statsLocked, "statsBy": statsBy, "statsOffIn": statsOffIn,
-		"runTime": runTime, "avgRun": avgRun,
+		"runTime": runTime, "avgRun": avgRun, "cpuPercent": cpuPercent,
 		// Exposed as a func so every page gets it without threading it through
 		// each handler's pageData.
 		"version": version.String,
@@ -512,7 +512,8 @@ func (h *Handlers) programList(w http.ResponseWriter, r *http.Request, statsErr 
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 
-	list, err := client.ListPrograms(ctx, &pb.ListProgramsRequest{})
+	// Only the list shows CPU, and the sample costs the agent a second.
+	list, err := client.ListPrograms(ctx, &pb.ListProgramsRequest{SampleCpu: idStr == ""})
 	if err != nil {
 		data.Err = err.Error()
 		h.render(w, page, data)

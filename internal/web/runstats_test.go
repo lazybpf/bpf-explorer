@@ -26,6 +26,25 @@ func TestRunTime(t *testing.T) {
 	}
 }
 
+func TestCPUPercent(t *testing.T) {
+	f := func(v float64) *pb.ProgramInfo { return &pb.ProgramInfo{CpuPercent: &v} }
+	for _, c := range []struct {
+		p    *pb.ProgramInfo
+		want string
+	}{
+		{&pb.ProgramInfo{}, ""},
+		{f(0), "0%"},
+		{f(0.004), "<0.01%"},
+		{f(0.4567), "0.46%"},
+		{f(12.34), "12.3%"},
+		{f(212.6), "213%"},
+	} {
+		if got := cpuPercent(c.p); got != c.want {
+			t.Errorf("cpuPercent(%v) = %q, want %q", c.p.CpuPercent, got, c.want)
+		}
+	}
+}
+
 func TestStatsOffIn(t *testing.T) {
 	for s, want := range map[uint32]string{1: "off in 1 min", 60: "off in 1 min", 61: "off in 2 min", 600: "off in 10 min"} {
 		if got := statsOffIn(s); got != want {
@@ -36,6 +55,7 @@ func TestStatsOffIn(t *testing.T) {
 
 func renderPrograms(t *testing.T, stats *pb.StatsState) string {
 	t.Helper()
+	cpu7 := 1.5
 	h, err := New(nil, nil)
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -45,7 +65,7 @@ func renderPrograms(t *testing.T, stats *pb.StatsState) string {
 		Tab:   "programs",
 		Stats: stats,
 		Programs: []*pb.ProgramInfo{
-			{Id: 7, Name: "xdp_prog", Type: "XDP", RunCount: 1200, RunTimeNs: 3_600_000, RecursionMisses: 2},
+			{Id: 7, Name: "xdp_prog", Type: "XDP", RunCount: 1200, RunTimeNs: 3_600_000, RecursionMisses: 2, CpuPercent: &cpu7},
 			{Id: 8, Name: "idle", Type: "Kprobe"},
 		},
 	}
@@ -82,20 +102,21 @@ func TestProgramsStatsToggleOff(t *testing.T) {
 
 func TestProgramsStatsColumns(t *testing.T) {
 	out := renderPrograms(t, &pb.StatsState{Held: true, SecondsLeft: 540})
-	for _, s := range []string{">Runs</th>", ">Run time</th>", ">Avg/run</th>", "off in 9 min", `value="1" checked`} {
+	for _, s := range []string{">CPU</th>", ">Runs</th>", ">Run time</th>", ">Avg/run</th>", "off in 9 min", `value="1" checked`} {
 		if !strings.Contains(out, s) {
 			t.Errorf("page should carry %q\n%s", s, out)
 		}
 	}
 	row := programsRow(t, out, "7")
-	for _, s := range []string{`<td class="num">1,200<span`, "+2 missed", `<td class="num">3.60ms</td>`, `<td class="num">3.00µs</td>`} {
+	for _, s := range []string{`<td class="num">1.50%</td>`, `<td class="num">1,200<span`, "+2 missed", `<td class="num">3.60ms</td>`, `<td class="num">3.00µs</td>`} {
 		if !strings.Contains(row, s) {
 			t.Errorf("program 7's row should carry %q\n%s", s, row)
 		}
 	}
-	// A program that never ran shows zero runs, and no run time or average.
+	// A program that never ran, and was not sampled, shows zero runs and no
+	// CPU, run time or average.
 	idle := programsRow(t, out, "8")
-	if !strings.Contains(idle, `<span class="muted">0</span>`) || strings.Count(idle, `<span class="muted">-</span>`) < 2 {
+	if !strings.Contains(idle, `<span class="muted">0</span>`) || strings.Count(idle, `<span class="muted">-</span>`) < 3 {
 		t.Errorf("idle program's row\n%s", idle)
 	}
 }

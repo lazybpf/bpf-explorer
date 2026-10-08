@@ -70,6 +70,27 @@ func runTime(ns uint64) string {
 	return strconv.FormatUint(ns, 10) + "ns"
 }
 
+// cpuPercent formats a program's share of one CPU, empty when the agent did
+// not sample it. Two decimals below 10%, since most programs sit well under
+// 1%; "<0.01%" rather than a 0 that would read as never running.
+func cpuPercent(p *pb.ProgramInfo) string {
+	if p.CpuPercent == nil {
+		return ""
+	}
+	v := *p.CpuPercent
+	switch {
+	case v == 0:
+		return "0%"
+	case v < 0.01:
+		return "<0.01%"
+	case v < 10:
+		return strconv.FormatFloat(v, 'f', 2, 64) + "%"
+	case v < 100:
+		return strconv.FormatFloat(v, 'f', 1, 64) + "%"
+	}
+	return strconv.FormatFloat(v, 'f', 0, 64) + "%"
+}
+
 // avgRun is a program's run time per run, empty when it has not run.
 func avgRun(p *pb.ProgramInfo) string {
 	if p.GetRunCount() == 0 {

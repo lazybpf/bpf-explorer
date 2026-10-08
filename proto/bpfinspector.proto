@@ -129,8 +129,19 @@ message ProgramInfo {
   uint64 run_count = 8;
   uint64 run_time_ns = 9;
   uint64 recursion_misses = 10;
+  // Share of one CPU the program used over a one-second sample, in percent:
+  // its run time grew by this much of the wall time between two reads, so a
+  // program running on several CPUs at once goes over 100. Set only when the
+  // request asked for a sample and stats were on, and not for a program loaded
+  // during the sample.
+  optional double cpu_percent = 11;
 }
-message ListProgramsRequest {}
+message ListProgramsRequest {
+  // Read every program's run time twice, a second apart, to fill in
+  // cpu_percent. The call then takes that second longer, so only the programs
+  // list asks; it is skipped while stats are off, when run time stands still.
+  bool sample_cpu = 1;
+}
 message ListProgramsResponse {
   repeated ProgramInfo programs = 1;
   StatsState stats = 2;

@@ -92,6 +92,11 @@ type ProgramSummary struct {
 	RunCount        uint64
 	RunTime         time.Duration
 	RecursionMisses uint64
+	// CPUPercent is the share of one CPU the program used over the sample
+	// ListPrograms was asked for. HasCPU is false when there was no sample, or
+	// the program was not there for its first read.
+	CPUPercent float64
+	HasCPU     bool
 }
 
 // Inspector reads maps/programs/links from the host kernel.
@@ -223,7 +228,19 @@ func (i *Inspector) DumpMap(id uint32, limit uint32) (*Dump, error) {
 
 // ListPrograms iterates every program ID and returns its metadata, including
 // the processes holding a reference to each program (resolved from /proc).
-func (i *Inspector) ListPrograms() ([]ProgramSummary, error) {
+// A non-zero sample reads every program's run time that long before the main
+// pass and fills in CPUPercent from the difference; the call takes at least
+// that long.
+func (i *Inspector) ListPrograms(sample time.Duration) ([]ProgramSummary, error) {
+	// Taken first so the /proc scan below overlaps the wait, rather than
+	// adding to it.
+	var before map[uint32]runTimeRead
+	var sampleEnd time.Time
+	if sample > 0 {
+		before = readRunTimes()
+		sampleEnd = time.Now().Add(sample)
+	}
+
 	// Scan /proc once up front so we can attach holders to each program. A scan
 	// failure (e.g. no hostPID) just yields no PIDs; it never fails the listing.
 	pidsByProg := scanProgramPIDs("/proc")
@@ -231,6 +248,9 @@ func (i *Inspector) ListPrograms() ([]ProgramSummary, error) {
 	// dated against the same boot instant, so two loaded a second apart are a
 	// second apart here.
 	boot, bootOK := bootTime()
+	if before != nil {
+		time.Sleep(time.Until(sampleEnd))
+	}
 
 	var out []ProgramSummary
 	var id ebpf.ProgramID
@@ -275,9 +295,13 @@ func (i *Inspector) ListPrograms() ([]ProgramSummary, error) {
 		// A failed read leaves them zero, which is what a program reads
 		// with stats never turned on: a dash in the list, not an error.
 		if st, err := p.Stats(); err == nil {
+			now := time.Now()
 			sum.RunCount = st.RunCount
 			sum.RunTime = st.Runtime
 			sum.RecursionMisses = st.RecursionMisses
+			if b, ok := before[sum.ID]; ok {
+				sum.CPUPercent, sum.HasCPU = cpuShare(b, runTimeRead{st.Runtime, now})
+			}
 		}
 		out = append(out, sum)
 		p.Close()
@@ -426,4 +450,44 @@ func undumpableReason(t ebpf.MapType) string {
 	default:
 		return ""
 	}
+}
+
+// runTimeRead is one read of a program's run time, and when it was taken.
+type runTimeRead struct {
+	runTime time.Duration
+	at      time.Time
+}
+
+// readRunTimes reads every program's run time: the first half of a CPU sample.
+// Each read carries its own time, so the share does not depend on how long
+// the walk over all programs took.
+func readRunTimes() map[uint32]runTimeRead {
+	out := map[uint32]runTimeRead{}
+	var id ebpf.ProgramID
+	for {
+		next, err := ebpf.ProgramGetNextID(id)
+		if err != nil {
+			return out
+		}
+		id = next
+		p, err := ebpf.NewProgramFromID(id)
+		if err != nil {
+			continue
+		}
+		if st, err := p.Stats(); err == nil {
+			out[uint32(id)] = runTimeRead{st.Runtime, time.Now()}
+		}
+		p.Close()
+	}
+}
+
+// cpuShare is the run time added between two reads as a percentage of the wall
+// time between them: of one CPU, so several CPUs at once go over 100. false
+// when the run time went backwards - the id now names a different program.
+func cpuShare(before, after runTimeRead) (float64, bool) {
+	wall := after.at.Sub(before.at)
+	if wall <= 0 || after.runTime < before.runTime {
+		return 0, false
+	}
+	return 100 * float64(after.runTime-before.runTime) / float64(wall), true
 }
