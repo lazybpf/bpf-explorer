@@ -150,8 +150,8 @@ jobs:
           cat "$RUNNER_TEMP/notes.md"
 
       # --verify-tag refuses to invent a tag, so the release can only ever
-      # describe a pushed one. The pinned manifest and the binaries ride along as
-      # artefacts.
+      # describe a pushed one. The pinned manifest, the binaries and install.sh
+      # ride along as artefacts.
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -162,6 +162,6 @@ jobs:
           if [[ "$PRERELEASE" == "true" ]]; then
             flags+=(--prerelease)
           fi
-          gh release create "$VERSION" "${flags[@]}" bpf-explorer.yaml \
+          gh release create "$VERSION" "${flags[@]}" bpf-explorer.yaml install.sh \
             "$RUNNER_TEMP"/dist/bpf-explorer-linux-*.tar.gz \
             "$RUNNER_TEMP"/dist/checksums.txt

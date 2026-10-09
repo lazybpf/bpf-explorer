@@ -222,8 +222,14 @@ kubectl apply -f bpf-explorer.yaml
 
 ## Run locally without a cluster
 
-Each release carries a binary for linux amd64 and arm64 (swap the arch to match
-`uname -m`), with checksums - or build it, see [Build](#build):
+Install the latest release to ~/.local/bin:
+
+```console
+curl -fsSL https://github.com/lazybpf/bpf-explorer/releases/latest/download/install.sh | bash
+```
+
+Or by hand - each release carries a binary for linux amd64 and arm64 (swap the
+arch to match `uname -m`), with checksums - or build it, see [Build](#build):
 
 ```console
 curl -fsSLO https://github.com/lazybpf/bpf-explorer/releases/latest/download/bpf-explorer-linux-amd64.tar.gz
