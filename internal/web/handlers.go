@@ -94,7 +94,6 @@ func (h *Handlers) Router() http.Handler {
 	mux.HandleFunc("GET /nodes/{node}/cgroups", h.cgroups)
 	mux.HandleFunc("GET /nodes/{node}/tracelog", h.tracelog)
 	mux.HandleFunc("GET /nodes/{node}/tracelog/stream", h.tracelogStream)
-	mux.HandleFunc("GET /nodes/{node}/features", h.features)
 	// One route per utility, under a tab that is a section rather than a page.
 	// The bare path redirects, so a link from before the split still lands on
 	// the lookup it named. The node itself is the first of them: what the agent
@@ -102,14 +101,15 @@ func (h *Handlers) Router() http.Handler {
 	// is a question about the node rather than a list of what is loaded on it.
 	mux.HandleFunc("GET /nodes/{node}/utils", h.utils)
 	mux.HandleFunc("GET /nodes/{node}/utils/node", h.nodeDetails)
+	mux.HandleFunc("GET /nodes/{node}/utils/features", h.features)
 	mux.HandleFunc("GET /nodes/{node}/utils/pid", h.utilPID)
 	mux.HandleFunc("GET /nodes/{node}/utils/inode", h.utilInode)
 	mux.HandleFunc("GET /nodes/{node}/utils/tetragon", h.tetragonPolicies)
 	// That page had a tab of its own until it moved in beside the lookups, and
 	// its old path is still in bookmarks and history.
 	mux.HandleFunc("GET /nodes/{node}/node", h.nodeMoved)
-	// The features page went the other way, out of utils onto a tab of its own.
-	mux.HandleFunc("GET /nodes/{node}/utils/features", h.featuresMoved)
+	// The features page went out onto a tab of its own and came back.
+	mux.HandleFunc("GET /nodes/{node}/features", h.featuresMoved)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { w.Write([]byte("ok")) })
 	return mux
 }
@@ -125,7 +125,7 @@ type pageData struct {
 	Node  string
 	Tab   string
 	// Util names the utility within the utils tab the way Tab names the tab:
-	// "node", "pid", "inode". Empty on every page outside that section.
+	// "node", "features", "pid", "inode". Empty on every page outside that section.
 	Util     string
 	Err      string
 	Maps     []*pb.MapInfo
@@ -167,7 +167,7 @@ type pageData struct {
 	// the machine.
 	NodeInfo *pb.DescribeNodeResponse
 	// Features is what the node's kernel supports for BPF, for the features
-	// tab: bpftool feature probe.
+	// page under utils: bpftool feature probe.
 	Features *pb.ProbeFeaturesResponse
 	// CgroupTree is the cgroups with BPF programs attached, for the cgroups
 	// tab: bpftool cgroup tree.
