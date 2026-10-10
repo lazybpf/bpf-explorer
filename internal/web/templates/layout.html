@@ -269,6 +269,52 @@
   table.regs { max-width: 62rem; }
   table.regs th { text-transform: none; letter-spacing: .04em; }
 
+  /* A page that is one long list - programs, maps, a map's contents - stops
+     scrolling as a whole: the header, tabs and controls stay put and the list
+     scrolls in its own box, under column names that stay in view. Both of the
+     box's scrollbars are then on screen, where the sideways one used to sit at
+     the foot of the table. Only where there is room: on a short or narrow
+     screen the chrome above would leave the list a sliver, so the page scrolls
+     as before. A browser without :has() does the same. After the table rules
+     above, since some of these must win against them at equal weight. */
+  @media (min-width: 641px) and (min-height: 36rem) {
+    body:has(.scroll.fill) {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      height: 100dvh;
+    }
+    body:has(.scroll.fill) main {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      padding-bottom: 1rem;
+    }
+    /* Sized to the table and shrunk to what is left of the window, so a short
+       list keeps its sideways scrollbar right under it. The table's top margin
+       moves out onto the box, or it would scroll away above the sticky row. */
+    .scroll.fill { min-height: 0; overflow: auto; margin-top: .8rem; }
+    .scroll.fill thead th { position: sticky; top: 0; z-index: 1; }
+    /* Collapsed borders belong to the table, so the rules above and below a
+       stuck header would scroll away from it and leave it a few pixels short.
+       Here each cell draws its own instead - its top and left, the last in a
+       row its right, a header cell its bottom too - which looks the same at
+       rest. :where() keeps them light enough for a row that draws a heavier
+       top rule, like the loaders page's residual row, to still win. */
+    .scroll.fill table {
+      margin-top: 0;
+      border-collapse: separate;
+      border-spacing: 0;
+      border: none;
+      border-bottom: 1px solid var(--border);
+    }
+    :where(.scroll.fill) :is(th, td) { border-width: 1px 0 0 1px; }
+    :where(.scroll.fill) tr > :last-child { border-right-width: 1px; }
+    :where(.scroll.fill) thead th { border-bottom-width: 1px; }
+    :where(.scroll.fill) thead + tbody > tr:first-child > td { border-top-width: 0; }
+  }
+
   /* ── code and dumps ──────────────────────────────────────────────────── */
   code { color: var(--accent); word-break: break-all; }
   /* Code is cyan and so is a hovered link's ground: inside a link, take the

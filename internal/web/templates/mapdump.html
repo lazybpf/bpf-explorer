@@ -13,7 +13,7 @@
     {{if .Truncated}}<span class="badge">truncated</span>{{end}}
     <span class="muted">({{len .Entries}})</span>
   </h2>
-  <div class="scroll">
+  <div class="scroll fill">
   {{/* A map-of-maps stores an inner map's id in each slot, and a program array
        a program's, so either one's value column is a set of ids rather than
        data: named and linked here, since reading one off the hex and looking it
