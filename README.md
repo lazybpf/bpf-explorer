@@ -83,6 +83,11 @@ program, and that program references four maps:
 
 ![bpf-explorer loaders tab showing a link attached to the tg_kp_bprm_committing_creds program, which references four maps](README/bpf-explorer-loader-graph.png)
 
+The `links` tab lists the links on a node, the program each one attaches and
+where it is attached:
+
+![bpf-explorer links tab listing Tetragon's kprobe and tracepoint links](README/bpf-explorer-links.png)
+
 The `programs` tab lists the programs on a node. Turn on run stats to see how
 many times each program ran and its average run time. They switch off after 10
 minutes:
@@ -95,8 +100,8 @@ helpers are highlighted:
 
 ![bpf-explorer xlated tab showing the translated eBPF bytecode of the tg_kp_bprm_committing_creds program](README/bpf-explorer-program-xlated.png)
 
-These are four views. There are more: maps and their contents, program details,
-links, the trace log for each node, and the `utils` tab. Run the tool to see
+These are five views. There are more: maps and their contents, program details,
+the trace log for each node, and the `utils` tab. Run the tool to see
 them.
 
 If the node runs Tetragon, `utils` also lists its tracing policies, with the
