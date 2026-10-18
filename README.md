@@ -15,59 +15,10 @@ loaded.
 > version, OS image, and container runtime largely decide which BPF objects are
 > inspectable at all.
 
-It runs as two components:
-
-- agent (`--role=agent`) - gRPC server in a privileged DaemonSet; reads maps and
-  programs via `cilium/ebpf`.
-- ui (`--role=ui`) - a Deployment that discovers agents via the Kubernetes API
-  and fans out gRPC calls, serving HTML. `ClusterIP` only; reached via
-  `kubectl port-forward`.
-
-One binary serves both roles; one image runs both workloads. A third role,
-`--role=local`, runs the two together in a single process on one host, no
-cluster needed.
-It is the default, so a bare `bpf-explorer` runs both halves; the manifest names
-`--role` explicitly for the two cluster workloads.
-
-In a three-node cluster with an agent on every node:
-
-```mermaid
-flowchart LR
-    op(["Operator"])
-
-    subgraph cluster["Kubernetes cluster"]
-        api["Kubernetes API"]
-        ui["ui Deployment<br/>ClusterIP :80 -> :8080"]
-
-        subgraph n1["node-1"]
-            a1["agent :50051"]
-            k1[("host kernel<br/>maps, progs, links")]
-        end
-
-        subgraph n2["node-2"]
-            a2["agent :50051"]
-            k2[("host kernel")]
-        end
-
-        subgraph n3["node-3"]
-            a3["agent :50051"]
-            k3[("host kernel")]
-        end
-    end
-
-    op -->|"port-forward, HTTP"| ui
-    ui -.->|"list agent pods"| api
-    ui -->|gRPC| a1
-    ui -->|gRPC| a2
-    ui -->|gRPC| a3
-    a1 --> k1
-    a2 --> k2
-    a3 --> k3
-```
-
 Each release ships a container image on GHCR for the cluster, and a static
 binary plus an install script for a single host, all for `linux/amd64` and
-`linux/arm64` - see [Quick start](#quick-start).
+`linux/arm64` - see [Quick start](#quick-start). [Architecture](#architecture)
+shows how the pieces fit together.
 
 ## What you get
 
@@ -104,8 +55,9 @@ These are five views. There are more: maps and their contents, program details,
 the trace log for each node, and the `utils` tab. Run the tool to see
 them.
 
-If the node runs Tetragon, `utils` also lists its tracing policies, with the
-same columns as `tetra tracingpolicy list` and any policy errors:
+If the node runs [Tetragon](https://tetragon.io), `utils` also lists its
+tracing policies, with the same columns as `tetra tracingpolicy list` and any
+policy errors:
 
 ![bpf-explorer tetragon policies page listing sample tracing policies](README/bpf-explorer-tetragon-policies.png)
 
@@ -170,6 +122,58 @@ kubectl delete namespace bpf-explorer
 
 ```console
 kubectl label node <node> bpf-explorer-
+```
+
+## Architecture
+
+bpf-explorer runs as two components:
+
+- agent (`--role=agent`) - gRPC server in a privileged DaemonSet; reads maps and
+  programs via [`cilium/ebpf`](https://github.com/cilium/ebpf).
+- ui (`--role=ui`) - a Deployment that discovers agents via the Kubernetes API
+  and fans out gRPC calls, serving HTML. `ClusterIP` only; reached via
+  `kubectl port-forward`.
+
+One binary serves both roles; one image runs both workloads. A third role,
+`--role=local`, runs the two together in a single process on one host, no
+cluster needed.
+It is the default, so a bare `bpf-explorer` runs both halves; the manifest names
+`--role` explicitly for the two cluster workloads.
+
+In a three-node cluster with an agent on every node:
+
+```mermaid
+flowchart LR
+    op(["Operator"])
+
+    subgraph cluster["Kubernetes cluster"]
+        api["Kubernetes API"]
+        ui["ui Deployment<br/>ClusterIP :80 -> :8080"]
+
+        subgraph n1["node-1"]
+            a1["agent :50051"]
+            k1[("host kernel<br/>maps, progs, links")]
+        end
+
+        subgraph n2["node-2"]
+            a2["agent :50051"]
+            k2[("host kernel")]
+        end
+
+        subgraph n3["node-3"]
+            a3["agent :50051"]
+            k3[("host kernel")]
+        end
+    end
+
+    op -->|"port-forward, HTTP"| ui
+    ui -.->|"list agent pods"| api
+    ui -->|gRPC| a1
+    ui -->|gRPC| a2
+    ui -->|gRPC| a3
+    a1 --> k1
+    a2 --> k2
+    a3 --> k3
 ```
 
 ## Build
