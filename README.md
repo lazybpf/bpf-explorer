@@ -65,7 +65,10 @@ flowchart LR
     a3 --> k3
 ```
 
-Images are published to GHCR for `linux/amd64` and `linux/arm64`.
+Each release ships a container image on GHCR for the cluster, and a static
+binary plus an install script for a single host, all for `linux/amd64` and
+`linux/arm64` - see [Quick start](#quick-start) and
+[Run on a single host](#run-on-a-single-host).
 
 ## What you get
 
