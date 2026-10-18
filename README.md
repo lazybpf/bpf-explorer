@@ -1,7 +1,8 @@
 # bpf-explorer
 
-A cluster-wide, read-only web UI for browsing eBPF maps and programs across
-Kubernetes nodes - so you don't have to `kubectl exec` into a per-node
+A read-only web UI for browsing eBPF maps and programs. Run it on a single
+Linux host, or deploy it to Kubernetes to browse every node from one place -
+so you don't have to `kubectl exec` into a per-node
 [`bpftool-daemon`](https://github.com/lazybpf/bpftool-daemon) pod to see what's
 loaded.
 
@@ -9,7 +10,8 @@ loaded.
 > This is a relatively new project, so there may be some hiccups. If you hit
 > one, please [open an issue](https://github.com/lazybpf/bpf-explorer/issues)
 > with the build version from the UI header - or `bpf-explorer --version` - e.g.
-> `v0.1.0 (0dd5b51)`, plus the output of `kubectl get nodes -o wide`. Kernel
+> `v0.1.0 (0dd5b51)`, plus the output of `uname -r` and `cat /etc/os-release`
+> on a single host, or `kubectl get nodes -o wide` on a cluster. Kernel
 > version, OS image, and container runtime largely decide which BPF objects are
 > inspectable at all.
 
@@ -22,8 +24,8 @@ It runs as two components:
   `kubectl port-forward`.
 
 One binary serves both roles; one image runs both workloads. A third role,
-`--role=local`, runs the two together in a single process for development
-without a cluster - see [Run locally without a cluster](#run-locally-without-a-cluster).
+`--role=local`, runs the two together in a single process on one host, no
+cluster needed - see [Run on a single host](#run-on-a-single-host).
 It is the default, so a bare `bpf-explorer` runs both halves; the manifest names
 `--role` explicitly for the two cluster workloads.
 
@@ -220,7 +222,7 @@ Then apply this repo's manifest, which points at `:dev` with
 kubectl apply -f bpf-explorer.yaml
 ```
 
-## Run locally without a cluster
+## Run on a single host
 
 Install the latest release to ~/.local/bin:
 
