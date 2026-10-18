@@ -300,18 +300,6 @@ kubectl apply -f https://github.com/lazybpf/bpf-explorer/releases/download/v0.2.
 Iterate with `-rc.2`, `-rc.3`, ... and cut the final `v0.2.0` from the same
 commit as the last candidate once it looks good.
 
-## TODO
-
-- Cursor pagination for `DumpMap`. The proto carries `cursor` / `next_cursor`
-  but the server only honours `limit`, so a huge map is truncated rather than
-  paged.
-- Per-CPU map values. Values of per-CPU map types are rendered as one opaque
-  blob instead of a per-CPU slice.
-- Informer-based agent discovery. The UI polls the Kubernetes API on each
-  page load; a `SharedInformer` would cut refresh latency.
-- mTLS between UI and agents. Agent gRPC is plaintext and unauthenticated within
-  the namespace; namespace isolation plus a NetworkPolicy is the current fence.
-
 ## Related projects
 
 - [`ebpfdev/explorer`](https://github.com/ebpfdev/explorer) is the closest thing
