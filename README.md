@@ -76,17 +76,17 @@ a node, with their memory and CPU use:
 
 ![bpf-explorer loaders tab listing systemd and Tetragon with the links, programs and maps each one loaded](README/bpf-explorer-loaders.png)
 
-Each loader has a graph of the objects it created in the kernel. Links
-attach programs. Programs reference maps. In this example Tetragon has a
-`perf_event` link that attaches the `tg_kp_bprm_committing_creds` kprobe
-program, and that program references four maps:
-
-![bpf-explorer loaders tab showing a link attached to the tg_kp_bprm_committing_creds program, which references four maps](README/bpf-explorer-loader-graph.png)
-
 The `links` tab lists the links on a node, the program each one attaches and
 where it is attached:
 
 ![bpf-explorer links tab listing Tetragon's kprobe and tracepoint links](README/bpf-explorer-links.png)
+
+Each link has a graph of the objects around it in the kernel. Links
+attach programs. Programs reference maps. Here Tetragon's link 7 is a
+`perf_event` link that attaches the `tg_kp_bprm_committing_creds` kprobe
+program, and that program references four maps:
+
+![bpf-explorer loaders tab showing a link attached to the tg_kp_bprm_committing_creds program, which references four maps](README/bpf-explorer-loader-graph.png)
 
 The `programs` tab lists the programs on a node. Turn on run stats to see how
 many times each program ran and its average run time. They switch off after 10
