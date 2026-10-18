@@ -25,7 +25,7 @@ It runs as two components:
 
 One binary serves both roles; one image runs both workloads. A third role,
 `--role=local`, runs the two together in a single process on one host, no
-cluster needed - see [Run on a single host](#run-on-a-single-host).
+cluster needed.
 It is the default, so a bare `bpf-explorer` runs both halves; the manifest names
 `--role` explicitly for the two cluster workloads.
 
@@ -110,8 +110,7 @@ http://localhost:8080, where the host is listed as `local`:
 sudo ~/.local/bin/bpf-explorer
 ```
 
-Ctrl-C stops it; `rm ~/.local/bin/bpf-explorer` removes it. More options are in
-[Run on a single host](#run-on-a-single-host).
+Ctrl-C stops it; `rm ~/.local/bin/bpf-explorer` removes it.
 
 ### On a Kubernetes cluster
 
@@ -155,36 +154,6 @@ kubectl delete namespace bpf-explorer
 
 ```console
 kubectl label node <node> bpf-explorer-
-```
-
-## Run on a single host
-
-To install by hand instead - each release carries a binary for linux amd64 and
-arm64 (swap the arch to match `uname -m`), with checksums - or build it, see
-[Build](#build):
-
-```console
-curl -fsSLO https://github.com/lazybpf/bpf-explorer/releases/latest/download/bpf-explorer-linux-amd64.tar.gz
-curl -fsSLO https://github.com/lazybpf/bpf-explorer/releases/latest/download/checksums.txt
-sha256sum --ignore-missing -c checksums.txt
-tar xzf bpf-explorer-linux-amd64.tar.gz
-```
-
-A bare `bpf-explorer` runs `--role=local`: both components in one process, with
-the UI pointed at the bundled agent by static discovery. No cluster, no RBAC,
-one terminal. Ports move with `--listen` (UI, default `:8080`) and
-`--agent-listen` (agent, default `:50051`).
-
-`sudo` is for the agent half, which needs BPF privileges - but it is one
-process, so the UI half runs privileged too. Run the roles separately when that
-matters, in two terminals:
-
-```console
-sudo ./bpf-explorer --role=agent --listen=:50051
-```
-
-```console
-./bpf-explorer --role=ui --agents=local=localhost:50051
 ```
 
 ## Build
