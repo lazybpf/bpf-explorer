@@ -78,13 +78,19 @@ program, and that program references four maps:
 
 ![bpf-explorer loaders tab showing a link attached to the tg_kp_bprm_committing_creds program, which references four maps](README/bpf-explorer-loader-graph.png)
 
+The `programs` tab lists the programs on a node. Turn on run stats to see how
+many times each program ran and its average run time. They switch off after 10
+minutes:
+
+![bpf-explorer programs tab listing Tetragon's programs with run counts, run time and average time per run](README/bpf-explorer-programs.png)
+
 Every program has an `xlated` tab. It shows the translated bytecode, the same
 disassembly as `bpftool prog dump xlated`. Map ids are links; calls to BPF
 helpers are highlighted:
 
 ![bpf-explorer xlated tab showing the translated eBPF bytecode of the tg_kp_bprm_committing_creds program](README/bpf-explorer-program-xlated.png)
 
-These are two views. There are more: maps and their contents, program details,
+These are three views. There are more: maps and their contents, program details,
 links, the trace log for each node, and the `utils` tab. Run the tool to see
 them.
 
