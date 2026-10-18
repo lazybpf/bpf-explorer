@@ -71,7 +71,12 @@ binary plus an install script for a single host, all for `linux/amd64` and
 
 ## What you get
 
-The `loaders` tab shows the objects each loader created in the kernel. Links
+The `loaders` tab lists the processes that loaded links, programs and maps on
+a node, with their memory and CPU use:
+
+![bpf-explorer loaders tab listing systemd and Tetragon with the links, programs and maps each one loaded](README/bpf-explorer-loaders.png)
+
+Each loader has a graph of the objects it created in the kernel. Links
 attach programs. Programs reference maps. In this example Tetragon has a
 `perf_event` link that attaches the `tg_kp_bprm_committing_creds` kprobe
 program, and that program references four maps:
@@ -90,7 +95,7 @@ helpers are highlighted:
 
 ![bpf-explorer xlated tab showing the translated eBPF bytecode of the tg_kp_bprm_committing_creds program](README/bpf-explorer-program-xlated.png)
 
-These are three views. There are more: maps and their contents, program details,
+These are four views. There are more: maps and their contents, program details,
 links, the trace log for each node, and the `utils` tab. Run the tool to see
 them.
 
