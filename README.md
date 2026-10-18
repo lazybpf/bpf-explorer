@@ -67,8 +67,7 @@ flowchart LR
 
 Each release ships a container image on GHCR for the cluster, and a static
 binary plus an install script for a single host, all for `linux/amd64` and
-`linux/arm64` - see [Quick start](#quick-start) and
-[Run on a single host](#run-on-a-single-host).
+`linux/arm64` - see [Quick start](#quick-start).
 
 ## What you get
 
@@ -95,6 +94,26 @@ same columns as `tetra tracingpolicy list` and any policy errors:
 ![bpf-explorer tetragon policies page listing sample tracing policies](README/bpf-explorer-tetragon-policies.png)
 
 ## Quick start
+
+### On a Linux host
+
+Install the latest release to ~/.local/bin:
+
+```console
+curl -fsSL https://github.com/lazybpf/bpf-explorer/releases/latest/download/install.sh | bash
+```
+
+Run it with sudo - reading BPF objects needs root - and browse
+http://localhost:8080, where the host is listed as `local`:
+
+```console
+sudo ~/.local/bin/bpf-explorer
+```
+
+Ctrl-C stops it; `rm ~/.local/bin/bpf-explorer` removes it. More options are in
+[Run on a single host](#run-on-a-single-host).
+
+### On a Kubernetes cluster
 
 Nothing to clone - label the node(s) you want an agent on and apply the manifest
 attached to the latest release:
@@ -123,9 +142,8 @@ nohup kubectl -n bpf-explorer port-forward svc/bpf-explorer-ui 8080:80 > /tmp/bp
 > The DaemonSet uses a `nodeSelector` (`bpf-explorer: "true"`) so agents only
 > land on labelled nodes. Remove the selector to run on every node.
 
-## Cleanup
-
-Stop the background port-forward, if you started one:
+To clean up, stop the background port-forward if you started one, then delete
+the namespace and the label:
 
 ```console
 pkill -f "port-forward svc/bpf-explorer-ui"
@@ -139,21 +157,35 @@ kubectl delete namespace bpf-explorer
 kubectl label node <node> bpf-explorer-
 ```
 
-## Develop on macOS
+## Run on a single host
 
-There is no eBPF on macOS, so everything below needs a Linux machine.
-[`.lima/bpf-explorer-dev.yaml`](.lima/bpf-explorer-dev.yaml) is a
-[Lima](https://lima-vm.io) template for one, carrying the toolchain, a
-single-node Kubernetes cluster, and `bpftool` to check the output against:
+To install by hand instead - each release carries a binary for linux amd64 and
+arm64 (swap the arch to match `uname -m`), with checksums - or build it, see
+[Build](#build):
 
 ```console
-limactl start .lima/bpf-explorer-dev.yaml && limactl shell bpf-explorer-dev
+curl -fsSLO https://github.com/lazybpf/bpf-explorer/releases/latest/download/bpf-explorer-linux-amd64.tar.gz
+curl -fsSLO https://github.com/lazybpf/bpf-explorer/releases/latest/download/checksums.txt
+sha256sum --ignore-missing -c checksums.txt
+tar xzf bpf-explorer-linux-amd64.tar.gz
 ```
 
-Your home directory is mounted at the same path in the VM, so the clone you
-start from is the one you land in, and every command below runs in there
-unchanged - Lima forwards the ports, so the UI still opens in a browser on the
-Mac. The node is already labelled `bpf-explorer=true`.
+A bare `bpf-explorer` runs `--role=local`: both components in one process, with
+the UI pointed at the bundled agent by static discovery. No cluster, no RBAC,
+one terminal. Ports move with `--listen` (UI, default `:8080`) and
+`--agent-listen` (agent, default `:50051`).
+
+`sudo` is for the agent half, which needs BPF privileges - but it is one
+process, so the UI half runs privileged too. Run the roles separately when that
+matters, in two terminals:
+
+```console
+sudo ./bpf-explorer --role=agent --listen=:50051
+```
+
+```console
+./bpf-explorer --role=ui --agents=local=localhost:50051
+```
 
 ## Build
 
@@ -202,47 +234,21 @@ Then apply this repo's manifest, which points at `:dev` with
 kubectl apply -f bpf-explorer.yaml
 ```
 
-## Run on a single host
+## Develop on macOS
 
-Install the latest release to ~/.local/bin:
-
-```console
-curl -fsSL https://github.com/lazybpf/bpf-explorer/releases/latest/download/install.sh | bash
-```
-
-Or by hand - each release carries a binary for linux amd64 and arm64 (swap the
-arch to match `uname -m`), with checksums - or build it, see [Build](#build):
+There is no eBPF on macOS, so building and running need a Linux machine.
+[`.lima/bpf-explorer-dev.yaml`](.lima/bpf-explorer-dev.yaml) is a
+[Lima](https://lima-vm.io) template for one, carrying the toolchain, a
+single-node Kubernetes cluster, and `bpftool` to check the output against:
 
 ```console
-curl -fsSLO https://github.com/lazybpf/bpf-explorer/releases/latest/download/bpf-explorer-linux-amd64.tar.gz
-curl -fsSLO https://github.com/lazybpf/bpf-explorer/releases/latest/download/checksums.txt
-sha256sum --ignore-missing -c checksums.txt
-tar xzf bpf-explorer-linux-amd64.tar.gz
+limactl start .lima/bpf-explorer-dev.yaml && limactl shell bpf-explorer-dev
 ```
 
-`--role=local` runs both components in one process, with the UI pointed at the
-bundled agent by static discovery. No cluster, no RBAC, one terminal - and it is
-the default role, so the flag is what a bare invocation already means:
-
-```console
-sudo ./bpf-explorer
-```
-
-Then browse http://localhost:8080; the node is listed as `local`. Ports move
-with `--listen` (UI, default `:8080`) and `--agent-listen` (agent, default
-`:50051`).
-
-`sudo` is for the agent half, which needs BPF privileges - but it is one
-process, so the UI half runs privileged too. Run the roles separately when that
-matters, in two terminals:
-
-```console
-sudo ./bpf-explorer --role=agent --listen=:50051
-```
-
-```console
-./bpf-explorer --role=ui --agents=local=localhost:50051
-```
+Your home directory is mounted at the same path in the VM, so the clone you
+start from is the one you land in, and every command in this README runs in
+there unchanged - Lima forwards the ports, so the UI still opens in a browser
+on the Mac. The node is already labelled `bpf-explorer=true`.
 
 ## Releasing
 
