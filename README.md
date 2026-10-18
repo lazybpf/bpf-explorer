@@ -18,7 +18,7 @@ loaded.
 It runs as two components:
 
 - agent (`--role=agent`) - gRPC server in a privileged DaemonSet; reads maps and
-  programs via `cilium/ebpf`, and can query Tetragon's read-only policy API.
+  programs via `cilium/ebpf`.
 - ui (`--role=ui`) - a Deployment that discovers agents via the Kubernetes API
   and fans out gRPC calls, serving HTML. `ClusterIP` only; reached via
   `kubectl port-forward`.
@@ -28,20 +28,6 @@ One binary serves both roles; one image runs both workloads. A third role,
 cluster needed - see [Run on a single host](#run-on-a-single-host).
 It is the default, so a bare `bpf-explorer` runs both halves; the manifest names
 `--role` explicitly for the two cluster workloads.
-
-## Tetragon policies
-
-The `tetragon policies` tab calls Tetragon's `ListTracingPolicies` gRPC API,
-and shows the same core fields as `tetra tracingpolicy list`: state, filter ID,
-namespace, sensors, kernel memory, mode, post count, enforcement count and
-monitor count. It also shows policy errors. By default, the agent connects to
-`unix:///var/run/tetragon/tetragon.sock`; the DaemonSet mounts the node's
-`/var/run/tetragon` directory read-only. Set
-`BPF_EXPLORER_TETRAGON_GRPC_ADDRESS` on the UI deployment to use another gRPC
-target reachable from the agent pod, such as a node address and port. Keep
-unauthenticated TCP gRPC listeners restricted to trusted clients. When Tetragon
-is absent or unreachable, the policy page shows the connection error while the
-rest of the explorer remains available.
 
 In a three-node cluster with an agent on every node:
 
@@ -84,21 +70,26 @@ Images are published to GHCR for `linux/amd64` and `linux/arm64`.
 ## What you get
 
 The `loaders` tab shows the objects each loader created in the kernel. Links
-attach programs. Programs reference maps. In this example the Lima guest-agent
-has a `perf_event` link that attaches the `lima_ticker` tracepoint program, and
-that program writes events to a `RingBuf` map:
+attach programs. Programs reference maps. In this example Tetragon has a
+`perf_event` link that attaches the `tg_kp_bprm_committing_creds` kprobe
+program, and that program references four maps:
 
-![bpf-explorer loaders tab showing a link attached to the lima_ticker program, which references a RingBuf map](README/bpf-explorer-lima-guestagent-loader.png)
+![bpf-explorer loaders tab showing a link attached to the tg_kp_bprm_committing_creds program, which references four maps](README/bpf-explorer-loader-graph.png)
 
 Every program has an `xlated` tab. It shows the translated bytecode, the same
 disassembly as `bpftool prog dump xlated`. Map ids are links; calls to BPF
 helpers are highlighted:
 
-![bpf-explorer xlated tab showing the translated eBPF bytecode of the lima_ticker program](README/bpf-explorer-program-xlated.png)
+![bpf-explorer xlated tab showing the translated eBPF bytecode of the tg_kp_bprm_committing_creds program](README/bpf-explorer-program-xlated.png)
 
 These are two views. There are more: maps and their contents, program details,
 links, the trace log for each node, and the `utils` tab. Run the tool to see
 them.
+
+If the node runs Tetragon, `utils` also lists its tracing policies, with the
+same columns as `tetra tracingpolicy list` and any policy errors:
+
+![bpf-explorer tetragon policies page listing sample tracing policies](README/bpf-explorer-tetragon-policies.png)
 
 ## Quick start
 
