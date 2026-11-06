@@ -169,6 +169,11 @@ func (s *Server) ListPrograms(_ context.Context, req *pb.ListProgramsRequest) (*
 		})
 	}
 	resp.Stats = statsState(st)
+	if lsms, err := s.insp.ActiveLSMs(); err != nil {
+		resp.LsmsNote = err.Error()
+	} else {
+		resp.Lsms = lsms
+	}
 	return resp, nil
 }
 

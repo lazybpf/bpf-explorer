@@ -132,8 +132,11 @@ type pageData struct {
 	Programs []*pb.ProgramInfo
 	// Stats is whether the node counts program runs, for the programs page's
 	// toggle and stats columns; StatsErr is why the toggle just failed.
-	Stats            *pb.StatsState
-	StatsErr         string
+	Stats    *pb.StatsState
+	StatsErr string
+	// LSMWarn says the LSM programs in Programs may never run. Nil when there
+	// is nothing to say; see checkLSM.
+	LSMWarn          *lsmWarning
 	Links            []*pb.LinkInfo
 	TetragonPolicies []*pb.TetragonPolicyInfo
 	// ProgFilter, MapFilter and LinkFilter narrow Programs, Maps and Links to
@@ -570,6 +573,9 @@ func (h *Handlers) programList(w http.ResponseWriter, r *http.Request, statsErr 
 			}
 		}
 		data.ProgLoaders = choices
+		// After the filter: a loader with no LSM programs has nothing to warn
+		// about, whatever the node's LSMs are.
+		data.LSMWarn = checkLSM(data.Programs, list.GetLsms(), list.GetLsmsNote())
 		h.render(w, page, data)
 		return
 	}

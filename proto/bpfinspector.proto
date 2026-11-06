@@ -145,6 +145,14 @@ message ListProgramsRequest {
 message ListProgramsResponse {
   repeated ProgramInfo programs = 1;
   StatsState stats = 2;
+  // The LSMs the kernel calls, in its order, from /sys/kernel/security/lsm. A
+  // BPF LSM program only runs when "bpf" is among them: without it the kernel
+  // still loads and attaches one, but never calls the hook it is attached to,
+  // so the policy it carries is not enforced - a boot-time misconfiguration a
+  // loader may not check for. Empty, with lsms_note saying why, when the file
+  // could not be read; empty with no note from an agent that predates it.
+  repeated string lsms = 3;
+  string lsms_note = 4;
 }
 
 // StatsState is whether the node's kernel is counting program runs and run time

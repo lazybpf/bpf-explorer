@@ -52,6 +52,10 @@
 </div>
 {{end}}
 {{with .StatsErr}}<p class="err">run stats: {{.}}</p>{{end}}
+{{with .LSMWarn}}
+{{if .Note}}<p class="muted">Couldn't check whether the LSM programs run: {{.Note}}</p>
+{{else}}<p class="warn">{{if eq .Programs 1}}1 LSM program never runs{{else}}{{.Programs}} LSM programs never run{{end}}: <code>bpf</code> is not among the kernel's active LSMs (<code>{{.Active}}</code>), so the policy they carry is not enforced. Add bpf to the <code>lsm=</code> boot parameter to turn it on.</p>{{end}}
+{{end}}
 <div class="scroll fill">
 <table>
   {{/* The Holders column stays under a filter, unlike the links page's Loader:

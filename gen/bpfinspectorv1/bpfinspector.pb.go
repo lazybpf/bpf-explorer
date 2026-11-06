@@ -732,9 +732,17 @@ func (x *ListProgramsRequest) GetSampleCpu() bool {
 }
 
 type ListProgramsResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Programs      []*ProgramInfo         `protobuf:"bytes,1,rep,name=programs,proto3" json:"programs,omitempty"`
-	Stats         *StatsState            `protobuf:"bytes,2,opt,name=stats,proto3" json:"stats,omitempty"`
+	state    protoimpl.MessageState `protogen:"open.v1"`
+	Programs []*ProgramInfo         `protobuf:"bytes,1,rep,name=programs,proto3" json:"programs,omitempty"`
+	Stats    *StatsState            `protobuf:"bytes,2,opt,name=stats,proto3" json:"stats,omitempty"`
+	// The LSMs the kernel calls, in its order, from /sys/kernel/security/lsm. A
+	// BPF LSM program only runs when "bpf" is among them: without it the kernel
+	// still loads and attaches one, but never calls the hook it is attached to,
+	// so the policy it carries is not enforced - a boot-time misconfiguration a
+	// loader may not check for. Empty, with lsms_note saying why, when the file
+	// could not be read; empty with no note from an agent that predates it.
+	Lsms          []string `protobuf:"bytes,3,rep,name=lsms,proto3" json:"lsms,omitempty"`
+	LsmsNote      string   `protobuf:"bytes,4,opt,name=lsms_note,json=lsmsNote,proto3" json:"lsms_note,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -781,6 +789,20 @@ func (x *ListProgramsResponse) GetStats() *StatsState {
 		return x.Stats
 	}
 	return nil
+}
+
+func (x *ListProgramsResponse) GetLsms() []string {
+	if x != nil {
+		return x.Lsms
+	}
+	return nil
+}
+
+func (x *ListProgramsResponse) GetLsmsNote() string {
+	if x != nil {
+		return x.LsmsNote
+	}
+	return ""
 }
 
 // StatsState is whether the node's kernel is counting program runs and run time
@@ -3753,10 +3775,12 @@ const file_proto_bpfinspector_proto_rawDesc = "" +
 	"\f_cpu_percent\"4\n" +
 	"\x13ListProgramsRequest\x12\x1d\n" +
 	"\n" +
-	"sample_cpu\x18\x01 \x01(\bR\tsampleCpu\"\x83\x01\n" +
+	"sample_cpu\x18\x01 \x01(\bR\tsampleCpu\"\xb4\x01\n" +
 	"\x14ListProgramsResponse\x128\n" +
 	"\bprograms\x18\x01 \x03(\v2\x1c.bpfinspector.v1.ProgramInfoR\bprograms\x121\n" +
-	"\x05stats\x18\x02 \x01(\v2\x1b.bpfinspector.v1.StatsStateR\x05stats\"\x92\x01\n" +
+	"\x05stats\x18\x02 \x01(\v2\x1b.bpfinspector.v1.StatsStateR\x05stats\x12\x12\n" +
+	"\x04lsms\x18\x03 \x03(\tR\x04lsms\x12\x1b\n" +
+	"\tlsms_note\x18\x04 \x01(\tR\blsmsNote\"\x92\x01\n" +
 	"\n" +
 	"StatsState\x12\x12\n" +
 	"\x04held\x18\x01 \x01(\bR\x04held\x12!\n" +
