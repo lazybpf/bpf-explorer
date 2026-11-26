@@ -173,6 +173,12 @@ func (i *Inspector) DumpMap(id uint32, limit uint32) (*Dump, error) {
 	}
 	defer m.Close()
 
+	// The list already hides the dump link for these, but a URL can still name
+	// one: say why rather than pass on the kernel's bare ENOTSUPP (errno 524).
+	if note := undumpableReason(m.Type()); note != "" {
+		return nil, fmt.Errorf("cannot dump a %v map: %s", m.Type(), note)
+	}
+
 	if limit == 0 || limit > maxDumpEntries {
 		limit = maxDumpEntries
 	}
@@ -447,6 +453,16 @@ func undumpableReason(t ebpf.MapType) string {
 		return "event stream, not a keyed map: entries are consumed by a reader, so there are no keys to iterate"
 	case ebpf.Queue, ebpf.Stack:
 		return "queue and stack entries have no keys, so there is nothing to iterate - values come off one at a time"
+	case ebpf.SkStorage, ebpf.InodeStorage, ebpf.TaskStorage, ebpf.CgroupStorage:
+		// CgroupStorage is BPF_MAP_TYPE_CGRP_STORAGE, the local-storage one;
+		// the older CGroupStorage does iterate and stays dumpable.
+		return "local storage hangs off a socket, inode, task or cgroup rather than holding keys, and the kernel does not list them - a value is read by handing it that object's fd"
+	case ebpf.UserRingbuf:
+		return "event stream, not a keyed map: user space writes entries for a program to drain, so there are no keys to iterate"
+	case ebpf.BloomFilter:
+		return "a bloom filter stores no keys, only whether a value may have been added, so there is nothing to iterate"
+	case ebpf.Arena:
+		return "an arena is memory shared with programs, not a keyed map, so there are no keys to iterate"
 	default:
 		return ""
 	}
